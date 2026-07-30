@@ -493,7 +493,7 @@ function grimeStreaks() {
     addFace(zz, zz + w, WALL_H * (0.08 + hash01(S.seed * 5 + i) * 0.48),
       WALL_H * (0.86 + h1 * 0.1));
   }
-  ctx.fillStyle = 'rgba(32,18,36,0.15)';
+  ctx.fillStyle = 'rgba(30,16,34,0.22)';
   ctx.fill();
 }
 
@@ -1219,21 +1219,38 @@ function strokePair(ctx, u) {
 }
 
 function hangingShoes(ctx, mx, my, u) {
-  const s = u * 0.09;
-  ctx.strokeStyle = '#e8e4da';
-  ctx.lineWidth = Math.max(0.6, s * 0.16);
-  ctx.beginPath();
-  ctx.moveTo(mx - s * 0.7, my + s * 0.2);
-  ctx.quadraticCurveTo(mx, my - s * 0.5, mx + s * 0.9, my + s * 0.2);
+  const s = u * 0.075;
+  ctx.strokeStyle = '#cdc6bb';
+  ctx.lineWidth = Math.max(0.6, s * 0.14);
+  ctx.beginPath();                                                         // knotted laces
+  ctx.moveTo(mx - s * 0.75, my + s * 0.2);
+  ctx.quadraticCurveTo(mx, my - s * 0.4, mx + s * 0.95, my + s * 0.35);
   ctx.stroke();
-  ctx.fillStyle = '#efe9dc';
-  roundRect(ctx, mx - s * 1.2, my + s * 0.2, s * 0.85, s * 1.7, s * 0.3);
-  ctx.fill();
-  roundRect(ctx, mx + s * 0.35, my + s * 0.35, s * 0.85, s * 1.7, s * 0.3);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(30,18,34,0.45)';
-  ctx.fillRect(mx - s * 1.2, my + s * 1.5, s * 0.85, s * 0.4);
-  ctx.fillRect(mx + s * 0.35, my + s * 1.65, s * 0.85, s * 0.4);
+
+  // Backlit against a bright sky, so: dark body, warm rim, sole picked out.
+  for (let i = 0; i < 2; i++) {
+    const x = mx + (i ? s * 0.35 : -s * 1.25);
+    const y = my + (i ? s * 0.35 : s * 0.2);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + s * 0.9, y + s * 0.15);
+    ctx.lineTo(x + s * 0.95, y + s * 1.25);
+    ctx.quadraticCurveTo(x + s * 1.15, y + s * 1.75, x + s * 0.5, y + s * 1.8);
+    ctx.quadraticCurveTo(x - s * 0.12, y + s * 1.7, x - s * 0.05, y + s * 1.1);
+    ctx.closePath();
+    ctx.fillStyle = i ? '#6d6472' : '#7d7382';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,196,132,0.5)';
+    ctx.lineWidth = Math.max(0.5, s * 0.09);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(22,12,26,0.6)';
+    ctx.beginPath();
+    ctx.moveTo(x - s * 0.02, y + s * 1.35);
+    ctx.lineTo(x + s * 0.97, y + s * 1.3);
+    ctx.quadraticCurveTo(x + s * 1.15, y + s * 1.75, x + s * 0.5, y + s * 1.8);
+    ctx.quadraticCurveTo(x - s * 0.12, y + s * 1.7, x - s * 0.02, y + s * 1.35);
+    ctx.fill();
+  }
 }
 
 /** Papel picado strung across the alley — three fills for the whole string. */
