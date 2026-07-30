@@ -1,0 +1,405 @@
+// Rules of the run: movement, stamina, La Migra pressure, scoring.
+
+import {
+  LANE_W, RUN, STAMINA, CHASE, POWER, SCORE, HITBOX,
+  MAGNET_RADIUS, CHANCLA_SPEED,
+} from './config.js';
+import { World } from './world.js';
+import { CREW } from './art/runner.js';
+import { resetCamera, updateCamera, addShake } from './camera.js';
+import { burst, dust, updateParticles, resetParticles } from './particles.js';
+import * as sfx from './audio.js';
+
+export const STATE = {
+  MENU: 'menu',
+  PLAYING: 'playing',
+  PAUSED: 'paused',
+  OVER: 'over',
+};
+
+// z-thickness used for hit tests, by prop kind.
+const DEPTH = { pickup: 0.42, power: 0.5, dodge: 0.5, jump: 0.5, slide: 0.55 };
+
+/** Colour-only rig, used until a head sprite has been baked. */
+function fallbackRig(c) {
+  return {
+    head: null,
+    shirt: c.shirt, shirtDark: c.shirtDark,
+    skin: c.skin, skinDark: c.skinDark,
+    pants: c.pants,
+  };
+}
+
+export class Game {
+  constructor(hooks = {}) {
+    this.hooks = hooks;
+    this.world = new World();
+    this.character = CREW[0];
+    this.customImage = null;
+    this.state = STATE.MENU;
+    this.best = 0;
+    this.reset();
+  }
+
+  reset() {
+    this.time = 0;
+    this.distance = 0;
+    this.score = 0;
+    this.beers = 0;
+    this.tacos = 0;
+    this.combo = 0;
+    this.multiplier = 1;
+    this.stamina = STAMINA.start;
+    this.chase = 0;
+    this.chaseGrace = 0;
+    this.speed = RUN.startSpeed;
+    this.invuln = 0;
+    this.hitFlash = 0;
+    this.stumble = 0;
+    this.gameOverReason = '';
+
+    this.power = { magnet: 0, chancla: 0, lowrider: 0 };
+
+    this.player = {
+      lane: 0,
+      x: 0,
+      y: 0,
+      vy: 0,
+      z: 0,
+      phase: 0,
+      sliding: false,
+      slideT: 0,
+      airborne: false,
+      lean: 0,
+      lastStep: -1,
+      rig: this.rig || fallbackRig(this.character),
+    };
+
+    this.chaser = { x: 0, z: -30 };
+
+    this.world.reset();
+    resetParticles();
+    resetCamera(0);
+    this.world.ensureAhead(this.player.z, 0);
+  }
+
+  /**
+   * @param {object} c   crew definition (drives menus + HUD badge)
+   * @param {object} rig baked head sprite + outfit palette, from primo-head.js
+   * @param {HTMLImageElement} img source image, for the HUD badge
+   */
+  setCharacter(c, rig, img) {
+    this.character = c;
+    this.rig = rig || fallbackRig(c);
+    this.customImage = img || null;
+    this.player.rig = this.rig;
+  }
+
+  /** 0 at the starting jog, 1 at top speed — drives lean and run cadence. */
+  speedK() {
+    return Math.max(0, Math.min(1,
+      (this.speed - RUN.startSpeed) / (RUN.maxSpeed - RUN.startSpeed)));
+  }
+
+  start() {
+    this.reset();
+    this.state = STATE.PLAYING;
+    sfx.startMusic();
+    this.hooks.onStateChange?.(this.state);
+  }
+
+  pause() {
+    if (this.state !== STATE.PLAYING) return;
+    this.state = STATE.PAUSED;
+    sfx.stopMusic();
+    this.hooks.onStateChange?.(this.state);
+  }
+
+  resume() {
+    if (this.state !== STATE.PAUSED) return;
+    this.state = STATE.PLAYING;
+    sfx.startMusic();
+    this.hooks.onStateChange?.(this.state);
+  }
+
+  // ------------------------------------------------------------------ input
+
+  moveLane(dir) {
+    if (this.state !== STATE.PLAYING) return;
+    const next = Math.max(-1, Math.min(1, this.player.lane + dir));
+    if (next === this.player.lane) {
+      this.player.lean = dir * 0.5;   // little body-check into the wall
+      return;
+    }
+    this.player.lane = next;
+    this.player.lean = dir;
+    sfx.swipe();
+  }
+
+  jump() {
+    if (this.state !== STATE.PLAYING) return;
+    const p = this.player;
+    if (p.airborne) return;
+    p.vy = this.power.lowrider > 0 ? RUN.boardJumpV : RUN.jumpV;
+    p.airborne = true;
+    p.sliding = false;
+    p.slideT = 0;
+    sfx.jump();
+  }
+
+  slide() {
+    if (this.state !== STATE.PLAYING) return;
+    const p = this.player;
+    if (p.airborne) {
+      // Slam back down so a swipe-down out of a jump feels responsive.
+      p.vy = Math.min(p.vy, -18);
+    }
+    p.sliding = true;
+    p.slideT = RUN.slideTime;
+    sfx.slide();
+  }
+
+  // ------------------------------------------------------------------ update
+
+  update(dt) {
+    if (this.state !== STATE.PLAYING) {
+      // Keep the menu alley alive so the background still scrolls.
+      if (this.state === STATE.MENU) {
+        this.time += dt;
+        this.player.z += RUN.startSpeed * 0.55 * dt;
+        this.player.phase = (this.player.phase + dt * 2.2) % 1;
+        this.world.ensureAhead(this.player.z, 0);
+        this.world.prune(this.player.z);
+        updateCamera(dt, 0, this.player.z, 0);
+        updateParticles(dt);
+      }
+      return;
+    }
+
+    this.time += dt;
+
+    const p = this.player;
+    const gassed = this.stamina <= 0;
+
+    // ---- speed
+    let target = Math.min(RUN.maxSpeed, RUN.startSpeed + this.time * RUN.accel);
+    if (gassed) target = RUN.gassedSpeed;
+    if (this.power.chancla > 0) target *= CHANCLA_SPEED;
+    if (this.stumble > 0) target *= 0.55;
+    this.speed += (target - this.speed) * Math.min(1, dt * 3.5);
+
+    const moved = this.speed * dt;
+    p.z += moved;
+    this.distance += moved;
+    this.score += moved * SCORE.perUnit;
+
+    // ---- lateral
+    const wantX = p.lane * LANE_W;
+    p.x += (wantX - p.x) * Math.min(1, dt * RUN.laneSnap);
+    if (Math.abs(wantX - p.x) < 0.01) p.x = wantX;
+    p.lean += (0 - p.lean) * Math.min(1, dt * 6);
+
+    // ---- vertical
+    if (p.airborne || p.y > 0) {
+      p.vy += RUN.gravity * dt;
+      p.y += p.vy * dt;
+      if (p.y <= 0) {
+        p.y = 0;
+        p.vy = 0;
+        if (p.airborne) {
+          p.airborne = false;
+          burst(p.x, 0.05, p.z, 6, 'rgba(200,180,165,0.6)', { spread: 1.4, rise: 1.2, life: 0.3 });
+          sfx.land();
+        }
+      }
+    }
+
+    // ---- slide timer
+    if (p.sliding) {
+      p.slideT -= dt;
+      if (p.slideT <= 0) p.sliding = false;
+    }
+
+    // ---- run cycle + dust
+    // Strides/sec. A real run is ~1.5–1.6; the top end is pushed for energy but
+    // capped so it never turns into a cartoon scramble.
+    const cadence = p.airborne ? 0.8 : 1.5 + this.speed * 0.05;
+    p.phase = (p.phase + dt * cadence) % 1;
+    // Kick dust on each footfall rather than at random.
+    if (!p.airborne && !p.sliding) {
+      const half = Math.floor(p.phase * 2);
+      if (half !== p.lastStep) {
+        p.lastStep = half;
+        dust(p.x, p.z, this.speed);
+        dust(p.x, p.z, this.speed);
+      }
+    }
+    if (p.sliding && Math.random() < dt * 40) dust(p.x, p.z, this.speed);
+
+    if (this.stumble > 0) this.stumble -= dt;
+    if (this.invuln > 0) this.invuln -= dt;
+    if (this.hitFlash > 0) this.hitFlash -= dt * 2.2;
+
+    // ---- stamina
+    const speedRatio = this.speed / RUN.startSpeed;
+    const drain = STAMINA.drainBase * (1 + (speedRatio - 1) * STAMINA.drainSpeedFactor);
+    this.stamina = Math.max(0, this.stamina - drain * dt);
+    if (!gassed && this.stamina <= 0) sfx.gassed();
+
+    // ---- powerup timers
+    for (const k of Object.keys(this.power)) {
+      if (this.power[k] > 0) {
+        this.power[k] = Math.max(0, this.power[k] - dt);
+        if (this.power[k] === 0) sfx.powerDown();
+      }
+    }
+
+    // ---- La Migra
+    if (this.chaseGrace > 0) this.chaseGrace -= dt;
+    if (gassed) {
+      this.chase = Math.min(CHASE.max, this.chase + CHASE.gassedGain * dt);
+    } else if (this.chaseGrace <= 0) {
+      this.chase = Math.max(0, this.chase - CHASE.decay * dt);
+    }
+    // Cruiser eases toward the distance the pressure implies.
+    const wantZ = p.z - (3.2 + (1 - this.chase / CHASE.max) * 26);
+    this.chaser.z += (wantZ - this.chaser.z) * Math.min(1, dt * 2.4);
+    this.chaser.x += (p.x * 0.6 - this.chaser.x) * Math.min(1, dt * 1.6);
+    if (this.chase >= CHASE.max) {
+      this.end('CAUGHT BY LA MIGRA');
+      return;
+    }
+
+    // ---- world
+    this.world.ensureAhead(p.z, this.distance);
+    this.world.prune(p.z);
+    this.collide(dt);
+    updateParticles(dt);
+    updateCamera(dt, p.x, p.z, p.y);
+
+    this.multiplier = Math.min(SCORE.comboMax, 1 + Math.floor(this.combo / SCORE.comboStep));
+  }
+
+  // --------------------------------------------------------------- collision
+
+  collide(dt) {
+    const p = this.player;
+    const playerH = p.sliding ? HITBOX.slideH : HITBOX.standH;
+    const magnetOn = this.power.magnet > 0;
+
+    for (const o of this.world.objects) {
+      if (o.dead) continue;
+      const dz = o.z - p.z;
+      if (dz > MAGNET_RADIUS + 1 || dz < -1.5) continue;
+
+      // Magnet drags loose beers into your hand.
+      if (magnetOn && o.type === 'beer' && dz > -0.5) {
+        const d = Math.hypot(o.x - p.x, o.z - p.z, o.y - (p.y + 0.8));
+        if (d < MAGNET_RADIUS) {
+          const k = Math.min(1, dt * 9);
+          o.x += (p.x - o.x) * k;
+          o.z += (p.z + 0.15 - o.z) * k;
+          o.y += (p.y + 0.8 - o.y) * k;
+          o.pulled = true;
+        }
+      }
+
+      const depth = DEPTH[o.kind] || 0.5;
+      if (Math.abs(dz) > depth + HITBOX.depth * 0.5) continue;
+      if (Math.abs(o.x - p.x) > (o.w + HITBOX.w) * 0.5) continue;
+
+      if (o.kind === 'pickup' || o.kind === 'power') {
+        // Pickups need a loose vertical match so arcs over jumps still count.
+        const dy = Math.abs(o.y - (p.y + playerH * 0.5));
+        if (dy > 0.95 && !o.pulled) continue;
+        this.takePickup(o);
+        continue;
+      }
+
+      if (o.kind === 'jump' && p.y >= o.h) continue;
+      if (o.kind === 'slide') {
+        const top = p.y + playerH;
+        if (top <= o.y || p.y >= o.y + o.h) continue;
+      }
+
+      this.hit(o);
+    }
+  }
+
+  takePickup(o) {
+    o.dead = true;
+    switch (o.type) {
+      case 'beer':
+        this.beers++;
+        this.combo++;
+        this.score += SCORE.beer * this.multiplier;
+        burst(o.x, o.y, o.z, 7, '#ffc93c', { spread: 1.6, life: 0.4, size: 0.07 });
+        sfx.beer(Math.min(12, this.combo));
+        break;
+      case 'taco':
+        this.tacos++;
+        this.stamina = Math.min(STAMINA.max, this.stamina + STAMINA.taco);
+        burst(o.x, o.y, o.z, 10, '#9ee34f', { spread: 1.9, life: 0.5, size: 0.08 });
+        sfx.taco();
+        this.hooks.onToast?.('¡TACO! +STAMINA', '#9ee34f');
+        break;
+      default: {
+        const def = POWER[o.type];
+        if (!def) break;
+        this.power[o.type] = def.time;
+        burst(o.x, o.y, o.z, 18, def.color, { spread: 2.6, life: 0.7, size: 0.1 });
+        sfx.powerUp();
+        this.hooks.onToast?.(def.label, def.color);
+      }
+    }
+  }
+
+  hit(o) {
+    // Chancla rush flattens whatever it touches.
+    if (this.power.chancla > 0) {
+      o.dead = true;
+      burst(o.x, 0.8, o.z, 20, '#ffcf3d', { spread: 3.4, life: 0.6, size: 0.13 });
+      addShake(0.35);
+      sfx.smash();
+      this.score += 25 * this.multiplier;
+      return;
+    }
+    if (this.invuln > 0) return;
+
+    // The lowrider eats one crash for you.
+    if (this.power.lowrider > 0) {
+      this.power.lowrider = 0;
+      o.dead = true;
+      this.invuln = 0.9;
+      burst(o.x, 0.7, o.z, 22, '#4dd8ff', { spread: 3.2, life: 0.7, size: 0.12 });
+      addShake(0.5);
+      sfx.crash();
+      this.hooks.onToast?.('LOWRIDER TOTALED', '#4dd8ff');
+      return;
+    }
+
+    this.chase = Math.min(CHASE.max, this.chase + CHASE.hit);
+    this.chaseGrace = CHASE.grace;
+    this.invuln = 1.0;
+    this.stumble = RUN.stumbleTime;
+    this.hitFlash = 1;
+    this.combo = 0;
+    this.speed *= 0.6;
+    addShake(0.8);
+    burst(this.player.x, 0.9, this.player.z, 16, '#ff6b6b', { spread: 2.8, life: 0.55 });
+    sfx.crash();
+
+    if (this.chase >= CHASE.max) this.end('CAUGHT BY LA MIGRA');
+  }
+
+  end(reason) {
+    if (this.state === STATE.OVER) return;
+    this.state = STATE.OVER;
+    this.gameOverReason = reason;
+    this.score = Math.floor(this.score);
+    sfx.stopMusic();
+    sfx.bust();
+    addShake(1.1);
+    this.hooks.onStateChange?.(this.state);
+  }
+}

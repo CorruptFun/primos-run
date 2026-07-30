@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Primos: Barrio Run</title>
+<meta name="description" content="An endless run through Los Angeles alleyways. Grab chelas, eat tacos, dodge the checkpoints, outrun La Migra.">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a1024">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+
+<div id="ui">
+
+  <!-- ------------------------------------------------------------- menu -->
+  <section id="screen-menu" class="screen">
+    <div class="sheet">
+      <h1 class="logo">
+        <span class="logo-top">PRIMOS</span>
+        <span class="logo-bot">BARRIO RUN</span>
+      </h1>
+      <p class="tagline">Los Angeles · 3 lanes · no brakes</p>
+
+      <div class="crew" id="crew"></div>
+      <p class="crew-name" id="crew-name">CHUY</p>
+      <p class="crew-tag" id="crew-tag">Blue Pendleton · Gold Blues</p>
+
+      <button class="btn btn-primary" id="btn-play">CORRE</button>
+
+      <div class="stats">
+        <div><b id="stat-best">0</b><span>BEST</span></div>
+        <div><b id="stat-beers">0</b><span>CHELAS</span></div>
+        <div><b id="stat-runs">0</b><span>RUNS</span></div>
+      </div>
+
+      <details class="how">
+        <summary>How to run</summary>
+        <ul>
+          <li><b>Swipe ← →</b> / arrows — change lane</li>
+          <li><b>Swipe ↑</b> / space — jump the dumpsters</li>
+          <li><b>Swipe ↓</b> / down — slide under the laundry</li>
+          <li><b>Checkpoints &amp; border walls</b> can't be jumped. Go around.</li>
+          <li><b>Tacos</b> refill stamina. Run out and the cruiser eats you.</li>
+        </ul>
+      </details>
+
+      <details class="how" id="primo-panel">
+        <summary>Run as a real Primo</summary>
+        <p class="hint">Type a number from the collection — the art loads live from IPFS.</p>
+        <div class="url-row">
+          <input type="number" id="primo-num" placeholder="Primo #" min="1" max="3069" inputmode="numeric">
+          <button class="btn btn-small" id="btn-num">LOAD</button>
+        </div>
+        <button class="btn btn-ghost btn-small wide" id="btn-random">SURPRISE ME</button>
+
+        <p class="hint sep">Holder? Use your own — right-click your Primo on Magic Eden,
+          copy the image address, paste it here.</p>
+        <div class="url-row">
+          <input type="url" id="primo-url" placeholder="Paste an image URL" spellcheck="false">
+          <button class="btn btn-small" id="btn-url">LOAD</button>
+        </div>
+        <label class="file-btn">
+          Or choose a file
+          <input type="file" id="primo-file" accept="image/*" hidden>
+        </label>
+        <button class="btn btn-ghost btn-small wide" id="btn-clear-primo">CLEAR</button>
+        <p class="hint" id="primo-status"></p>
+      </details>
+
+      <p class="fine">Unofficial fan project, not affiliated with the Primos collection.
+        No collection artwork is stored here — images load from public IPFS at your request.</p>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ paused -->
+  <section id="screen-pause" class="screen hidden">
+    <div class="sheet sheet-small">
+      <h2>PAUSED</h2>
+      <button class="btn btn-primary" id="btn-resume">SIGUE</button>
+      <button class="btn btn-ghost" id="btn-mute">SOUND: ON</button>
+      <button class="btn btn-ghost" id="btn-quit">QUIT TO MENU</button>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------- game over -->
+  <section id="screen-over" class="screen hidden">
+    <div class="sheet sheet-small">
+      <p class="bust" id="over-reason">CAUGHT BY LA MIGRA</p>
+      <p class="final-label">SCORE</p>
+      <p class="final" id="over-score">0</p>
+      <p class="pb hidden" id="over-pb">NEW BEST!</p>
+      <div class="stats">
+        <div><b id="over-beers">0</b><span>CHELAS</span></div>
+        <div><b id="over-tacos">0</b><span>TACOS</span></div>
+        <div><b id="over-dist">0</b><span>METERS</span></div>
+      </div>
+      <button class="btn btn-primary" id="btn-again">OTRA VEZ</button>
+      <button class="btn btn-ghost" id="btn-menu">MENU</button>
+    </div>
+  </section>
+
+</div>
+
+<script src="pwa-register.js" defer></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

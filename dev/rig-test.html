@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Rig test — Primos Barrio Run</title>
+<style>
+  body { margin: 0; background: #241d2a; color: #fdf6e6;
+         font: 13px ui-rounded, system-ui, sans-serif; padding: 12px; }
+  h2 { font-size: 13px; letter-spacing: .16em; margin: 16px 0 6px; color: #ffc93c; }
+  canvas { background: linear-gradient(180deg, #4a3a52, #2a2230); border-radius: 8px;
+           display: block; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cell { text-align: center; font-size: 10px; color: rgba(253,246,230,.55); }
+  .controls { margin: 10px 0; display: flex; gap: 12px; align-items: center; }
+</style>
+</head>
+<body>
+<div class="controls">
+  <label>head: <select id="who"></select></label>
+  <label>speed: <input id="speed" type="range" min="0" max="1" step="0.05" value="0.5"></label>
+  <label><input id="anim" type="checkbox" checked> animate</label>
+</div>
+
+<h2>RUN CYCLE</h2>
+<div class="row" id="cycle"></div>
+
+<h2>LIVE</h2>
+<div class="row" id="live"></div>
+
+<h2>AIR &amp; SLIDE</h2>
+<div class="row" id="poses"></div>
+
+<script type="module">
+// Dynamic imports with a cache-buster: python's http.server answers with
+// Last-Modified, and the browser happily reuses a stale ES module across
+// reloads, which silently shows you the previous build.
+const V = `?t=${Date.now()}`;
+const { drawRunner, CREW, CUSTOM_TEMPLATE } = await import(`../js/art/runner.js${V}`);
+const { headFromCharacter, loadHead } = await import(`../js/art/primo-head.js${V}`);
+
+const FRAMES = 8;
+const W = 150, H = 250, U = 96;   // px per world unit
+
+const rigs = new Map();
+for (const c of CREW) rigs.set(c.id, { ...headFromCharacter(c), pants: c.pants });
+rigs.set('none', { shirt: '#3c5f9e', shirtDark: '#28406d', skin: '#b9784e',
+                   skinDark: '#96593a', pants: '#2f3a52', head: null });
+
+const who = document.getElementById('who');
+for (const c of [...CREW, { id: 'none', name: 'no head sprite' }]) {
+  who.add(new Option(c.name, c.id));
+}
+// A real Primo, loaded live from IPFS, to check the cutout against real art.
+const REAL = 'https://ipfs.io/ipfs/QmXpHdEQSrnMrYoXFRsX9jD3w7LnmuHuACqxCPH2uiyM8D';
+loadHead(REAL).then((r) => {
+  if (!r) return;
+  rigs.set('real', { ...r.head, pants: '#2f3a52' });
+  who.add(new Option('REAL PRIMO #4', 'real'));
+  who.value = 'real';
+});
+
+function cell(parent, label) {
+  const d = document.createElement('div');
+  d.className = 'cell';
+  const c = document.createElement('canvas');
+  c.width = W * 2; c.height = H * 2;
+  c.style.width = W + 'px'; c.style.height = H + 'px';
+  const x = c.getContext('2d');
+  x.scale(2, 2);
+  d.appendChild(c);
+  d.appendChild(document.createTextNode(label));
+  parent.appendChild(d);
+  return x;
+}
+
+const cycleCtx = [];
+for (let i = 0; i < FRAMES; i++) {
+  cycleCtx.push(cell(document.getElementById('cycle'), (i / FRAMES).toFixed(3)));
+}
+const liveCtx = [cell(document.getElementById('live'), 'running')];
+// Oversized inspection view — detail work is invisible at gameplay scale.
+const BIG = (() => {
+  const d = document.createElement('div');
+  d.className = 'cell';
+  const c = document.createElement('canvas');
+  c.width = 520; c.height = 760;
+  c.style.width = '260px'; c.style.height = '380px';
+  const x = c.getContext('2d');
+  x.scale(2, 2);
+  d.appendChild(c);
+  document.getElementById('live').appendChild(d);
+  return x;
+})();
+const poseCtx = [
+  cell(document.getElementById('poses'), 'jump up'),
+  cell(document.getElementById('poses'), 'apex'),
+  cell(document.getElementById('poses'), 'falling'),
+  cell(document.getElementById('poses'), 'slide'),
+];
+
+function rig() { return rigs.get(who.value) || rigs.get('none'); }
+function speedK() { return Number(document.getElementById('speed').value); }
+
+function paint(x, o) {
+  x.clearRect(0, 0, W, H);
+  // ground line + shadow so the feet read against something
+  x.fillStyle = 'rgba(0,0,0,.28)';
+  x.beginPath();
+  x.ellipse(W / 2, H - 40, 34, 9, 0, 0, Math.PI * 2);
+  x.fill();
+  x.strokeStyle = 'rgba(255,255,255,.12)';
+  x.beginPath(); x.moveTo(0, H - 40); x.lineTo(W, H - 40); x.stroke();
+  drawRunner(x, W / 2, H - 40, U, rig(), { speedK: speedK(), ...o });
+}
+
+let t = 0;
+function frame(now) {
+  t = now / 1000;
+  const animating = document.getElementById('anim').checked;
+
+  for (let i = 0; i < FRAMES; i++) paint(cycleCtx[i], { phase: i / FRAMES });
+  paint(liveCtx[0], { phase: animating ? (t * 1.9) % 1 : 0 });
+
+  BIG.clearRect(0, 0, 260, 380);
+  BIG.fillStyle = 'rgba(0,0,0,.30)';
+  BIG.beginPath(); BIG.ellipse(130, 350, 60, 14, 0, 0, Math.PI * 2); BIG.fill();
+  drawRunner(BIG, 130, 350, 200, rig(),
+    { speedK: speedK(), phase: animating ? (t * 1.9) % 1 : 0 });
+  paint(poseCtx[0], { airborne: true, vy: 11, phase: 0.2 });
+  paint(poseCtx[1], { airborne: true, vy: 0, phase: 0.4 });
+  paint(poseCtx[2], { airborne: true, vy: -11, phase: 0.7 });
+  paint(poseCtx[3], { sliding: true, slideK: 0.8 });
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

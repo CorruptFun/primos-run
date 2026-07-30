@@ -1,0 +1,11 @@
+.DS_Store
+node_modules/
+
+# Raw chroma-key generations — intermediates only. `art/*.png` (the keyed
+# cutouts the game actually loads) IS committed; these are the multi-MB
+# green-screen JPEGs they came from.
+art/raw/
+
+# Never commit the Gemini key — it lives in ~/.gemini_env
+.env
+*.key
