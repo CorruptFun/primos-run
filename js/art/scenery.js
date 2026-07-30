@@ -830,7 +830,9 @@ const GLYPHS = [
 /** A throw-up: dark outline, colour fill, then a highlight cut on the top-left. */
 function tag(zc, yc, w, h, col, sd, flat) {
   const { ctx, u, lod } = S;
-  const n = lod === 2 ? 4 : 3;
+  // Letter count follows the box, not the LOD — pick it from the aspect ratio
+  // or narrow boxes squash the glyphs into unreadable vertical bars.
+  const n = Math.max(2, Math.min(lod === 2 ? 5 : 4, Math.round(w / (h * 0.8))));
   const gw = w / n;
   const lw = Math.max(1, u * h * 0.12);
   ctx.lineJoin = 'round';
@@ -843,7 +845,7 @@ function tag(zc, yc, w, h, col, sd, flat) {
       const bz = zc + i * gw * 0.96 + dz;
       const skew = (hash01(sd + i * 2.3) - 0.5) * 0.16;
       for (let k = 0; k < g.length; k++) {
-        const p = S.P(S.wx, yc + dy + (g[k][1] + skew * g[k][0]) * h, bz + g[k][0] * gw * 0.86);
+        const p = S.P(S.wx, yc + dy + (g[k][1] + skew * g[k][0]) * h, bz + g[k][0] * gw * 1.4);
         if (!p) continue;
         if (k === 0) ctx.moveTo(p.x, p.y);
         else ctx.lineTo(p.x, p.y);
@@ -1183,8 +1185,9 @@ export function drawWires(ctx, P, z0, z1, seed, alpha) {
   ctx.fillRect(L.x - u * 0.05, L.y - u * 0.06, u * 0.11, u * 0.16);
   ctx.fillRect(R.x - u * 0.06, R.y - u * 0.06, u * 0.11, u * 0.16);
 
-  if (u > 7 && hash01(seed * 4.1) > 0.62) hangingShoes(ctx, mid.x, mid.y, u);
-  else if (u > 7 && hash01(seed * 9.3) > 0.66) papelPicado(ctx, L, R, mid, u, seed);
+  // Both of these are fine detail — below a certain size they just smear.
+  if (u > 16 && hash01(seed * 4.1) > 0.62) hangingShoes(ctx, mid.x, mid.y, u);
+  else if (u > 10 && hash01(seed * 9.3) > 0.66) papelPicado(ctx, L, R, mid, u, seed);
 
   ctx.restore();
 }
