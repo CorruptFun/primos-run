@@ -52,6 +52,8 @@
 const V = `?t=${Date.now()}`;
 const { drawRunner, CREW } = await import(`../js/art/runner.js${V}`);
 const { headFromCharacter, loadHead } = await import(`../js/art/primo-head.js${V}`);
+const { applyTraits } = await import(`../js/art/primo-traits.js${V}`);
+const { traitsFor } = await import(`../js/primo-picker.js${V}`);
 
 const Q = new URLSearchParams(location.search);
 const MAG = Q.get('mag') === '1';
@@ -69,13 +71,20 @@ for (const c of [...CREW, { id: 'none', name: 'no head' }]) {
 // part most likely to blow up on an unusual Primo (red skin, cyan hair), and a
 // single sample hides that.
 const idx = await (await fetch('/data/primos-index.json')).json();
-const REALS = Object.keys(idx.images).slice(0, 6);
+// Hand-picked so the trait pass is actually exercised: a mariachi brim, a
+// cowboy brim, a mullet, a construction helmet, horns and a do-rag. Six random
+// tokens are mostly bare-headed messy Primos, which is the one case that looked
+// fine BEFORE the traits existed and therefore proves nothing.
+const REALS = ['2664', '1', '2', '3', '4', '6'];
 let first = true;
 for (const id of REALS) {
-  loadHead(`https://ipfs.io/ipfs/${idx.images[id]}`).then((r) => {
+  const cid = idx.images[id];
+  if (!cid) continue;
+  loadHead(`https://ipfs.io/ipfs/${cid}`).then((r) => {
     if (!r) { document.getElementById('note').textContent = 'IPFS failed'; return; }
-    const name = `#${id}`;
-    rigs.set(name, { ...r.head, pants: '#2f3a52' });
+    const traits = traitsFor(idx, Number(id));
+    const name = `#${id}${traits?.hat ? ' ' + traits.hat : ''}`;
+    rigs.set(name, applyTraits({ ...r.head, pants: '#2f3a52' }, traits));
     who.add(new Option(name, name));
     if (first) { first = false; who.value = name; }
     note();
@@ -85,7 +94,7 @@ for (const id of REALS) {
 function note() {
   const r = rig();
   document.getElementById('note').textContent =
-    `skin ${r.skin} · hair ${r.hair} · cap ${r.cap}`;
+    `hat ${r.hatKind || '(guessed)'} · style ${r.hairStyle} · hair ${r.hair} · skin ${r.skin}`;
 }
 
 function cell(parent, label, w, h, scene = false, mag = 1) {

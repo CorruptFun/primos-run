@@ -260,6 +260,38 @@
     </div>
   </section>
 
+  <!-- ------------------------------------------------- the primo browser -->
+  <!-- Every one of the 3,069, scrollable. The `+ MY PRIMO` tile on the menu
+       used to select an EMPTY slot, which silently ran you as the hand-drawn
+       stand-in — the plus promised a picker that did not exist.
+
+       No artwork is bundled: the grid holds 3,069 empty tiles and an
+       IntersectionObserver points each one at a public IPFS gateway only when it
+       scrolls near the viewport. js/primo-browser.js owns all of it. -->
+  <section id="screen-primos" class="screen hidden">
+    <div class="sheet sheet-wide">
+      <h2 data-i18n="browse.title">PICK YOUR PRIMO</h2>
+      <p class="hint" data-i18n="browse.copy"></p>
+      <div class="url-row">
+        <input type="number" id="browse-num" min="0" max="3068" inputmode="numeric"
+               data-i18n-ph="browse.jumpPh" placeholder="Jump to #" spellcheck="false">
+        <button class="btn btn-small" id="btn-browse-jump" data-i18n="browse.jump">GO</button>
+      </div>
+      <div class="primo-grid" id="browse-grid"></div>
+      <!-- The chosen one, and the only control that writes anything. -->
+      <div class="browse-pick hidden" id="browse-pick">
+        <canvas id="browse-preview" width="132" height="132" role="img" aria-label="Primo"></canvas>
+        <div class="found-meta">
+          <p class="found-num" id="browse-num-label">PRIMO #0</p>
+          <p class="found-state" id="browse-state"></p>
+          <button class="btn btn-small" id="btn-browse-use" data-i18n="browse.use">RUN AS THIS ONE</button>
+        </div>
+      </div>
+      <p class="hint" id="browse-status"></p>
+      <button class="btn btn-ghost" id="btn-browse-back" data-i18n="browse.back">BACK</button>
+    </div>
+  </section>
+
   <!-- ------------------------------------------------------- the account -->
   <!-- Sign-in, runner name and device backup. The backup block works with no
        account at all, so this screen is useful even before the cloud is
@@ -313,6 +345,17 @@
         <input type="text" id="restore-code" data-i18n-ph="acct.restorePh" spellcheck="false">
         <button class="btn btn-small" id="btn-restore" data-i18n="acct.restore">LOAD</button>
       </div>
+      <!-- Anonymous gameplay stats. It sits here, next to the other decisions
+           about what leaves this device, because a privacy control the player
+           cannot find is not a control. Checked = on, so the label reads as the
+           thing being allowed rather than as a double negative. -->
+      <p class="sec sep" data-i18n="acct.statsTitle">Gameplay stats</p>
+      <p class="hint" data-i18n="acct.statsCopy"></p>
+      <label class="opt-row">
+        <input type="checkbox" id="acct-analytics" checked>
+        <span data-i18n="acct.statsLabel">Share anonymous gameplay stats</span>
+      </label>
+
       <p class="hint" id="acct-status"></p>
 
       <button class="btn btn-ghost" id="btn-account-back" data-i18n="acct.back">BACK</button>

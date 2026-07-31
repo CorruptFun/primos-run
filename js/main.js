@@ -16,8 +16,9 @@ import { MOBILE } from './config.js';
 import { t as tBase, tRaw, initLang, setLang, getLang, onLangChange } from './i18n.js';
 import {
   getIndex, indexReady, cidFor, drawTokens, loadPrimoArt, loadPrimoUrl,
-  claimStatus, MAX_TOKEN, extraString,
+  claimStatus, MAX_TOKEN, extraString, traitsFor,
 } from './primo-picker.js';
+import { applyTraits } from './art/primo-traits.js';
 import {
   tutorialNeeded, startTutorial, updateTutorial, drawTutorial,
   tutorialActive, tutorialInput, tutorialTap, finishTutorial,
@@ -28,9 +29,16 @@ import {
 } from './tiendita.js';
 import { bootstrapCloud } from './cloud.js';
 import { captureRefFromUrl } from './referrals.js';
+// `track` here is the analytics one. js/hud.js exports a `track` too — a HUD
+// drawing helper — and this module imports from both, so if that one is ever
+// needed here it must come in aliased. See the header of js/analytics.js.
+import { EVENTS, initAnalytics, track } from './analytics.js';
 import { pruneDays, recordDay } from './raceday.js';
 import { initBoards, refreshBoards, relangBoards, showRunStanding } from './boards.js';
 import { initAccount, refreshAccount, relangAccount, releaseAccount } from './account.js';
+import {
+  initPrimoBrowser, openPrimoBrowser, releasePrimoBrowser,
+} from './primo-browser.js';
 
 /**
  * i18n for this module, with the picker's strings layered over the shared
@@ -79,6 +87,14 @@ let customRig = null;      // baked head sprite + sampled outfit palette
 let safe = { top: 0, bottom: 0 };
 
 const roster = [...CREW, CUSTOM_TEMPLATE];
+/**
+ * The collection index, kept here so the synchronous rig builders can read a
+ * token's traits. getIndex() memoises its own successes, so this is a
+ * convenience handle rather than a second cache — null simply means the index
+ * has not landed yet, and applyTraits() treats that as "no traits known" and
+ * leaves the sampled rig alone.
+ */
+let primoIndex = null;
 // Head sprites for the crew. Seeded at boot with the code-drawn approximations
 // so the menu is never empty, then REPLACED with real collection art as it
 // arrives from IPFS — see loadRealCrew().
@@ -289,6 +305,7 @@ attachInput(canvas, {
 const overlays = {
   boards: $('screen-boards'),
   account: $('screen-account'),
+  primos: $('screen-primos'),
 };
 
 function showOverlay(name) {
@@ -296,10 +313,11 @@ function showOverlay(name) {
   overlays[name].classList.remove('hidden');
 }
 
-/** Dismiss both overlays. `backToMenu` restores the menu behind them. */
+/** Dismiss every overlay. `backToMenu` restores the menu behind them. */
 function hideOverlays(backToMenu) {
   for (const el of Object.values(overlays)) el.classList.add('hidden');
   releaseAccount();
+  releasePrimoBrowser();
   if (backToMenu) screens.menu.classList.remove('hidden');
 }
 
@@ -314,6 +332,15 @@ function showScreen(state) {
   } else if (state === STATE.PAUSED) {
     screens.pause.classList.remove('hidden');
   } else if (state === STATE.OVER) {
+    // Tracked HERE and not inside offerContinue, which is also called on the
+    // re-price path and on the way back from the shop — those are the same
+    // offer being redrawn, and counting them again would inflate the
+    // denominator of the one funnel this event exists for.
+    track(EVENTS.CONTINUE_OFFER, {
+      n: game.continues,
+      cost: continueCost(game.continues),
+      afford: wallet.balance() >= continueCost(game.continues),
+    });
     // Corrupt gets to make his offer BEFORE the run is written down. That
     // ordering is the whole trick: a run you paid to continue is one run, not
     // two, and its chelas are banked once — see declineContinue().
@@ -340,6 +367,7 @@ function takeContinue() {
     return;
   }
   paintWallet();
+  track(EVENTS.CONTINUE_TAKE, { n: game.continues, cost });
   closeContinue();
   clearToasts();
   sfx.resume();
@@ -349,6 +377,11 @@ function takeContinue() {
 }
 
 function declineContinue() {
+  track(EVENTS.CONTINUE_DECLINE, {
+    n: game.continues,
+    cost: continueCost(game.continues),
+    afford: wallet.balance() >= continueCost(game.continues),
+  });
   closeContinue();
   fillGameOver();
   screens.over.classList.remove('hidden');
@@ -387,6 +420,28 @@ function fillGameOver() {
   $('over-tacos').textContent = game.tacos;
   $('over-dist').textContent = Math.floor(game.distance);
   $('over-pb').classList.toggle('hidden', !isPB);
+
+  // The run, written down once. This is the ONLY run_end in the game, and it
+  // sits here rather than in game.end() on purpose: end() also fires for a bust
+  // the player then pays their way out of, and that is one run, not two — the
+  // same reasoning that decides where the chelas are banked, three lines up.
+  //
+  // The shape of a run is the whole point. "Where do players quit" for an
+  // endless runner is a distribution, not a funnel step, so score/seconds/
+  // distance all travel and the dashboard buckets them.
+  track(EVENTS.RUN_END, {
+    score: Math.floor(game.score),
+    distance: Math.floor(game.distance),
+    seconds: Math.floor(game.time),
+    beers: game.beers,
+    tacos: game.tacos,
+    continues: game.continues,
+    // The untranslated key, not the sentence on screen — a reason grouped by
+    // language would split every row in two.
+    reason: game.gameOverReason || 'unknown',
+    pb: isPB,
+  });
+
   // Fire-and-forget: it reveals itself only once it has a real rank to show.
   void showRunStanding();
 }
@@ -471,6 +526,11 @@ function buildCrew() {
     cv.addEventListener('click', () => {
       sfx.resume();
       sfx.uiClick();
+      // An EMPTY custom slot is not a character, it is an invitation. Selecting
+      // it used to hand you the hand-drawn stand-in and call that your Primo,
+      // which is exactly what the `+` was promising not to do. Once a Primo has
+      // been claimed the slot behaves like any other tile and simply selects.
+      if (c.id === CUSTOM_ID && !customImg) { openPrimos(); return; }
       selectCrew(i);
     });
     wrap.appendChild(cv);
@@ -595,6 +655,7 @@ const status = (msg) => { $('primo-status').textContent = msg; };
  */
 async function loadRealCrew() {
   const idx = await getIndex();
+  primoIndex = idx;
   const tokens = drawTokens(idx, CREW.length);
   if (!tokens.length) return;
 
@@ -604,8 +665,10 @@ async function loadRealCrew() {
     if (!cid) return;
     const result = await loadPrimoArt(cid);
     if (!result) return;
-    // Keep the character's own trousers; everything above comes from the art.
-    crewRigs.set(c.id, { ...result.head, pants: c.pants });
+    // Keep the character's own trousers; everything above comes from the art —
+    // its colours by sampling, its STRUCTURE from the token's own traits.
+    crewRigs.set(c.id, applyTraits({ ...result.head, pants: c.pants },
+      traitsFor(idx, num)));
     crewImgs.set(c.id, result.img);
     crewNums.set(c.id, String(num));
     paintCrew();
@@ -641,11 +704,25 @@ async function usePrimo(src, label, number) {
  * from, under the keys store.js already defines. Nothing else needs to travel.
  */
 function wearPrimo(result, src, number) {
-  customRig = { ...result.head, pants: '#2f3a52' };
+  // Traits are looked up only for a real token. A pasted URL or an uploaded
+  // file has no number and therefore no metadata, and applyTraits() leaves the
+  // sampled rig exactly as it found it — so those two paths keep working
+  // unchanged, on the old "no long hair means a cap" guess.
+  const traits = Number.isFinite(number) && primoIndex
+    ? traitsFor(primoIndex, number) : null;
+  customRig = applyTraits({ ...result.head, pants: '#2f3a52' }, traits);
   customImg = result.img;
   saved.customImage = src;
   saved.primoNumber = Number.isFinite(number) ? number : null;
   store.save(saved);
+  // HOW they got there, never WHICH Primo or from what URL. A token number is a
+  // wallet fingerprint on a public chain, and the source URL can be anything the
+  // player pasted — neither belongs in an event log this game does not need
+  // them in. `by` answers the only question worth asking: which of the three
+  // ways in actually gets used.
+  track(EVENTS.PRIMO_SET, {
+    by: Number.isFinite(number) ? 'number' : (/^data:/.test(String(src)) ? 'file' : 'url'),
+  });
   selectCrew(roster.length - 1);
 }
 
@@ -740,6 +817,8 @@ async function findPrimo(n) {
   status(t('status.searching').replace('%n', n));
 
   const idx = await getIndex();
+
+  primoIndex = idx;
   if (!indexReady()) { status(t('status.noIndex')); return; }
 
   const cid = cidFor(idx, n);
@@ -781,6 +860,12 @@ $('btn-claim').addEventListener('click', async () => {
   applyClaimState(n, claim);
 });
 
+// The picker is a <details>, so "opened it" is the toggle going open — and only
+// that direction, or closing it would count as a second visit.
+$('primo-panel').addEventListener('toggle', () => {
+  if ($('primo-panel').open) track(EVENTS.PRIMO_OPEN);
+});
+
 $('btn-num').addEventListener('click', () => {
   sfx.uiClick();
   findPrimo(parseInt($('primo-num').value, 10));
@@ -793,6 +878,7 @@ $('primo-num').addEventListener('keydown', (e) => {
 $('btn-random').addEventListener('click', async () => {
   sfx.uiClick();
   const idx = await getIndex();
+  primoIndex = idx;
   if (!indexReady()) { status(t('status.noIndex')); return; }
   const [n] = drawTokens(idx, 1);
   if (n === undefined) { status(t('status.noIndex')); return; }
@@ -861,13 +947,20 @@ async function restoreClaim() {
       return;
     }
     const idx = await getIndex();
+    primoIndex = idx;
     const cid = cidFor(idx, saved.primoNumber);
     if (cid) result = await loadPrimoArt(cid);
   }
   if (!result && saved.customImage) result = await loadPrimoUrl(saved.customImage);
   if (!result) return;
 
-  customRig = { ...result.head, pants: '#2f3a52' };
+  // Through applyTraits, exactly like wearPrimo(). This is the path a RETURNING
+  // player takes — the common one — so building the rig raw here meant the
+  // traits only ever showed on the run where the Primo was first picked, and
+  // were gone the next time the game was opened.
+  customRig = applyTraits({ ...result.head, pants: '#2f3a52' },
+    primoIndex && Number.isFinite(saved.primoNumber)
+      ? traitsFor(primoIndex, saved.primoNumber) : null);
   customImg = result.img;
   paintCrew();
   if (roster[selectedIdx].id === CUSTOM_ID) selectCrew(selectedIdx);
@@ -882,7 +975,11 @@ async function restoreClaim() {
  */
 function startRun() {
   clearToasts();
-  game.start(loadoutFor(wallet.takeStock()));
+  const stock = wallet.takeStock();
+  // The shelf ids themselves, not just a count: "players who bring a lowrider
+  // run twice as long" is the shape of question la tiendita's pricing needs.
+  track(EVENTS.RUN_START, { loadout: stock.length, items: stock.join(',') || null });
+  game.start(loadoutFor(stock));
 }
 
 $('btn-play').addEventListener('click', () => {
@@ -915,6 +1012,7 @@ $('btn-shop-over').addEventListener('click', () => {
 
 $('btn-boards').addEventListener('click', () => {
   sfx.uiClick();
+  track(EVENTS.BOARD_OPEN);
   showOverlay('boards');
   refreshBoards();
 });
@@ -931,6 +1029,12 @@ $('btn-account-back').addEventListener('click', () => {
   saved = store.load();   // a restore may have replaced everything behind the screen
   refreshStats();
 });
+
+/** Open the collection browser, landing on the Primo already being worn. */
+function openPrimos() {
+  showOverlay('primos');
+  void openPrimoBrowser(saved.primoNumber);
+}
 
 $('btn-resume').addEventListener('click', () => { sfx.uiClick(); game.resume(); });
 $('btn-quit').addEventListener('click', () => {
@@ -1043,6 +1147,15 @@ function boot() {
 
   initBoards();
   initAccount();
+  // The browser hands the chosen Primo straight to wearPrimo(), which is the
+  // same path the number search and the file picker already use — so the claim
+  // is written down, the crew tile repaints and the cloud push happens without
+  // primo-browser.js knowing that any of that exists.
+  initPrimoBrowser(
+    (result, url, n) => { wearPrimo(result, url, n); },
+    t,
+    () => { sfx.uiClick(); hideOverlays(true); }
+  );
 
   showScreen(STATE.MENU);
   // Not named `t` — that is the translator in this module now.
@@ -1059,6 +1172,11 @@ function boot() {
     refreshStats();
     const i = roster.findIndex((c) => c.id === saved.character);
     if (i >= 0 && i !== selectedIdx) selectCrew(i);
+    // AFTER the auth restore, so a returning signed-in player's very first
+    // events carry their user id instead of a null that later events contradict.
+    // It is inside the .then() and not after it for that reason alone; the call
+    // itself is instant and no-ops entirely on the dormant build.
+    initAnalytics();
   });
 }
 

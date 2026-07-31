@@ -56,15 +56,35 @@ export function drawBackHead(ctx, size, rig, pose, skinCol) {
   // A beanie is just a cap that comes down further, so it goes through the same
   // path with a lower brim rather than duplicating all of it.
   const hat = rig.beanie ? normHat(rig.beanie, hair) : null;
-  // Short-haired Primos always end up in a cap, and that is deliberate. The
-  // collection's own signature is the black Primos cap, and from behind a cap is
-  // the only thing that reliably gives the head structure: a dome, a hard shadow
-  // line, two brim corners breaking the silhouette. A bare skull at this size is
-  // an egg. Long hair and ponytails carry their own silhouette, so they don't
-  // get one. The colour is the Primo's own crown sample where there is one.
-  const cap = !hat && style !== 'long' && style !== 'pony'
-    ? normHat(rig.cap || rig.hair || '#1b1b24', hair)
-    : null;
+
+  // What is actually on this Primo's head.
+  //
+  // `hatKind` comes from the collection's own metadata by way of
+  // js/art/primo-traits.js, and it is the reason this is no longer a guess.
+  // Before it existed there was nothing to read a hat off — colours can be
+  // sampled from a PFP, a mariachi brim cannot — so the rule was "anyone whose
+  // hair is not long gets a cap", which put a baseball cap on every charro in
+  // the collection. When the traits are unknown (a player's own uploaded image,
+  // or a token that failed to harvest) that old rule is still the best
+  // available guess and is kept as the fallback.
+  const kind = rig.hatKind
+    || (style !== 'long' && style !== 'pony' ? 'cap' : 'none');
+  const worn = hat ? 'durag' : kind;
+  // A cap and a do-rag are skull-shaped, so a dark one on dark hair fuses into
+  // one blob and normHat's collision rule has to pull them apart by value. The
+  // other four are not: a brim, a helmet, a visor and a pair of horns each own a
+  // silhouette the hair does not have, so they separate by SHAPE and are passed
+  // no hair to collide with.
+  //
+  // That distinction is not cosmetic. #2664's Mariachi Hat is #171219 over
+  // Mullet Brown hair, and the collision rule lifted it to a mid lavender — the
+  // largest shape in the figure taking a colour the hat does not have, to solve
+  // a legibility problem the brim had already solved.
+  const shaped = worn === 'brim' || worn === 'helmet'
+    || worn === 'visor' || worn === 'horns';
+  const capCol = worn === 'none' || hat
+    ? null
+    : normHat(rig.cap || rig.hair || '#1b1b24', shaped ? null : hair);
 
   // Skull centre in the head box. Sits high — the neck occupies the bottom.
   const cx = 0;
@@ -141,22 +161,38 @@ export function drawBackHead(ctx, size, rig, pose, skinCol) {
 
   if (style === 'long') longFall(ctx, cx, cy, rx, ry, hair, swing, size);
   else if (style === 'pony') ponytail(ctx, cx, cy, rx, ry, hair, swing, size);
-  else if (!hat && !cap) tufts(ctx, cx, cy, rx, ry, hair, swing, size);
+  // A mullet is the one cut whose whole point is at the BACK, so it is the one
+  // the camera angle flatters — and the one that most obviously used to be
+  // missing, since every mullet in the collection arrived as "messy".
+  else if (style === 'mullet') mullet(ctx, cx, cy, rx, ry, hair, swing, size);
+  else if (style === 'bushy') bushy(ctx, cx, cy, rx, ry, hair, swing, size);
+  else if (!hat && !capCol) tufts(ctx, cx, cy, rx, ry, hair, swing, size);
 
   // The sheen. It has to ride HIGH on the crown: sat anywhere near the middle of
   // the skull, three pale ovals on an egg read as eyes and a mouth — a face on
   // the back of the head, which is the exact thing this file exists to avoid.
   // Under a hat it is skipped outright rather than moved to the nape, where it
   // read as a chin.
-  if (!hat && !cap) sheen(ctx, cx, cy - ry * 0.56, rx, ry, hair, 0.85);
+  if (!hat && !capCol) sheen(ctx, cx, cy - ry * 0.56, rx, ry, hair, 0.85);
 
   // ------------------------------------------------------------------ hat
   // A cap comes a long way DOWN the skull from behind — most of what you see of
   // someone's head is the cap. Sat higher it perches like a bowler and leaves a
   // big blank oval of hair under it, which is exactly the featureless area that
   // invites the eye to read a face into it.
-  if (hat) drawHat(ctx, cx, cy, rx, ry, hat, size, 0.42, true, skull, hair);
-  else if (cap) drawHat(ctx, cx, cy, rx, ry, cap, size, 0.26, false, skull, hair);
+  if (worn === 'durag') {
+    drawHat(ctx, cx, cy, rx, ry, hat || capCol, size, 0.42, true, skull, hair);
+  } else if (worn === 'brim') {
+    wideBrim(ctx, cx, cy, rx, ry, capCol, size, skull, hair);
+  } else if (worn === 'helmet') {
+    helmet(ctx, cx, cy, rx, ry, capCol, size, skull);
+  } else if (worn === 'visor') {
+    visor(ctx, cx, cy, rx, ry, capCol, size, skull);
+  } else if (worn === 'horns') {
+    horns(ctx, cx, cy, rx, ry, capCol, size);
+  } else if (capCol) {
+    drawHat(ctx, cx, cy, rx, ry, capCol, size, 0.26, false, skull, hair);
+  }
 
   // -------------------------------------------------------------- bandana
   if (rig.bandana) bandana(ctx, cx, cy, rx, ry, rig.bandana, swing, size);
@@ -424,6 +460,216 @@ function tufts(ctx, cx, cy, rx, ry, hair, swing, size) {
       bx - swing * size * 1.4 - rx * 0.1, cy - ry * 1.12,
       bx - swing * size * 2.4 - rx * 0.24, cy - ry * 1.05);
     ctx.stroke();
+  }
+}
+
+/**
+ * 'mullet' — short and tight over the crown, then a curtain down the nape that
+ * flares past the jaw. Business in front, and the front is the half nobody
+ * playing this game will ever see, so the whole trait lives or dies on the
+ * curtain.
+ *
+ * It stops well above where longFall() ends. That gap is the read: a mullet
+ * that reaches the shoulders is just long hair, and the collection has both.
+ */
+function mullet(ctx, cx, cy, rx, ry, hair, swing, size) {
+  const sway = swing * size * 0.5;
+  const build = (p, g) => {
+    p.moveTo(cx - rx * 0.88 - g, cy + ry * 0.10);
+    // out and DOWN past the jaw, wider than the skull at its widest
+    p.bezierCurveTo(cx - rx * 1.10 - g, cy + ry * 0.72,
+      cx - rx * 0.86 - g + sway, cy + ry * 1.28 + g,
+      cx - rx * 0.30 + sway, cy + ry * 1.44 + g);
+    p.quadraticCurveTo(cx + sway, cy + ry * 1.52 + g,
+      cx + rx * 0.30 + sway, cy + ry * 1.44 + g);
+    p.bezierCurveTo(cx + rx * 0.86 + g + sway, cy + ry * 1.28 + g,
+      cx + rx * 1.10 + g, cy + ry * 0.72,
+      cx + rx * 0.88 + g, cy + ry * 0.10);
+    p.quadraticCurveTo(cx, cy + ry * 0.40, cx - rx * 0.88 - g, cy + ry * 0.10);
+    p.closePath();
+  };
+  cel(ctx, build, hair, size);
+
+  // Three cut lines down the curtain. Without them it is one flat shape the
+  // width of the head and reads as a hood.
+  ctx.save();
+  ctx.beginPath();
+  build(ctx, 0);
+  ctx.clip();
+  ctx.strokeStyle = withA(hair.dark, 0.55);
+  ctx.lineWidth = Math.max(0.8, size * 0.014);
+  for (let i = -1; i <= 1; i++) {
+    const x = cx + i * rx * 0.42;
+    ctx.beginPath();
+    ctx.moveTo(x, cy + ry * 0.24);
+    ctx.quadraticCurveTo(x + sway * 0.6, cy + ry * 0.9, x + sway, cy + ry * 1.44);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/**
+ * 'bushy' — the same crown as messy but grown OUT, so the silhouette is bigger
+ * than the skull all the way round rather than tufted along the top.
+ */
+function bushy(ctx, cx, cy, rx, ry, hair, swing, size) {
+  const build = (p, g) => {
+    p.moveTo(cx - rx * 1.18 - g, cy + ry * 0.18);
+    p.bezierCurveTo(cx - rx * 1.30 - g, cy - ry * 1.34 - g,
+      cx + rx * 1.30 + g, cy - ry * 1.34 - g, cx + rx * 1.18 + g, cy + ry * 0.18);
+    p.quadraticCurveTo(cx, cy + ry * 0.62 + g, cx - rx * 1.18 - g, cy + ry * 0.18);
+    p.closePath();
+  };
+  cel(ctx, build, hair, size);
+  // Lobes around the outside so the edge is not one clean arc.
+  ctx.fillStyle = hair.base;
+  const N = 9;
+  for (let i = 0; i < N; i++) {
+    const a = -Math.PI * 0.95 + (i / (N - 1)) * Math.PI * 0.9;
+    const r = rx * (0.14 + 0.05 * Math.sin(i * 2.1));
+    ctx.beginPath();
+    ctx.ellipse(cx + Math.cos(a) * rx * 1.14, cy + Math.sin(a) * ry * 1.14,
+      r, r * 0.92, a, 0, TAU);
+    ctx.fill();
+  }
+  sheen(ctx, cx, cy - ry * 0.72, rx * 1.1, ry, hair, 0.7);
+}
+
+/**
+ * A wide brim — the mariachi and cowboy hats.
+ *
+ * This is the silhouette the whole trait pass was for. From behind, a brim
+ * that clears the skull on both sides is the single most distinctive thing a
+ * head can be wearing, and it is unmistakably NOT a baseball cap, which is what
+ * every one of these used to render as.
+ *
+ * Order matters: brim first so the crown sits on top of it, and the brim is an
+ * ellipse seen nearly edge-on rather than a circle — the camera is behind and
+ * slightly above, so a full disc reads as a halo.
+ */
+function wideBrim(ctx, cx, cy, rx, ry, hat, size, skull, hair) {
+  // Sat high enough that whatever hair the Primo has still shows below it. A
+  // brim at the ear line hides a mullet completely, and #2664 is a Mariachi Hat
+  // over a Mullet Brown — losing one of the two traits to the other is only
+  // half a fix.
+  const brimY = cy + ry * 0.20;
+
+  // Hair escaping under the brim, drawn before it so the brim overlaps.
+  if (hair) {
+    ctx.fillStyle = hair.base;
+    ctx.beginPath();
+    ctx.ellipse(cx, brimY + ry * 0.16, rx * 0.90, ry * 0.42, 0, 0, TAU);
+    ctx.fill();
+  }
+
+  // The brim. Keylined by drawing a larger dark copy under a smaller body copy,
+  // the same two-fill trick the rest of the file uses instead of stroking.
+  // 1.48, not 1.72. A brim only has to CLEAR the skull to read as a brim, and
+  // past about one and a half head-widths it stops looking like a hat and starts
+  // looking like a lampshade — the runner is 0.52u wide and the hat was ending
+  // up wider than their shoulders.
+  const g = Math.max(1, size * 0.012);
+  ctx.fillStyle = hat.dark;
+  ctx.beginPath();
+  ctx.ellipse(cx, brimY, rx * 1.48 + g, ry * 0.34 + g, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = hat.base;
+  ctx.beginPath();
+  ctx.ellipse(cx, brimY, rx * 1.48, ry * 0.34, 0, 0, TAU);
+  ctx.fill();
+  // Sun catching the top surface of the brim. Kept WEAK: `hat.light` is mixed
+  // toward the sky colour, and laid across the whole brim at half alpha it
+  // turned a black charro hat lavender — the biggest shape in the silhouette
+  // taking the sky's hue reads as the hat being that colour, not as light on it.
+  ctx.fillStyle = withA(hat.light, 0.26);
+  ctx.beginPath();
+  ctx.ellipse(cx, brimY - ry * 0.09, rx * 1.30, ry * 0.17, 0, 0, TAU);
+  ctx.fill();
+
+  // Crown: shorter and rounder than a cap's dome, sitting ON the brim.
+  const crown = (p, gg) => {
+    p.moveTo(cx - rx * 0.84 - gg, brimY - ry * 0.06);
+    p.bezierCurveTo(cx - rx * 0.92 - gg, cy - ry * 1.10 - gg,
+      cx + rx * 0.92 + gg, cy - ry * 1.10 - gg, cx + rx * 0.84 + gg, brimY - ry * 0.06);
+    p.closePath();
+  };
+  cel(ctx, crown, hat, size);
+
+  // Band where the crown meets the brim. One dark stripe, and it is what keeps
+  // the crown and the brim from fusing into a single lump at 40px.
+  ctx.save();
+  ctx.beginPath();
+  crown(ctx, 0);
+  ctx.clip();
+  ctx.fillStyle = withA(hat.dark, 0.85);
+  ctx.fillRect(cx - rx * 1.1, brimY - ry * 0.34, rx * 2.2, ry * 0.26);
+  ctx.restore();
+}
+
+/** Construction helmet: a smooth dome with a ridge and no brim behind. */
+function helmet(ctx, cx, cy, rx, ry, hat, size, skull) {
+  const edge = cy + ry * 0.22;
+  const dome = (p, g) => {
+    p.moveTo(cx - rx * 1.08 - g, edge);
+    p.bezierCurveTo(cx - rx * 1.10 - g, cy - ry * 1.36 - g,
+      cx + rx * 1.10 + g, cy - ry * 1.36 - g, cx + rx * 1.08 + g, edge);
+    p.quadraticCurveTo(cx, edge + ry * 0.16 + g, cx - rx * 1.08 - g, edge);
+    p.closePath();
+  };
+  cel(ctx, dome, hat, size);
+  // The centre ridge, which is the only thing separating this from a bowl.
+  ctx.save();
+  ctx.beginPath();
+  dome(ctx, 0);
+  ctx.clip();
+  ctx.fillStyle = withA(hat.light, 0.7);
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - ry * 0.5, rx * 0.13, ry * 1.0, 0, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** Poker visor: a band and a brim, and an open crown with the hair showing. */
+function visor(ctx, cx, cy, rx, ry, hat, size, skull) {
+  const y = cy - ry * 0.08;
+  const g = Math.max(1, size * 0.012);
+  ctx.fillStyle = hat.dark;
+  ctx.beginPath();
+  ctx.ellipse(cx, y + ry * 0.2, rx * 1.24 + g, ry * 0.22 + g, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = hat.base;
+  ctx.beginPath();
+  ctx.ellipse(cx, y + ry * 0.2, rx * 1.24, ry * 0.22, 0, 0, TAU);
+  ctx.fill();
+  // The band across the back of the skull, which is all a visor has up there.
+  ctx.fillStyle = hat.base;
+  ctx.beginPath();
+  ctx.ellipse(cx, y, rx * 1.02, ry * 0.30, 0, Math.PI, TAU);
+  ctx.fill();
+  ctx.fillStyle = withA(hat.light, 0.5);
+  ctx.fillRect(cx - rx * 0.9, y - ry * 0.12, rx * 1.8, ry * 0.07);
+}
+
+/** Horns. Two of them, off the crown, curving out and back. */
+function horns(ctx, cx, cy, rx, ry, hat, size) {
+  for (const s of [-1, 1]) {
+    const bx = cx + s * rx * 0.62, by = cy - ry * 0.74;
+    ctx.fillStyle = hat.dark;
+    ctx.beginPath();
+    ctx.moveTo(bx - s * rx * 0.16, by + ry * 0.10);
+    ctx.quadraticCurveTo(bx + s * rx * 0.44, by - ry * 0.52,
+      bx + s * rx * 0.30, by - ry * 0.96);
+    ctx.quadraticCurveTo(bx + s * rx * 0.10, by - ry * 0.48, bx + s * rx * 0.14, by + ry * 0.10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = hat.base;
+    ctx.beginPath();
+    ctx.moveTo(bx - s * rx * 0.10, by + ry * 0.06);
+    ctx.quadraticCurveTo(bx + s * rx * 0.36, by - ry * 0.50,
+      bx + s * rx * 0.26, by - ry * 0.88);
+    ctx.quadraticCurveTo(bx + s * rx * 0.08, by - ry * 0.44, bx + s * rx * 0.10, by + ry * 0.06);
+    ctx.closePath();
+    ctx.fill();
   }
 }
 

@@ -91,6 +91,35 @@ export function cidFor(idx, n) {
 }
 
 /**
+ * A token's head traits, out of the packed table scripts/harvest-primos.mjs
+ * writes: one character per token per field, indexing that field's vocabulary.
+ *
+ * Colours can be sampled off the art, but STRUCTURE cannot — you cannot tell a
+ * mariachi hat from a baseball cap by reading the crown pixels, and the old
+ * code did not try: it hard-coded `hairStyle: 'messy'` and set the cap colour to
+ * the hair colour, so every one of the 3,069 arrived in game as the same messy
+ * head. The collection states all of it, so this reads it instead of guessing.
+ *
+ * @returns {object|null} null when the token's traits were never harvested —
+ *          which a caller must treat as "unknown", not as "wearing nothing".
+ */
+export function traitsFor(idx, n) {
+  const t = idx && idx.traits;
+  if (!t || !t.rows || !t.vocab || !t.have) return null;
+  if (t.have[n] !== '1') return null;
+  const chars = t.chars || '';
+  const out = {};
+  for (const f of (t.fields || [])) {
+    const row = t.rows[f];
+    const list = t.vocab[f];
+    if (!row || !list) continue;
+    const v = list[chars.indexOf(row[n])];
+    if (v && v !== 'None') out[f] = v;
+  }
+  return out;
+}
+
+/**
  * A fresh handful of token numbers, no repeats.
  *
  * Random per session on purpose: the crew row is scenery, and four fixed
@@ -290,6 +319,18 @@ const EXTRA = {
   // The owner reassigned a Primo out from under whoever was wearing it.
   'status.reassigned':{ en: '#%n already had an owner. We gave it back. Find another.',
                         es: 'El #%n ya tenía dueño. Se lo devolvimos. Busca otro.' },
+
+  // --- the browser (js/primo-browser.js) ---
+  'browse.title':     { en: 'PICK YOUR PRIMO', es: 'ESCOGE TU PRIMO' },
+  'browse.copy':      { en: 'All 3,069 of them. Scroll, or jump straight to your number. The art loads live from IPFS — nothing is kept here.',
+                        es: 'Los 3,069. Desplázate, o salta directo a tu número. El arte se carga en vivo desde IPFS — aquí no se guarda nada.' },
+  'browse.jump':      { en: 'GO', es: 'IR' },
+  'browse.jumpPh':    { en: 'Jump to #', es: 'Ir al #' },
+  'browse.use':       { en: 'RUN AS THIS ONE', es: 'CORRE CON ESTE' },
+  'browse.back':      { en: 'BACK', es: 'ATRÁS' },
+  'browse.noIndex':   { en: 'Could not load the collection list. Check your connection and try again.',
+                        es: 'No se pudo cargar la lista de la colección. Revisa tu conexión e inténtalo otra vez.' },
+  'crew.tileBrowse':  { en: 'BROWSE', es: 'VER' },
 };
 
 const PACKS = { en: Object.create(null), es: Object.create(null) };

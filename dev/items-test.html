@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Items test — Primos Barrio Run</title>
+<style>
+  body { margin: 0; background: #1a1420; color: #fdf6e6;
+         font: 12px ui-rounded, system-ui, sans-serif; padding: 6px 10px 40px; }
+  h2 { font-size: 10px; letter-spacing: .16em; margin: 12px 0 3px; color: #ffc93c; }
+  h2 small { color: rgba(253,246,230,.45); letter-spacing: .04em; font-weight: 400; }
+  canvas { display: block; border-radius: 4px; }
+  .row { display: flex; flex-wrap: nowrap; gap: 6px; align-items: flex-end; }
+  .cell { text-align: center; font-size: 9px; color: rgba(253,246,230,.45); }
+  .controls { display: flex; gap: 14px; align-items: center; font-size: 11px;
+              position: sticky; top: 0; background: #1a1420; padding: 6px 0;
+              z-index: 2; border-bottom: 1px solid rgba(255,255,255,.08); }
+</style>
+</head>
+<body>
+<div class="controls">
+  <label><input id="anim" type="checkbox" checked> animate</label>
+  <label>t <input id="time" type="range" min="0" max="6.28" step="0.02" value="0"
+         style="width:120px"></label>
+  <span id="note"></span>
+</div>
+
+<!--
+  The distance ladder is not decorative. u = focal/dz and focal = W * CAM.focal,
+  so on a 430px-wide phone a powerup sitting 30u down the alley is drawn about
+  SIXTEEN PIXELS across. That column is the one that decides whether a player
+  can pick a lane in time; everything wider than it is detail work, and the
+  oversized cell at the end is diagnosis only.
+
+  Three backdrops because a pickup has to win against all three: the asphalt it
+  usually sits on, a sunlit stucco wall it passes in front of, and the near-black
+  gutter shadow. An icon that only survives the first is not finished.
+-->
+<h2>POWERUPS — DECISION DISTANCE <small>read them apart here or nowhere</small></h2>
+<div class="row" id="power"></div>
+
+<h2>ALL PICKUPS vs BACKDROPS</h2>
+<div class="row" id="grid"></div>
+
+<h2>OVERSIZED <small>detail only — never judge the read here</small></h2>
+<div class="row" id="big"></div>
+
+<h2>OBSTACLES <small>silhouette check: dodge (tall) vs jump (low) vs slide (hung)</small></h2>
+<div class="row" id="obst"></div>
+
+<script type="module">
+// Cache-buster: python's http.server answers with Last-Modified and the browser
+// happily reuses a stale ES module across reloads — on a test page that is the
+// worst place for it. Same reason rig-test.html does this.
+const V = `?t=${Date.now()}`;
+const { PROP_DRAW, PROP_SPEC } = await import(`../js/art/props.js${V}`);
+
+const POWERS = ['magnet', 'chancla', 'lowrider'];
+const PICKUPS = ['beer', 'taco', ...POWERS];
+const OBSTACLES = ['checkpoint', 'border', 'copcar', 'dumpster', 'crates', 'cones',
+                   'clothesline', 'awning'];
+
+// dz -> pixels per world unit, at the real camera on a 430px-wide phone.
+// focal = 430 * CAM.focal(1.15); u = focal / dz.
+const FOCAL = 430 * 1.15;
+const DZ = [45, 30, 20, 14, 10, 6];
+const uAt = (dz) => FOCAL / dz;
+
+// The three surfaces a pickup has to survive. Values sampled off the real alley.
+const BACKDROPS = [
+  ['asphalt', '#3a3540'],
+  ['sunlit', '#c8834a'],
+  ['shadow', '#171020'],
+];
+
+function cell(parent, label, w, h, bg) {
+  const d = document.createElement('div');
+  d.className = 'cell';
+  const c = document.createElement('canvas');
+  c.width = w * 2; c.height = h * 2;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  const x = c.getContext('2d');
+  x.scale(2, 2);
+  d.appendChild(c);
+  d.appendChild(document.createElement('div')).textContent = label;
+  parent.appendChild(d);
+  return { x, w, h, bg };
+}
+
+/** One pickup, drawn the way render.js draws it: sy is the GROUND line. */
+function paintProp(cellRef, type, u, t, seed = 0) {
+  const { x, w, h, bg } = cellRef;
+  x.fillStyle = bg;
+  x.fillRect(0, 0, w, h);
+  const draw = PROP_DRAW[type];
+  if (!draw) return;
+  // Ground line low enough that the hover offset (PROP_SPEC.y * u) still lands
+  // inside the cell at the biggest u in the row.
+  draw(x, w / 2, h - 6, u, { seed }, t);
+}
+
+// --- powerups at the decision ladder -------------------------------------
+const powerCells = [];
+for (const dz of DZ) {
+  const u = uAt(dz);
+  const cw = Math.max(34, Math.min(150, u * 1.9));
+  const ch = Math.max(40, Math.min(190, u * 2.3));
+  for (const type of POWERS) {
+    powerCells.push([cell(document.getElementById('power'),
+      `${type.slice(0, 4)} ${dz}u`, cw, ch, '#3a3540'), type, u]);
+  }
+}
+
+// --- every pickup against every backdrop, at decision size ----------------
+const gridCells = [];
+{
+  const u = uAt(24);
+  for (const type of PICKUPS) {
+    for (const [name, bg] of BACKDROPS) {
+      gridCells.push([cell(document.getElementById('grid'),
+        `${type.slice(0, 4)}/${name}`, 56, 66, bg), type, u]);
+    }
+  }
+}
+
+// --- oversized -----------------------------------------------------------
+const bigCells = PICKUPS.map((type) =>
+  [cell(document.getElementById('big'), type, 200, 250, '#3a3540'), type, 155]);
+
+// --- obstacle silhouettes ------------------------------------------------
+const obstCells = OBSTACLES.map((type) =>
+  [cell(document.getElementById('obst'), type, 82, 120, '#3a3540'), type, uAt(18)]);
+
+let lastT = 0;
+function paintAll(t) {
+  lastT = t;
+  for (const [c, type, u] of powerCells) paintProp(c, type, u, t);
+  for (const [c, type, u] of gridCells) paintProp(c, type, u, t);
+  for (const [c, type, u] of bigCells) paintProp(c, type, u, t);
+  for (const [c, type, u] of obstCells) paintProp(c, type, u, t);
+  document.getElementById('note').textContent =
+    `t=${t.toFixed(2)} · u at 30u = ${uAt(30).toFixed(1)}px`;
+}
+
+// The agent harness runs this page HIDDEN, where requestAnimationFrame never
+// fires — so paint once up front and expose a manual step.
+window.step = (t = 0) => paintAll(t);
+paintAll(0);
+
+document.getElementById('time').addEventListener('input', (e) => {
+  document.getElementById('anim').checked = false;
+  paintAll(Number(e.target.value));
+});
+
+function frame(now) {
+  if (document.getElementById('anim').checked) paintAll(now / 1000);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

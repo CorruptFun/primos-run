@@ -104,8 +104,19 @@ export function attachInput(target, actions) {
     KeyM: () => actions.mute(),
   };
 
+  // Typing beats driving. The map above claims a, d, w, s, p, m, space, the
+  // arrows and Escape, and it used to preventDefault() them wherever the focus
+  // happened to be — so the runner-name box on the ACCOUNT screen silently
+  // refused six letters and the space bar. It reads as the field being broken,
+  // because a keystroke that produces nothing is indistinguishable from one.
+  const typing = (el) => !!el && (
+    el.isContentEditable ||
+    el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT'
+  );
+
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
+    if (typing(e.target)) return;
     const fn = keymap[e.code];
     if (!fn) return;
     e.preventDefault();

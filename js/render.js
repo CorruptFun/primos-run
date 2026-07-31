@@ -1,7 +1,9 @@
 // Painter's-algorithm renderer: sky, alley, props, runner, chaser, effects.
 
 import { cam, project, projectClamped, viewport } from './camera.js';
-import { ALLEY_HALF, DRAW_DIST, FOG_START, LANE_W, HITBOX } from './config.js';
+import {
+  ALLEY_HALF, DRAW_DIST, FOG_START, LANE_W, HITBOX, MAGNET_RADIUS,
+} from './config.js';
 import { PAL, quad, fogAmount, hash01 } from './art/palette.js';
 import { drawSky, drawWallSegment, drawSkyline, drawWires } from './art/scenery.js';
 import { PROP_DRAW, drawChaser } from './art/props.js';
@@ -279,16 +281,56 @@ function drawPlayer(ctx, g, t) {
   drawRunner(ctx, at.x, at.y, u, p.rig, pose);
   ctx.globalAlpha = 1;
 
-  // magnet aura
-  if (g.power.magnet > 0) {
+  if (g.power.magnet > 0) magnetField(ctx, g, t);
+}
+
+/**
+ * The magnet's reach, drawn on the ground as rings at its REAL radius.
+ *
+ * The old aura was a single screen-space ellipse pinned to the runner's chest.
+ * It said a power was running and nothing else — and the one thing a player
+ * actually wants to know here is how far the pull reaches, because that is what
+ * decides whether the beers in the next lane are worth changing for.
+ *
+ * The rings CONTRACT rather than expand. An expanding ring is something being
+ * emitted; this thing pulls, and reversing the direction is the whole
+ * difference between reading as a shockwave and reading as a magnet.
+ *
+ * Projected point by point like everything else in the alley, so the circle
+ * comes out as a true ground ellipse in perspective — foreshortened, off-centre
+ * when the runner is in a side lane, and banking with the camera roll.
+ */
+function magnetField(ctx, g, t) {
+  const p = g.player;
+  const N = 26;
+  ctx.save();
+  ctx.lineCap = 'round';
+  for (let ring = 0; ring < 2; ring++) {
+    // 0 at the rim, 1 at the runner's feet.
+    const k = ((t * 0.75 + ring * 0.5) % 1);
+    const r = MAGNET_RADIUS * (1 - k);
+    if (r < 0.15) continue;
+    // Brightest mid-travel: a ring that appears at full strength on the rim
+    // pops into existence, and one that dies at full strength snaps out.
+    ctx.globalAlpha = Math.sin(k * Math.PI) * 0.5;
     ctx.strokeStyle = PAL.hotPink;
-    ctx.globalAlpha = 0.35 + Math.sin(t * 8) * 0.15;
-    ctx.lineWidth = Math.max(1.5, u * 0.04);
+    ctx.lineWidth = Math.max(1.2, 2.6 * (1 - k));
     ctx.beginPath();
-    ctx.ellipse(at.x, at.y - u * 0.7, u * 1.5, u * 0.5, 0, 0, Math.PI * 2);
+    let started = false;
+    for (let i = 0; i <= N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      const s = project(p.x + Math.cos(a) * r, 0.03, p.z + Math.sin(a) * r);
+      // A ring wide enough to reach behind the camera has points with no
+      // projection at all; break the path rather than closing it across the
+      // screen, which would draw a chord straight through the runner.
+      if (!s) { started = false; continue; }
+      if (!started) { ctx.moveTo(s.x, s.y); started = true; }
+      else ctx.lineTo(s.x, s.y);
+    }
     ctx.stroke();
-    ctx.globalAlpha = 1;
   }
+  ctx.restore();
+  ctx.globalAlpha = 1;
 }
 
 // The board's own colours. props.js owns the originals — these mirror them the
@@ -429,25 +471,59 @@ function drawTheChaser(ctx, g, t) {
   ctx.restore();
 }
 
+/**
+ * The rush.
+ *
+ * The old version drew fourteen evenly spaced spokes of constant length and
+ * constant alpha, all rotating about the vanishing point at a fixed rate. Three
+ * things were wrong with that and they compound: a rotating wheel is not what
+ * speed looks like — speed comes at you, it does not spin; the even spacing read
+ * as a drawn asterisk rather than as motion; and being pinned inside the middle
+ * of the frame put the effect exactly where the obstacles are, so the one power
+ * that makes you unstoppable also made the alley hardest to read.
+ *
+ * These streak OUTWARD from the vanishing point and live only in the outer
+ * frame. Each one has its own phase, so they arrive continuously rather than in
+ * a ring, and each fades in at the start of its travel and out at the end so
+ * nothing pops. The middle of the screen — where the next dumpster is — stays
+ * clear.
+ */
+function rushLines(ctx, g, W, H, horizon) {
+  const N = 30;
+  ctx.save();
+  ctx.strokeStyle = PAL.gold;
+  ctx.lineCap = 'round';
+  const rMax = Math.hypot(W, H) * 0.72;
+  for (let i = 0; i < N; i++) {
+    // Fixed angle per streak, irrational-ish stride so they never line up into
+    // a visible spoke pattern.
+    const a = i * 2.39996;
+    // Each streak runs 0..1 outward on its own offset clock.
+    const k = ((g.time * 1.45 + i * 0.137) % 1);
+    // Accelerating: a streak covers more ground the further out it gets, which
+    // is what perspective actually does to something rushing past the camera.
+    const e = k * k;
+    const r0 = W * 0.30 + e * rMax;
+    const len = W * (0.06 + e * 0.30);
+    // Hold the middle clear. Anything still inside the play area is skipped
+    // outright rather than dimmed — dimming leaves it competing with the props.
+    if (r0 < W * 0.34) continue;
+    ctx.globalAlpha = Math.sin(k * Math.PI) * 0.42;
+    ctx.lineWidth = 1.4 + e * 2.6;
+    const cos = Math.cos(a), sin = Math.sin(a) * 0.82;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 + cos * r0, horizon + sin * r0);
+    ctx.lineTo(W / 2 + cos * (r0 + len), horizon + sin * (r0 + len));
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
 // ------------------------------------------------------------------- post fx
 
 function drawPostFX(ctx, g, W, H, horizon) {
-  // speed lines during a chancla rush
-  if (g.power.chancla > 0) {
-    ctx.save();
-    ctx.globalAlpha = 0.3;
-    ctx.strokeStyle = PAL.gold;
-    ctx.lineWidth = 2;
-    for (let i = 0; i < 14; i++) {
-      const a = (i / 14) * Math.PI * 2 + g.time * 3;
-      const r0 = W * 0.32, r1 = W * (0.5 + (i % 3) * 0.12);
-      ctx.beginPath();
-      ctx.moveTo(W / 2 + Math.cos(a) * r0, horizon + Math.sin(a) * r0 * 0.8);
-      ctx.lineTo(W / 2 + Math.cos(a) * r1, horizon + Math.sin(a) * r1 * 0.8);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
+  if (g.power.chancla > 0) rushLines(ctx, g, W, H, horizon);
 
   // running on empty: the alley drains of colour and the sirens bleed in
   if (g.stamina <= 0) {

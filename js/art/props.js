@@ -9,7 +9,10 @@ export const PROP_SPEC = {
   beer:       { w: 0.34, h: 0.50, y: 0.78, kind: 'pickup' },
   taco:       { w: 0.48, h: 0.34, y: 0.82, kind: 'pickup' },
   magnet:     { w: 0.56, h: 0.66, y: 0.92, kind: 'power' },
-  chancla:    { w: 0.56, h: 0.44, y: 0.92, kind: 'power' },
+  // Taller than the other two pickups on purpose: this one is an L, and the
+  // grip is the whole bottom arm of it. At 0.44 the grip had nowhere to go and
+  // the prop came out as a bar with a stub, which reads as a staple gun.
+  chancla:    { w: 0.56, h: 0.56, y: 0.92, kind: 'power' },
   lowrider:   { w: 0.66, h: 0.40, y: 0.86, kind: 'power' },
 
   // Dodge props are deliberately taller than the jump apex (1.43u) so lane
@@ -438,16 +441,31 @@ const DECK_GRIP = 'rgba(14,7,24,0.5)';
 const TRUCK = '#9ba3b6';
 const WHEEL = '#ffd24d';
 
-const GUN_KEY = '#190d05';
-const GUN_BODY = '#efe2c3';
-const GUN_SHADE = '#a8875e';
-const GUN_GRIP = '#c9773c';
-const GUN_GRIP_HI = '#e79a54';
+// COLD steel, on purpose, and it is the single most important decision in this
+// block. Each powerup is now lit by its own colour (see POWER_LIGHT), and an
+// icon can only be read against its own light if it disagrees with it in HUE as
+// well as value. The skateboard has always worked because an orange deck inside
+// a cyan glow is a straight complement; the gun did not, because it was a cream
+// body inside a GOLD glow — same hue family, so at anything under about forty
+// pixels the whole prop collapsed into one warm smudge.
+//
+// So the gun is steel and the grip is wood: cool against gold, with one warm
+// element left in to keep the two-material read the old version got right.
+const GUN_KEY = '#0d1017';
+const GUN_BODY = '#aebdd2';
+const GUN_HI = '#eaf2fb';
+const GUN_SHADE = '#65758c';
+const GUN_GRIP = '#a9612f';
+const GUN_GRIP_HI = '#d8934c';
 
+// The bag is neutral white, which disagrees with the pink glow by chroma rather
+// than by hue — it is the one of the three that can afford to, because nothing
+// else in the alley is white.
 const BAG_KEY = '#1c0716';
-const BAG_LIT = '#f8f4ec';
-const BAG_SHADE = '#c7bcd1';
+const BAG_LIT = '#fbf9f4';
+const BAG_SHADE = '#bfb4cb';
 const BAG_EAR = '#ded5e3';
+const BAG_TAPE = 'rgba(214,206,224,0.62)';
 
 /**
  * Skateboard deck: a FLAT middle with a kick at each end. The flat run is not a
@@ -502,16 +520,20 @@ function gunPath(ctx, gx, v, k) {
   // Barrel, then the taller receiver behind it, then the frame dropping deeper
   // still. Three steps down the length is what separates a gun from a drill —
   // one unbroken bar was the first attempt and it read as a power tool.
-  ctx.rect(-gx - k, -v * 0.56 - k, gx * 0.7 + k * 2, v * 0.3 + k * 2);
-  ctx.rect(-gx * 0.4 - k, -v * 0.62 - k, gx * 0.72 + k * 2, v * 0.38 + k * 2);
-  ctx.rect(-gx * 0.34 - k, -v * 0.3 - k, gx * 0.66 + k * 2, v * 0.3 + k * 2);
+  //
+  // The slide is DEEPER than it was (0.30 -> 0.40 of v). A thin bar over a fat
+  // grip reads as a hairdryer; the top arm of the L has to have some mass or
+  // the grip becomes the subject and the barrel becomes its flex.
+  ctx.rect(-gx - k, -v * 0.62 - k, gx * 0.74 + k * 2, v * 0.40 + k * 2);
+  ctx.rect(-gx * 0.36 - k, -v * 0.70 - k, gx * 0.74 + k * 2, v * 0.48 + k * 2);
+  ctx.rect(-gx * 0.30 - k, -v * 0.30 - k, gx * 0.66 + k * 2, v * 0.32 + k * 2);
   // hammer nub, so the top does not end in a flat plane
-  ctx.rect(gx * 0.14 - k, -v * 0.82 - k, gx * 0.18 + k * 2, v * 0.24 + k * 2);
+  ctx.rect(gx * 0.16 - k, -v * 0.90 - k, gx * 0.20 + k * 2, v * 0.26 + k * 2);
   // grip
-  ctx.moveTo(-gx * 0.02 - k, -v * 0.06);
-  ctx.lineTo(gx * 0.36 + k, -v * 0.06);
-  ctx.lineTo(gx * 0.66 + k, v * 0.86 + k);
-  ctx.lineTo(gx * 0.18 - k, v * 0.88 + k);
+  ctx.moveTo(-gx * 0.02 - k, -v * 0.04);
+  ctx.lineTo(gx * 0.38 + k, -v * 0.04);
+  ctx.lineTo(gx * 0.68 + k, v * 0.88 + k);
+  ctx.lineTo(gx * 0.18 - k, v * 0.90 + k);
   ctx.closePath();
 }
 
@@ -522,10 +544,14 @@ function gunPath(ctx, gx, v, k) {
  * painted a black slab over the top third of the bag.
  */
 function earsPath(ctx, bx, yT, r, f) {
+  // Roughly SYMMETRIC, and shorter than it was. The old fan put a tall point out
+  // to the right at 0.86r and a short one to the left, which is the profile of a
+  // spout — and a spout on a round body with a band round its neck is a teapot,
+  // which is what this prop was reading as.
   ctx.moveTo(-bx * 0.34, yT);
-  ctx.lineTo(-bx * 0.68 * f, yT + r * f);
-  ctx.lineTo(-bx * 0.06, yT + r * 0.36 * f);
-  ctx.lineTo(bx * 0.6 * f, yT + r * 0.86 * f);
+  ctx.lineTo(-bx * 0.60 * f, yT + r * 0.78 * f);
+  ctx.lineTo(-bx * 0.08, yT + r * 0.30 * f);
+  ctx.lineTo(bx * 0.56 * f, yT + r * 0.80 * f);
   ctx.lineTo(bx * 0.32, yT);
   ctx.closePath();
 }
@@ -543,7 +569,12 @@ function drawSkateboard(ctx, w, h, u) {
   // top up and the wheels push the bottom down by roughly the same amount.
   const y0 = -v * 0.42, y1 = -v * 0.03, tip = v * 0.3;
   const tx = kx * 0.5;
-  const wy = v * 0.43, wr = v * 0.29;
+  // Wheels TUCKED UP and small. At 0.29 of v they came out larger than the deck
+  // was thick and hung well clear of it, which is a barbell: two heavy discs on
+  // a thin bar. A skateboard's wheels are visibly smaller than its deck is long
+  // and they sit close under it, and getting that ratio wrong costs the read
+  // even though every other part of the prop is correct.
+  const wy = v * 0.34, wr = v * 0.20;
   const k = Math.max(1, v * 0.11);
 
   // One keyline pass over deck, trucks and wheels together.
@@ -585,9 +616,13 @@ function drawSkateboard(ctx, w, h, u) {
   ctx.beginPath();
   deckPath(ctx, kx * 0.99, y1 - v * 0.08, y1, tip * 0.99);
   ctx.fill();
+  // Narrower than it was. A wide cream band through the middle of a red plank
+  // makes three equal stripes, and three equal stripes on a horizontal bar is a
+  // barber pole — it has to read as light landing on the top edge, which means
+  // staying at the edge.
   ctx.fillStyle = DECK_SUN;
   ctx.beginPath();
-  deckPath(ctx, kx * 0.99, y0, y0 + v * 0.13, tip * 0.99);
+  deckPath(ctx, kx * 0.99, y0, y0 + v * 0.085, tip * 0.99);
   ctx.fill();
 }
 
@@ -615,51 +650,66 @@ function drawGun(ctx, w, h, u) {
   gunPath(ctx, gx, v, 0);
   ctx.fill();
 
-  // Grip repainted over the body. Both arms of the L stay light — a dark grip
-  // reads as a shadow rather than as the other half of the shape — so the two
-  // materials are separated by hue, not by value.
+  // Grip repainted over the body — WOOD, and the only warm thing on the prop.
+  // The two arms of the L used to be separated by hue alone with both left
+  // light, which worked when they sat on a flat gold plate. They no longer do:
+  // the gold is now a glow the icon is lit BY, so the steel has to carry the
+  // value contrast and the wood carries the material change.
   ctx.fillStyle = GUN_GRIP;
   ctx.beginPath();
-  ctx.moveTo(-gx * 0.02, -v * 0.06);
-  ctx.lineTo(gx * 0.36, -v * 0.06);
-  ctx.lineTo(gx * 0.66, v * 0.86);
-  ctx.lineTo(gx * 0.18, v * 0.88);
+  ctx.moveTo(-gx * 0.02, -v * 0.04);
+  ctx.lineTo(gx * 0.38, -v * 0.04);
+  ctx.lineTo(gx * 0.68, v * 0.88);
+  ctx.lineTo(gx * 0.18, v * 0.90);
   ctx.closePath();
   ctx.fill();
   ctx.fillStyle = GUN_GRIP_HI;
   ctx.beginPath();
-  ctx.moveTo(-gx * 0.02, -v * 0.06);
-  ctx.lineTo(gx * 0.12, -v * 0.06);
-  ctx.lineTo(gx * 0.42, v * 0.87);
-  ctx.lineTo(gx * 0.18, v * 0.88);
+  ctx.moveTo(-gx * 0.02, -v * 0.04);
+  ctx.lineTo(gx * 0.14, -v * 0.04);
+  ctx.lineTo(gx * 0.44, v * 0.89);
+  ctx.lineTo(gx * 0.18, v * 0.90);
   ctx.closePath();
   ctx.fill();
 
-  // Sun laid flat along the top of the barrel and again along the top of the
+  // Sun laid flat along the top of the slide and again along the top of the
   // receiver. Stepped but unbroken from muzzle to hammer, because at fourteen
   // pixels that bright horizontal IS the barrel — banding only the taller half
   // leaves the muzzle end as a stub and the whole thing reads as a wedge.
+  //
+  // GUN_HI rather than WARM_CAP: a warm white catch on a steel slide inside a
+  // gold glow puts the brightest, warmest mark on the prop straight back into
+  // the halo's own hue, which is exactly the collapse the recolour was for.
   ctx.fillStyle = GUN_SHADE;
-  ctx.fillRect(-gx, -v * 0.34, gx * 0.7, v * 0.08);
-  ctx.fillRect(-gx * 0.4, -v * 0.32, gx * 0.72, v * 0.08);
-  ctx.fillStyle = WARM_CAP;
-  ctx.fillRect(-gx, -v * 0.56, gx * 0.7, v * 0.08);
-  ctx.fillRect(-gx * 0.4, -v * 0.62, gx * 0.72, v * 0.08);
+  ctx.fillRect(-gx, -v * 0.30, gx * 0.74, v * 0.07);
+  ctx.fillRect(-gx * 0.36, -v * 0.28, gx * 0.74, v * 0.07);
+  // Inset from both ends so the slide keeps a dark edge above and below it. Run
+  // flush, this bar becomes the whole top of the prop and the gun reads as a
+  // pale wedge with a stick attached.
+  ctx.fillStyle = GUN_HI;
+  ctx.fillRect(-gx * 0.96, -v * 0.60, gx * 0.66, v * 0.07);
+  ctx.fillRect(-gx * 0.32, -v * 0.68, gx * 0.66, v * 0.07);
 
   // Muzzle: a dark mouth on the barrel end, the one mark that says which end of
   // the L is the dangerous one.
   ctx.fillStyle = GUN_KEY;
-  ctx.fillRect(-gx, -v * 0.52, gx * 0.07, v * 0.22);
+  ctx.fillRect(-gx, -v * 0.58, gx * 0.08, v * 0.28);
 
-  if (u > 26) {
-    // trigger and its guard, hung under the step in the frame
-    ctx.fillStyle = GUN_KEY;
-    ctx.fillRect(-gx * 0.3, 0, gx * 0.34, v * 0.09);
-    ctx.fillStyle = PAL.gold;
-    ctx.fillRect(-gx * 0.12, -v * 0.06, gx * 0.1, v * 0.14);
-    // ejection port
+  if (u > 24) {
+    // The trigger guard, as an open LOOP rather than a bar. A hole in the
+    // silhouette is the most gun-specific mark there is and nothing else in the
+    // alley has one — a solid bar under the frame reads as a stapler.
+    ctx.strokeStyle = GUN_KEY;
+    ctx.lineWidth = Math.max(1, v * 0.075);
+    ctx.beginPath();
+    ctx.arc(-gx * 0.02, v * 0.10, v * 0.19, Math.PI * 0.86, Math.PI * 0.18, false);
+    ctx.stroke();
+    // trigger inside it
     ctx.fillStyle = GUN_SHADE;
-    ctx.fillRect(-gx * 0.28, -v * 0.55, gx * 0.4, v * 0.1);
+    ctx.fillRect(-gx * 0.06, -v * 0.02, gx * 0.09, v * 0.15);
+    // ejection port, cut into the slide
+    ctx.fillStyle = GUN_KEY;
+    ctx.fillRect(-gx * 0.22, -v * 0.60, gx * 0.36, v * 0.11);
   }
 }
 
@@ -710,12 +760,36 @@ function drawPowder(ctx, w, h, u) {
   ctx.closePath();
   ctx.fill();
 
-  // the tie: dark collar, gold band on it
+  // A strip of packing tape across the belly. Two jobs: it is the one mark that
+  // says this is a PARCEL of something rather than a vessel holding something,
+  // and it breaks the big white oval that the eye was resolving as a teapot
+  // body. Clipped so it stops at the bag's own edge rather than running past it.
+  ctx.save();
+  ctx.beginPath();
+  bagPath(ctx, 0, bx, yT, yB);
+  ctx.clip();
+  // Translucent, not gold. A tan band here competed with the gold tie at the
+  // neck and the bag came out as a pot with two hoops round it; clear packing
+  // tape over white is barely a value change, which is exactly what real tape
+  // looks like and is enough to break the oval.
+  ctx.fillStyle = BAG_TAPE;
+  ctx.fillRect(-bx * 1.2, yT + sp * 0.48, bx * 2.4, sp * 0.15);
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillRect(-bx * 1.2, yT + sp * 0.48, bx * 2.4, sp * 0.04);
+  // The two cut edges, which is where tape actually reads from.
+  ctx.fillStyle = 'rgba(90,70,110,0.34)';
+  ctx.fillRect(-bx * 1.2, yT + sp * 0.48, bx * 2.4, sp * 0.018);
+  ctx.fillRect(-bx * 1.2, yT + sp * 0.612, bx * 2.4, sp * 0.018);
+  ctx.restore();
+
+  // The tie: dark collar, gold band on it. Narrower than the bag by a good
+  // margin — run out to the full width it reads as a HAT BRIM, and a brim over a
+  // pale oval with a gathered tuft on top is a little person in a hat.
   ctx.fillStyle = BAG_KEY;
-  roundRect(ctx, -bx * 0.52, yT - sp * 0.04, bx * 1.04, sp * 0.19, sp * 0.05);
+  roundRect(ctx, -bx * 0.40, yT - sp * 0.02, bx * 0.80, sp * 0.15, sp * 0.045);
   ctx.fill();
   ctx.fillStyle = PAL.gold;
-  roundRect(ctx, -bx * 0.46, yT - sp * 0.01, bx * 0.92, sp * 0.11, sp * 0.04);
+  roundRect(ctx, -bx * 0.35, yT + sp * 0.005, bx * 0.70, sp * 0.095, sp * 0.035);
   ctx.fill();
 
   if (u > 26) {
@@ -739,55 +813,173 @@ function drawPowder(ctx, w, h, u) {
   }
 }
 
+// Per-powerup light. `rim` is what the ring and the glow are made of, `spill`
+// is the same light landing on wet asphalt, `core` is the hot centre of the
+// glow — desaturated toward white, because a real light source is brightest and
+// LEAST saturated in the middle and only shows its colour in the falloff.
+const POWER_LIGHT = {
+  magnet:   { rim: '255,77,157',  core: '255,214,236' },
+  chancla:  { rim: '255,201,60',  core: '255,244,206' },
+  lowrider: { rim: '77,216,255',  core: '214,246,255' },
+};
+
+/**
+ * The ring a powerup turns inside, drawn in HALF-ellipses so the item can be
+ * sandwiched between them. `half` -1 is the far side, +1 the near side.
+ *
+ * This is the single thing that stops a powerup reading as a sticker. A ring
+ * lying in the alley's own perspective, whose near arc crosses IN FRONT of the
+ * icon while its far arc passes behind, cannot be read as a flat plate no
+ * matter how the rest is painted — the occlusion is doing the work, not the
+ * shading. The old art was a screen-facing disc, which is exactly the one
+ * shape that carries no orientation at all.
+ */
+function powerRing(ctx, r, squash, spin, half, col, lw) {
+  // Screen y grows downward, so the sin-positive half of the ellipse is the one
+  // nearest the camera. Tilting the whole ring by `spin` is what makes it turn.
+  const a0 = half > 0 ? 0 : Math.PI;
+  ctx.strokeStyle = col;
+  ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r, r * squash, spin, a0, a0 + Math.PI);
+  ctx.stroke();
+}
+
 export function drawPowerup(ctx, sx, sy, u, type, t, seed = 0) {
   const s = PROP_SPEC[type] || PROP_SPEC.magnet;
   const bob = Math.sin(t * 3 + seed) * 0.08 * u;
   const cy = sy - s.y * u + bob;
   const w = s.w * u, h = s.h * u;
-  const tint = type === 'magnet' ? PAL.hotPink : type === 'chancla' ? PAL.gold : '#4dd8ff';
-  const spill = type === 'magnet' ? 'rgba(255,77,157,0.20)'
-    : type === 'chancla' ? 'rgba(255,201,60,0.20)' : 'rgba(77,216,255,0.20)';
+  const light = POWER_LIGHT[type] || POWER_LIGHT.magnet;
   // Fog arrives as globalAlpha from render.js, so the pulses multiply into it
   // rather than resetting it — a powerup that stayed opaque out at the draw
   // distance would be the one thing in the alley the smog never touched.
   const a0 = ctx.globalAlpha;
+  const pulse = 0.5 + Math.sin(t * 4 + seed) * 0.5;
+  const lift = sy - cy;                    // how far off the road it floats
 
-  pool(ctx, sx, sy, w * 0.95, spill);
+  // How much of a THING this is versus how much of a LIGHT. Far down the alley
+  // a powerup is fourteen pixels wide and no icon survives that, so the glow
+  // carries the whole read and gets brighter to do it; the ring and the dark
+  // backing plate are detail that only costs contrast at that size, so they
+  // fade out. Up close it inverts — the object is legible and the glow steps
+  // back so it does not wash the art out.
+  //
+  // This is the part the old flat disc got right and it must not be lost: at
+  // lane-choosing distance the player is reading a coloured dot, and that dot
+  // has to be bright.
+  const near = Math.max(0, Math.min(1, (u - 12) / 36));
+
+  // ---- light landing on the road. The alley is wet (FX.wetness 0.85), so a
+  // coloured source above it does two things down there: a pool under itself,
+  // and a smear running back toward the camera. The smear is most of what says
+  // the light is IN the scene rather than painted over it.
+  ctx.save();
+  ctx.globalAlpha = a0 * (0.5 + pulse * 0.5);
+  const spill = ctx.createRadialGradient(sx, sy, 0, sx, sy, w * 1.5);
+  spill.addColorStop(0, `rgba(${light.rim},0.42)`);
+  spill.addColorStop(0.55, `rgba(${light.rim},0.14)`);
+  spill.addColorStop(1, `rgba(${light.rim},0)`);
+  ctx.fillStyle = spill;
+  ctx.beginPath();
+  ctx.ellipse(sx, sy, w * 1.5, w * 0.5, 0, 0, TAU);
+  ctx.fill();
+  if (u > 18) {
+    // The reflection, stretched down-screen toward the viewer. Kept to close
+    // range: at distance it is a few smeared pixels under a shape that is
+    // already only a few pixels itself.
+    const streak = ctx.createLinearGradient(sx, sy, sx, sy + lift * 0.9);
+    streak.addColorStop(0, `rgba(${light.rim},0.30)`);
+    streak.addColorStop(1, `rgba(${light.rim},0)`);
+    ctx.fillStyle = streak;
+    ctx.beginPath();
+    ctx.moveTo(sx - w * 0.42, sy);
+    ctx.lineTo(sx + w * 0.42, sy);
+    ctx.lineTo(sx + w * 0.16, sy + lift * 0.9);
+    ctx.lineTo(sx - w * 0.16, sy + lift * 0.9);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
 
   ctx.save();
   ctx.translate(sx, cy);
 
-  // Dark plate first. A powerup is the one thing on screen that has to read
-  // against BOTH the asphalt and a sunlit stucco wall, and a coloured disc only
-  // wins the first of those — the keyline behind it wins the second.
-  ctx.fillStyle = 'rgba(16,7,24,0.55)';
+  // ---- emission. A soft radial falloff instead of the old hard plate: the
+  // alley is already full of neon, sodium lamps and siren wash, so light is a
+  // thing this world does. A saturated flat circle is not.
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = a0 * (0.55 + pulse * 0.45) * (1.9 - near * 0.9);
+  const gr = w * (1.9 + (1 - near) * 0.5);
+  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, gr);
+  // The hot core tightens as the item gets close: at distance it is most of the
+  // dot, up close a wide white centre would bleach the icon sitting in it.
+  glow.addColorStop(0, `rgba(${light.core},${0.5 + (1 - near) * 0.3})`);
+  glow.addColorStop(0.2 + near * 0.16, `rgba(${light.rim},0.34)`);
+  glow.addColorStop(1, `rgba(${light.rim},0)`);
+  ctx.fillStyle = glow;
   ctx.beginPath();
-  ctx.arc(0, 0, w * 1.06, 0, TAU);
+  ctx.arc(0, 0, gr, 0, TAU);
   ctx.fill();
+  ctx.restore();
 
-  // Flat disc of colour behind the icon. A ring alone leaves the shape fighting
-  // the alley for contrast; a solid plate wins that fight at any distance.
-  ctx.globalAlpha = a0 * (0.3 + Math.sin(t * 6 + seed) * 0.08);
-  ctx.fillStyle = tint;
-  ctx.beginPath();
-  ctx.arc(0, 0, w * 1.02, 0, TAU);
-  ctx.fill();
-  ctx.globalAlpha = a0 * (0.8 + Math.sin(t * 6 + seed) * 0.2);
-  ctx.strokeStyle = tint;
-  ctx.lineWidth = Math.max(1.8, u * 0.055);
-  ctx.beginPath();
-  ctx.arc(0, 0, w * 0.9, 0, TAU);
-  ctx.stroke();
+  const rr = w * 1.16;
+  const squash = 0.42;
+  const spin = t * 1.5 + seed;
+  const lw = Math.max(1.6, u * 0.05);
+
+  // far arc, behind the item
+  ctx.globalAlpha = a0 * (0.30 + pulse * 0.22) * near;
+  powerRing(ctx, rr, squash, spin, -1, `rgba(${light.rim},1)`, lw);
+
+  // ---- the item. A tight dark plate hugging it, NOT a coin: the powerup still
+  // has to survive being seen against sunlit stucco, and a keyline is what wins
+  // that — the old full-size disc was solving it by covering the wall.
   ctx.globalAlpha = a0;
-
+  ctx.save();
   // A board rocks, a gun swings a little, a bag of powder barely moves. Keyed
   // per type so the motion is one more thing telling the three apart.
   ctx.rotate(Math.sin(t * 2 + seed)
     * (type === 'lowrider' ? 0.26 : type === 'chancla' ? 0.16 : 0.08));
+  // Soft, not a slab. Every icon below already carries its own fat keyline, so
+  // this only has to darken what is immediately behind them; a hard-edged
+  // ellipse here reads as a black egg the item is sitting in, which is just the
+  // old coin again in a different colour.
+  const plate = ctx.createRadialGradient(0, 0, 0, 0, 0, w * 1.25);
+  plate.addColorStop(0, 'rgba(14,6,22,0.62)');
+  plate.addColorStop(0.6, 'rgba(14,6,22,0.34)');
+  plate.addColorStop(1, 'rgba(14,6,22,0)');
+  ctx.fillStyle = plate;
+  ctx.beginPath();
+  ctx.arc(0, 0, w * 1.25, 0, TAU);
+  ctx.fill();
 
   if (type === 'magnet') drawPowder(ctx, w, h, u);
   else if (type === 'chancla') drawGun(ctx, w, h, u);
   else drawSkateboard(ctx, w, h, u);
+  ctx.restore();
+
+  // near arc, crossing in front — the occlusion that sells the whole thing
+  ctx.globalAlpha = a0 * (0.55 + pulse * 0.35);
+  powerRing(ctx, rr, squash, spin, 1, `rgba(${light.core},1)`, lw);
+
+  // A bead running the ring. Without it the ring's rotation is invisible for
+  // half its cycle — an ellipse turning about its own centre looks identical at
+  // spin and spin+PI, so the only motion cue is the arcs swapping depth, which
+  // happens twice a revolution and reads as a flicker rather than as spin.
+  if (u > 13) {
+    const ba = spin * 2.2;
+    const bx = Math.cos(ba) * rr, by = Math.sin(ba) * rr * squash;
+    // Rotate the bead's offset into the ring's own tilted frame.
+    const cs = Math.cos(spin), sn = Math.sin(spin);
+    ctx.globalAlpha = a0 * (0.55 + pulse * 0.45);
+    ctx.fillStyle = `rgba(${light.core},1)`;
+    ctx.beginPath();
+    ctx.arc(bx * cs - by * sn, bx * sn + by * cs, lw * 0.95, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalAlpha = a0;
 
   ctx.restore();
 }

@@ -17,7 +17,7 @@
 */
 
 // 👉 CUSTOMIZE: rename to your app, and bump CACHE_VERSION per deploy (e.g. a build stamp).
-const CACHE_VERSION = "v13-invites";
+const CACHE_VERSION = "v15-primo-browser";
 const CACHE_NAME    = `primos-run-${CACHE_VERSION}`;
 
 // 👉 CUSTOMIZE: the offline shell, precached at install. Relative paths (resolved against
@@ -47,6 +47,11 @@ const PRECACHE = [
   "./js/tiendita.js",
   "./js/wallet.js",
   "./js/primo-picker.js",
+  // Imported by main.js, so an offline boot fetches it whether it is listed or
+  // not — leaving it out only guarantees that fetch fails. The 3,069 thumbnails
+  // it shows are NOT cached and never should be: they are cross-origin IPFS and
+  // the fetch handler does not touch cross-origin GETs.
+  "./js/primo-browser.js",
   "./js/particles.js",
   "./js/perf.js",
   "./js/haptics.js",
@@ -65,6 +70,12 @@ const PRECACHE = [
   "./js/boards.js",
   "./js/account.js",
   "./js/referrals.js",
+  // Analytics. The PIPE is precached — it is imported by main.js, so leaving it
+  // out would make every offline boot fetch it and fail. The DASHBOARD is not:
+  // stats.html and js/stats/ are the owner's tool and players must never
+  // download it. Do not add them here.
+  "./js/analytics.js",
+  "./js/version.js",
   "./js/art/palette.js",
   "./js/art/runner.js",
   "./js/art/head-back.js",
@@ -118,6 +129,13 @@ self.addEventListener("fetch", (event) => {
   let url;
   try { url = new URL(req.url); } catch (e) { return; }
   if (url.origin !== self.location.origin) return;        // never touch cross-origin
+
+  // The analytics dashboard is the OWNER'S TOOL and this worker has no business
+  // with it, in either direction. Without this the navigate branch below would
+  // answer an offline /stats.html with `cache.match("./")` — i.e. the GAME —
+  // which looks exactly like the dashboard being broken. Letting it through
+  // untouched also keeps it out of the cache players carry around.
+  if (url.pathname.endsWith("/stats.html") || url.pathname.includes("/js/stats/")) return;
 
   if (req.mode === "navigate") {                          // pages → network-first
     event.respondWith((async () => {
