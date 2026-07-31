@@ -5,6 +5,24 @@
 (function () {
   if (!("serviceWorker" in navigator)) return;
 
+  /* Local development: stay out of the way. sw.js serves assets
+     stale-while-revalidate, which combined with python -m http.server's
+     Last-Modified responses means an edited ES module can keep loading from
+     cache for several reloads. That silently shows you the previous build. Any
+     worker already installed from an earlier session is torn down here too. */
+  var host = location.hostname;
+  if (host === "localhost" || host === "127.0.0.1" || host === "[::1]") {
+    navigator.serviceWorker.getRegistrations().then(function (regs) {
+      regs.forEach(function (r) { r.unregister(); });
+    }).catch(function () {});
+    if (window.caches && caches.keys) {
+      caches.keys().then(function (keys) {
+        keys.forEach(function (k) { caches.delete(k); });
+      }).catch(function () {});
+    }
+    return;
+  }
+
   function boot() {
     let awaitingReload = false;
     navigator.serviceWorker.addEventListener("controllerchange", function () {

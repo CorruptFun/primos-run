@@ -105,6 +105,9 @@ html, body {
 
 .sheet {
   position: relative;
+  /* Explicit stacking context: the brand ghost below sits at z-index -1 and
+     blends, and neither should reach past the sheet. */
+  isolation: isolate;
   width: min(420px, 100%);
   border: 1px solid var(--line);
   border-radius: 24px;
@@ -131,7 +134,37 @@ html, body {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 22%);
 }
 
+/* Oversized brand mark bleeding off the bottom-right corner. `screen` drops
+   the art's black disc to nothing and lifts only the face out of the panel, so
+   this needs no second asset — and where the blend mode is unsupported it
+   degrades to a barely-there dark vignette rather than a black blob.
+   z-index -1 keeps it above the sheet's own gradients but under every word. */
+.sheet::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image: url("../art/primos-logo.png");
+  background-repeat: no-repeat;
+  background-position: 118% 108%;
+  background-size: 62%;
+  mix-blend-mode: screen;
+  /* Kept this low because body copy sits on top of it. Screen over a near-black
+     panel turns each percent into ~2.4 levels of lift, so 0.065 is already a
+     readable ghost — going louder starts eating the .fine print. */
+  opacity: 0.065;
+}
+
 .sheet-small { width: min(340px, 100%); }
+
+/* The small sheets carry headlines, not paragraphs, so the ghost can push. */
+.sheet-small::after {
+  background-position: 122% 118%;
+  background-size: 78%;
+  opacity: 0.085;
+}
 
 #screen-pause .sheet { animation-duration: 0.3s; }
 
@@ -144,6 +177,41 @@ html, body {
   flex-direction: column;
   align-items: center;
   gap: 3px;
+}
+
+/* The mark, sat above the wordmark like a crest. The art already IS a black
+   disc edge to edge, so a 50% radius hugs it exactly and the ring + glow can
+   be pure box-shadow — no plate, no second asset, no clipping mask. */
+.logo-mark {
+  display: block;
+  width: 78px;
+  height: 78px;
+  margin: 0 auto 9px;
+  border-radius: 50%;
+  background-image: url("../art/primos-logo.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  box-shadow:
+    0 0 0 2px rgba(255, 201, 60, 0.26),
+    0 0 34px rgba(255, 201, 60, 0.2),
+    var(--lift-2);
+  animation: mark-float 6s ease-in-out infinite;
+}
+
+/* Transform-only, so it never costs a layout — same rule as the button sweep. */
+@keyframes mark-float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.02); }
+}
+
+/* Pause sheet: same crest, smaller and still. A paused screen should settle. */
+.mark-sm {
+  width: 46px;
+  height: 46px;
+  margin-bottom: 14px;
+  box-shadow: 0 0 0 2px rgba(255, 201, 60, 0.2), var(--lift-1);
+  animation: none;
 }
 
 .logo-top {
@@ -615,6 +683,8 @@ h2 {
 @media (max-height: 700px) {
   .sheet { padding: 16px 16px 14px; border-radius: 20px; }
   .crew canvas { flex-basis: 54px; border-radius: 14px; }
+  .logo-mark { width: 56px; height: 56px; margin-bottom: 6px; }
+  .mark-sm { width: 40px; height: 40px; margin-bottom: 10px; }
   .logo-top { font-size: 34px; }
   .tagline { margin-bottom: 12px; }
   .crew-tag { margin-bottom: 12px; }
@@ -626,6 +696,7 @@ h2 {
 @media (min-width: 760px) {
   .sheet { padding: 28px 26px 22px; }
   .crew canvas { flex-basis: 68px; }
+  .logo-mark { width: 90px; height: 90px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

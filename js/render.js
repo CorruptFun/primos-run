@@ -2,12 +2,13 @@
 
 import { cam, project, projectClamped, viewport } from './camera.js';
 import { ALLEY_HALF, DRAW_DIST, FOG_START, LANE_W, HITBOX } from './config.js';
-import { PAL, quad, fogAmount } from './art/palette.js';
+import { PAL, quad, fogAmount, hash01 } from './art/palette.js';
 import { drawSky, drawWallSegment, drawSkyline, drawWires } from './art/scenery.js';
 import { PROP_DRAW, drawChaser } from './art/props.js';
 import { drawRunner } from './art/runner.js';
 import { drawParticles } from './particles.js';
 import { propSprite, drawPropSprite } from './art/sprites.js';
+import { drawWetReflection, drawPuddles } from './art/wet.js';
 
 const SEG = 4;
 
@@ -16,6 +17,27 @@ export function renderScene(ctx, g) {
   const t = g.time;
 
   ctx.clearRect(0, 0, W, H);
+
+  // Camera roll. Applied to the whole scene rather than to individual pieces —
+  // it is the CAMERA that banks into a lane change, so sky, walls and road all
+  // have to tilt together. Pivoting on the vanishing point keeps the far end of
+  // the alley pinned while the near edges swing, which is what a real bank does.
+  // The HUD is drawn later in main.js on an untransformed context, so it stays
+  // level; a tilting score readout reads as a bug.
+  const rolled = Math.abs(cam.roll) > 0.0005;
+  if (rolled) {
+    ctx.save();
+    ctx.translate(W * 0.5, horizon);
+    ctx.rotate(cam.roll);
+    // Rotating a rectangle that exactly fills the viewport swings its corners
+    // inside the frame and leaves bare wedges at the edges. Scaling up by a
+    // little more than the rotation needs keeps the frame covered; the pivot is
+    // the horizon rather than the centre, so this is deliberately generous.
+    const cover = 1 + Math.abs(cam.roll) * 3.2;
+    ctx.scale(cover, cover);
+    ctx.translate(-W * 0.5, -horizon);
+  }
+
   drawSky(ctx, W, H, horizon, t, cam.x);
 
   const zNear = cam.z + 0.6;
@@ -41,10 +63,20 @@ export function renderScene(ctx, g) {
     if (idx % 3 === 0) drawWires(ctx, project, z, z + SEG, idx * 1.9, alpha);
   }
 
+  // The road is wet. Reflect the alley into it before anything stands on it,
+  // so props and the runner sit ON the sheen rather than under it.
+  drawWetReflection(ctx, projectClamped, cam.z, W, H, horizon, t);
+  drawPuddles(ctx, projectClamped, cam.z, t);
+
   drawProps(ctx, g, t);
   drawPlayer(ctx, g, t);
   drawTheChaser(ctx, g, t);
   drawParticles(ctx, project);
+
+  // Everything past here is screen space — flashes, siren wash, vignette — so
+  // it must not inherit the roll.
+  if (rolled) ctx.restore();
+
   drawPostFX(ctx, g, W, H, horizon);
 }
 
@@ -99,6 +131,37 @@ function drawGroundSegment(ctx, z0, z1, alpha, idx) {
   }
   if (idx % 7 === 3) {
     strip(-ALLEY_HALF + 0.3, -ALLEY_HALF + 0.9, z0 + 0.6, z0 + 3.2, 'rgba(50,44,58,0.55)');
+  }
+
+  // Near-field detail. Segments close to the camera cover a third of the screen
+  // each, and with only the features above they read as a blank slab — the road
+  // ahead looks resurfaced while the road underfoot looks unpainted. These are
+  // cheap because they only ever run on the handful of segments in front.
+  const dzSeg = z0 - cam.z;
+  if (dzSeg < 22) {
+    // tar seams snaking across the lanes
+    const s = hash01(idx * 3.7);
+    strip(-ALLEY_HALF + s * 0.6, ALLEY_HALF - s * 0.4,
+      z0 + 1.1 + s * 1.6, z0 + 1.22 + s * 1.6, 'rgba(22,16,28,0.5)');
+    // pale repair patch, offset per segment so it never lines up with the lanes
+    if (idx % 3 === 1) {
+      const px = (hash01(idx * 5.1) * 2 - 1) * 1.1;
+      strip(px - 0.42, px + 0.42, z0 + 2.4, z0 + 3.5, 'rgba(74,66,80,0.42)');
+    }
+    // drain grate hugging a gutter
+    if (idx % 4 === 0) {
+      const side = hash01(idx * 9.3) > 0.5 ? 1 : -1;
+      const gx = side * (ALLEY_HALF - 0.5);
+      strip(gx - 0.22, gx + 0.22, z0 + 0.8, z0 + 1.5, 'rgba(28,22,34,0.85)');
+      for (let i = 0; i < 3; i++) {
+        strip(gx - 0.18, gx + 0.18,
+          z0 + 0.9 + i * 0.2, z0 + 0.96 + i * 0.2, 'rgba(96,88,104,0.55)');
+      }
+    }
+    // faded stencil paint, the kind that survives one repaving
+    if (idx % 6 === 4) {
+      strip(-0.12, 0.12, z0 + 3.0, z0 + 4.4, 'rgba(190,176,132,0.16)');
+    }
   }
 
   ctx.restore();

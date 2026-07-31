@@ -24,6 +24,10 @@ const MASK = { cx: 128, cy: 132, rx: 96, ry: 104, feather: 12 };
 // average drags the whole flannel toward it.
 const SHIRT_BAND = { x0: 0.17, x1: 0.83, y0: 0.79, y1: 0.97, skipMid: 0.10 };
 const SKIN_PTS = [[0.68, 0.58], [0.63, 0.66], [0.36, 0.60], [0.70, 0.50], [0.34, 0.52]];
+// Crown of the head. Whatever sits here — hair, a cap, a bandana, a hood — is
+// what the back of the head should be made of, so it is sampled without trying
+// to decide which of those it is.
+const HAIR_PTS = [[0.50, 0.14], [0.42, 0.16], [0.58, 0.16], [0.46, 0.11], [0.54, 0.11]];
 
 function canvas2d(w, h) {
   const c = document.createElement('canvas');
@@ -121,6 +125,16 @@ export function headFromCharacter(ch) {
     shirtDark: ch.shirtDark,
     skin: ch.skin,
     skinDark: ch.skinDark,
+    // Traits the runner's back-of-head is built from. The baked sprite above is
+    // still used for the menu tiles and the HUD badge, which face the player.
+    hair: ch.hair,
+    hairDark: ch.hairDark || null,
+    hairLight: ch.hairLight || null,
+    hairStyle: ch.hairStyle,
+    bandana: ch.bandana,
+    beanie: ch.beanie,
+    hoops: ch.hoops,
+    shades: ch.shades,
   };
 }
 
@@ -130,12 +144,15 @@ function samplePalette(img, sw, sh) {
   const fallback = {
     shirt: '#3c5f9e', shirtDark: '#28406d',
     skin: '#b9784e', skinDark: '#96593a',
+    hair: '#221a1e', hairDark: '#150f12', hairLight: '#3d2f34',
+    hairStyle: 'messy',
   };
   try {
     const { x: ctx } = canvas2d(sw, sh);
     ctx.drawImage(img, 0, 0);
     let shirt = medianBand(ctx, sw, sh, SHIRT_BAND);
     const skin = averageAt(ctx, sw, sh, SKIN_PTS, isSkinLike);
+    const hair = averageAt(ctx, sw, sh, HAIR_PTS, null);
     // A near-grey sample means we landed on a white tee or a washed plaid, not
     // the shirt's actual colour — a grey runner reads as a smudge in game.
     if (shirt) {
@@ -147,6 +164,12 @@ function samplePalette(img, sw, sh) {
       shirtDark: shirt ? rgb(shade(shirt, 0.62)) : fallback.shirtDark,
       skin: skin ? rgb(skin) : fallback.skin,
       skinDark: skin ? rgb(shade(skin, 0.78)) : fallback.skinDark,
+      hair: hair ? rgb(hair) : fallback.hair,
+      hairDark: hair ? rgb(shade(hair, 0.6)) : fallback.hairDark,
+      // Clamped up rather than scaled: near-black hair scaled by 1.5 is still
+      // near-black, and the crown sheen would never show.
+      hairLight: hair ? rgb(lift(hair, 46)) : fallback.hairLight,
+      hairStyle: 'messy',
     };
   } catch {
     // Tainted canvas (a gateway without CORS) — the head still draws fine.
@@ -214,6 +237,7 @@ function isSkinLike(r, g, b) {
 }
 
 const shade = ([r, g, b], k) => [r * k, g * k, b * k];
+const lift = ([r, g, b], n) => [Math.min(255, r + n), Math.min(255, g + n), Math.min(255, b + n)];
 const rgb = ([r, g, b]) =>
   `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`;
 

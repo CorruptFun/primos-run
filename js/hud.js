@@ -3,6 +3,7 @@
 
 import { PAL, roundRect } from './art/palette.js';
 import { drawPrimoPortrait } from './art/runner.js';
+import { drawLogo } from './art/logo.js';
 import { POWER, STAMINA, CHASE, SCORE } from './config.js';
 
 const FONT = 'ui-rounded, "SF Pro Rounded", system-ui, sans-serif';
@@ -71,7 +72,7 @@ function tick(g, dt) {
   fx.stam += (stam - fx.stam) * Math.min(1, dt * 11);
 }
 
-export function drawHUD(ctx, g, W, H, dt, safeTop = 0) {
+export function drawHUD(ctx, g, W, H, dt, safeTop = 0, safeBottom = 0) {
   const s = Math.min(W, H) / 420;           // one scale knob for the whole HUD
   const pad = 14 * s;
   const top = safeTop + pad;
@@ -87,7 +88,10 @@ export function drawHUD(ctx, g, W, H, dt, safeTop = 0) {
   // the bottom of the pause button.
   drawStamina(ctx, g, pad, top + 72 * s, s, H);
   drawPortrait(ctx, g, W - pad, top + 92 * s, s);
-  drawPowerPills(ctx, g, pad, H - pad, s);
+  // Both clear the home indicator / gesture bar. Anchored to H alone they sit
+  // under it on any phone with a soft bottom bar.
+  drawPowerPills(ctx, g, pad, H - pad - safeBottom, s);
+  drawWatermark(ctx, W, H - safeBottom, pad, s);
   drawToasts(ctx, W, H, s, dt);
   ctx.restore();
 }
@@ -591,6 +595,13 @@ function drawPortrait(ctx, g, right, y, s) {
   back.addColorStop(1, '#1c1328');
   ctx.fillStyle = back;
   ctx.fillRect(x, y, size, size);
+  // Crew seal behind the head, oversized so the frame crops it. Sized to the
+  // frame instead, the mark's outer ring is all that clears the head and it
+  // reads as a stray circle; cropped at 1.75x it reads as branding on the ID
+  // card. It flushes gold while a combo is live and flares on every bump,
+  // which gives the multiplier a second, quieter tell than the chip alone.
+  drawLogo(ctx, x + size * 0.34, y + size * 0.3, size * 1.75,
+    hot ? PAL.gold : INK, (hot ? 0.24 : 0.15) + 0.22 * fx.multPop);
   drawPrimoPortrait(ctx, x + size / 2, y + size * 0.62, size * 0.86, g.character, {
     img: g.customImage,
   });
@@ -744,6 +755,24 @@ function powerGlyph(ctx, key, cx, cy, size, color) {
     ctx.fill();
   }
   ctx.restore();
+}
+
+/**
+ * Corner brand mark, bottom-right — the one bit of HUD that is pure identity.
+ *
+ * Cornered rather than centred: the near field of the right lane sweeps
+ * through here, and a mark anywhere nearer the middle would read as something
+ * to dodge. The knockout variant is what makes it safe — the full disc would
+ * punch a black hole in the road. Power pills live bottom-LEFT, so the two
+ * never meet.
+ *
+ * 64px is a floor, not a preference. Below ~56 the shades and bandana collapse
+ * into the outer ring and the mark reads as a smudge, so shrinking this is not
+ * a way to make it subtler — dropping the alpha is.
+ */
+function drawWatermark(ctx, W, H, pad, s) {
+  const size = 64 * s;
+  drawLogo(ctx, W - pad - size * 0.5, H - pad - size * 0.5, size, INK, 0.26);
 }
 
 function drawToasts(ctx, W, H, s, dt) {

@@ -17,7 +17,7 @@
 */
 
 // 👉 CUSTOMIZE: rename to your app, and bump CACHE_VERSION per deploy (e.g. a build stamp).
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2-alley";
 const CACHE_NAME    = `primos-run-${CACHE_VERSION}`;
 
 // 👉 CUSTOMIZE: the offline shell, precached at install. Relative paths (resolved against
@@ -44,6 +44,12 @@ const PRECACHE = [
   "./js/particles.js",
   "./js/art/palette.js",
   "./js/art/runner.js",
+  "./js/art/head-back.js",
+  "./js/art/primo-runner.js",
+  "./js/art/wet.js",
+  "./js/art/graffiti.js",
+  "./js/art/logo.js",
+  "./art/primos-logo.png",
   "./js/art/props.js",
   "./js/art/scenery.js",
   "./js/art/primo-head.js",

@@ -31,7 +31,7 @@ const screens = {
 let saved = store.load();
 let customImg = null;      // source image for the HUD badge + menu tile
 let customRig = null;      // baked head sprite + sampled outfit palette
-let safeTop = 0;
+let safe = { top: 0, bottom: 0 };
 let primoIndex = null;     // { images: { "1921": "Qm…" } }
 
 const roster = [...CREW, CUSTOM_TEMPLATE];
@@ -55,17 +55,23 @@ function resize() {
   canvas.height = Math.floor(h * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   resizeCamera(w, h);
-  safeTop = readSafeTop();
+  safe = readSafeInsets();
 }
 
-function readSafeTop() {
+// One probe, both insets. Notch at the top, home indicator at the bottom — the
+// HUD has to clear each of them or the score sits under a sensor housing and
+// the power pills sit under the gesture bar.
+function readSafeInsets() {
   const probe = document.createElement('div');
   probe.style.cssText =
-    'position:fixed;top:0;left:0;height:env(safe-area-inset-top,0px);width:1px;pointer-events:none;';
+    'position:fixed;top:0;left:0;width:1px;pointer-events:none;visibility:hidden;' +
+    'padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);';
   document.body.appendChild(probe);
-  const v = probe.getBoundingClientRect().height || 0;
+  const cs = getComputedStyle(probe);
+  const top = parseFloat(cs.paddingTop) || 0;
+  const bottom = parseFloat(cs.paddingBottom) || 0;
   probe.remove();
-  return v;
+  return { top, bottom };
 }
 
 window.addEventListener('resize', resize);
@@ -75,18 +81,31 @@ window.addEventListener('orientationchange', () => setTimeout(resize, 120));
 
 let last = performance.now();
 
+function step(dt) {
+  if (game.state !== STATE.PAUSED) game.update(dt);
+  renderScene(ctx, game);
+  if (game.state === STATE.PLAYING || game.state === STATE.PAUSED) {
+    drawHUD(ctx, game, window.innerWidth, window.innerHeight, dt, safe.top, safe.bottom);
+  }
+}
+
 function frame(now) {
   let dt = (now - last) / 1000;
   last = now;
   if (dt > 1 / 20) dt = 1 / 20;      // a backgrounded tab must not teleport you
-
-  if (game.state !== STATE.PAUSED) game.update(dt);
-  renderScene(ctx, game);
-  if (game.state === STATE.PLAYING || game.state === STATE.PAUSED) {
-    drawHUD(ctx, game, window.innerWidth, window.innerHeight, dt, safeTop);
-  }
+  step(dt);
   requestAnimationFrame(frame);
 }
+
+// Deterministic stepper for automated capture. An automated browser runs the
+// page hidden, where requestAnimationFrame does not fire at all, so a screenshot
+// otherwise catches whatever the last real frame happened to be. Fixed dt also
+// makes captures reproducible between runs.
+window.__step = (n = 1, dt = 1 / 60) => {
+  for (let i = 0; i < n; i++) step(dt);
+  return { z: Math.round(game.player.z), state: game.state };
+};
+window.__game = game;
 
 // ------------------------------------------------------------------- input
 

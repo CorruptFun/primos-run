@@ -2,7 +2,7 @@
 
 import {
   LANE_W, RUN, STAMINA, CHASE, POWER, SCORE, HITBOX,
-  MAGNET_RADIUS, CHANCLA_SPEED,
+  MAGNET_RADIUS, CHANCLA_SPEED, JUICE,
 } from './config.js';
 import { World } from './world.js';
 import { CREW } from './art/runner.js';
@@ -27,6 +27,11 @@ function fallbackRig(c) {
     shirt: c.shirt, shirtDark: c.shirtDark,
     skin: c.skin, skinDark: c.skinDark,
     pants: c.pants,
+    // The runner's head is drawn from these, not from the baked sprite, so they
+    // have to survive the fallback path too or a character picked before the
+    // bake finishes runs around bald.
+    hair: c.hair, hairStyle: c.hairStyle,
+    bandana: c.bandana, beanie: c.beanie, hoops: c.hoops, shades: c.shades,
   };
 }
 
@@ -275,7 +280,8 @@ export class Game {
     this.world.prune(p.z);
     this.collide(dt);
     updateParticles(dt);
-    updateCamera(dt, p.x, p.z, p.y);
+    updateCamera(dt, p.x, p.z, p.y,
+      this.speedK(), this.power.chancla > 0 ? 1 : 0, p.phase, !p.airborne);
 
     this.multiplier = Math.min(SCORE.comboMax, 1 + Math.floor(this.combo / SCORE.comboStep));
   }
@@ -316,14 +322,32 @@ export class Game {
         continue;
       }
 
-      if (o.kind === 'jump' && p.y >= o.h) continue;
+      if (o.kind === 'jump' && p.y >= o.h) {
+        this.nearMiss(o, Math.abs(p.y - o.h));
+        continue;
+      }
       if (o.kind === 'slide') {
         const top = p.y + playerH;
-        if (top <= o.y || p.y >= o.y + o.h) continue;
+        if (top <= o.y || p.y >= o.y + o.h) {
+          this.nearMiss(o, Math.abs(top - o.y));
+          continue;
+        }
       }
 
       this.hit(o);
     }
+  }
+
+  /**
+   * A clearance you only just made. Fires once per obstacle, and only when the
+   * gap was genuinely tight — rewarding a comfortable jump with the same kick
+   * as a hair's-breadth one teaches the player nothing.
+   * @param {number} gap world units of clearance
+   */
+  nearMiss(o, gap) {
+    if (o.grazed || gap > JUICE.nearMiss) return;
+    o.grazed = true;
+    addShake(JUICE.nearMissShake * (1 - gap / JUICE.nearMiss));
   }
 
   takePickup(o) {

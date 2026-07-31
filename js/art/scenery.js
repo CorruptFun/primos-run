@@ -6,7 +6,10 @@
 // behave the same on a phone and a desktop) — the wall two metres away gets
 // slats and mortar joints, the one at the fog line gets three fills.
 
-import { PAL, TAG_COLORS, hash01, quad, roundRect } from './palette.js';
+import { PAL, TAG_COLORS, hash01, hexA, tintA, quad, roundRect } from './palette.js';
+import {
+  autoTag, throwUp, wordTag, ghostWord, logoStencil, logoReady, pickWord, pickSign,
+} from './graffiti.js';
 import { ALLEY_HALF, WALL_H } from '../config.js';
 
 const TAU = Math.PI * 2;
@@ -300,7 +303,11 @@ function horizonPalms(ctx, W, H, horizon, camX) {
 // frame; rebuilding a dozen closures each time is pure garbage pressure.
 const S = {
   ctx: null, P: null, wx: 0, side: 1, z0: 0, z1: 0, len: 0,
-  u: 0, lod: 0, lit: false, seed: 0,
+  u: 0, lod: 0, lit: false, seed: 0, dz: 0,
+  // The wall's own shaded base colour, and the same colour at the alpha the
+  // graffiti layer scrubs paint back with. Paint that gets eaten by anything
+  // other than the wall it is on never looks worn, it looks smudged.
+  base: '#000', wearCol: 'rgba(0,0,0,0.4)',
 };
 
 /** Add an axis-aligned wall-plane rect to the current path. */
@@ -391,6 +398,7 @@ export function drawWallSegment(ctx, P, side, z0, z1, seed, alpha) {
 
   S.ctx = ctx; S.P = P; S.wx = wx; S.side = side;
   S.z0 = z0; S.z1 = z1; S.len = len; S.seed = seed; S.lod = lod;
+  S.dz = dz;
   S.u = (a.scale + d.scale) * 0.5;
   S.lit = side < 0;
 
@@ -403,10 +411,16 @@ export function drawWallSegment(ctx, P, side, z0, z1, seed, alpha) {
   const bases = [PAL.stuccoA, PAL.stuccoB, PAL.stuccoC, PAL.stuccoD, PAL.brick, PAL.stuccoB];
   // The left wall eats the low sun; the right one sits in its own shadow.
   const shade = (S.lit ? 1.03 : 0.56) * (0.88 + hash01(seed * 2.11) * 0.24);
-  quad(ctx, a, b, c, d, tint(bases[kind], shade));
+  S.base = tint(bases[kind], shade);
+  S.wearCol = tintA(bases[kind], shade, 0.46);
+  quad(ctx, a, b, c, d, S.base);
 
   shadingBands();
   buildingSeam();
+
+  // Kinds that carry a piece of their own set this, so a wall never ends up
+  // with two full throw-ups fighting over four metres.
+  S.tagged = false;
 
   switch (kind) {
     case 0: kindGarage(); break;
@@ -417,12 +431,17 @@ export function drawWallSegment(ctx, P, side, z0, z1, seed, alpha) {
     default: kindCanvas(); break;
   }
 
-  if (lod > 0) grimeStreaks();
-  if (lod > 0 && hash01(seed * 5.3) > 0.4) {
+  // Paint, THEN grime, THEN the hardware. Grime laid over the tags is half of
+  // why they read as painted onto the wall rather than pasted onto it, and the
+  // fire escape has to come last because it is the only thing here with depth.
+  if (lod > 0 && !S.tagged && hash01(seed * 5.3) > 0.5) {
     const col = TAG_COLORS[Math.floor(hash01(seed * 2.9) * TAG_COLORS.length)];
-    tag(z0 + len * (0.12 + hash01(seed * 6.7) * 0.3), WALL_H * (0.16 + hash01(seed * 8.1) * 0.16),
+    autoTag(S, z0 + len * (0.12 + hash01(seed * 6.7) * 0.3),
+      WALL_H * (0.16 + hash01(seed * 8.1) * 0.16),
       len * 0.5, WALL_H * 0.2, col, seed * 3.3);
   }
+  if (lod > 0) grimeStreaks();
+  alleyFixtures();
 
   // One wash over the finished segment so paint, glass and graffiti all obey
   // the same light — without it the murals read equally bright on both walls.
@@ -500,12 +519,25 @@ function grimeStreaks() {
 // ------------------------------------------------------------ wall features
 
 function kindGarage() {
-  const { z0, len } = S;
-  garageDoor(z0 + len * 0.1, z0 + len * 0.78, WALL_H * 0.6);
-  if (S.lod > 0) {
-    meterBox(z0 + len * 0.85, WALL_H * 0.3, len * 0.09, WALL_H * 0.14);
+  const { z0, len, lod, seed } = S;
+  const zA = z0 + len * 0.1, zB = z0 + len * 0.76;
+  garageDoor(zA, zB, WALL_H * 0.6);
+  if (lod > 0) {
+    // A painted board over the bay is what turns a shutter into the back of a
+    // business. It is also the biggest single block of value on the wall.
+    signBoard(zA, zB, WALL_H * 0.67, WALL_H * 0.85,
+      pickSign(S, seed * 4.3, (zB - zA) * 0.9, WALL_H * 0.11),
+      TAG_COLORS[Math.floor(hash01(seed * 7.7) * TAG_COLORS.length)]);
+    meterBox(z0 + len * 0.83, WALL_H * 0.3, len * 0.09, WALL_H * 0.14);
     downpipe(z0 + len * 0.95, WALL_H * 0.92);
+    // Roll-up shutters get hit first and hardest — that is what they are for.
+    if (hash01(seed * 9.7) > 0.46) {
+      autoTag(S, zA + (zB - zA) * 0.08, WALL_H * 0.14, (zB - zA) * 0.8, WALL_H * 0.22,
+        TAG_COLORS[Math.floor(hash01(seed * 5.1) * TAG_COLORS.length)], seed * 6.1);
+      S.tagged = true;
+    }
   }
+  if (lod === 2) { bollard(zA - 0.16); bollard(zB + 0.16); }
 }
 
 function kindWindows() {
@@ -513,17 +545,27 @@ function kindWindows() {
   if (lod > 0) barWindow(z0 + len * 0.08, z0 + len * 0.34, WALL_H * 0.4, WALL_H * 0.68);
   barWindow(z0 + len * 0.42, z0 + len * 0.68, WALL_H * 0.4, WALL_H * 0.68);
   doorway(z0 + len * 0.76, z0 + len * 0.96, WALL_H * 0.5);
+  if (lod > 0) {
+    // One hard band across the heads of the openings. A single dark rectangle
+    // does more for "this is a building" than any amount of moulding.
+    face(z0, z0 + len, WALL_H * 0.7, WALL_H * 0.765, 'rgba(13,6,17,0.5)');
+    face(z0, z0 + len, WALL_H * 0.755, WALL_H * 0.775,
+      S.lit ? 'rgba(255,214,158,0.55)' : 'rgba(152,142,184,0.2)');
+    conduit(z0 + len * 0.72, WALL_H * 0.28, WALL_H * 0.7);
+  }
   if (lod === 2) {
     // through-wall AC dripping onto the stucco below it
-    face(z0 + len * 0.44, z0 + len * 0.6, WALL_H * 0.24, WALL_H * 0.34, '#4d5460');
-    face(z0 + len * 0.44, z0 + len * 0.6, WALL_H * 0.32, WALL_H * 0.34, '#6c7482');
-    face(z0 + len * 0.5, z0 + len * 0.53, 0, WALL_H * 0.24, 'rgba(26,16,32,0.3)');
+    face(z0 + len * 0.44, z0 + len * 0.6, WALL_H * 0.22, WALL_H * 0.34, 'rgba(10,5,14,0.8)');
+    face(z0 + len * 0.445, z0 + len * 0.595, WALL_H * 0.235, WALL_H * 0.335, '#4d5460');
+    face(z0 + len * 0.445, z0 + len * 0.595, WALL_H * 0.315, WALL_H * 0.335, '#7d8593');
+    face(z0 + len * 0.5, z0 + len * 0.53, 0, WALL_H * 0.235, 'rgba(26,16,32,0.32)');
   }
 }
 
 function kindMural() {
   const { z0, len } = S;
   mural(z0 + len * 0.07, z0 + len * 0.93, WALL_H * 0.18, WALL_H * 0.78, S.seed);
+  S.tagged = true;
   if (S.lod > 0) downpipe(z0 + len * 0.985, WALL_H * 0.9);
 }
 
@@ -559,16 +601,21 @@ function kindBrick() {
   if (lod > 0) {
     vent(z0 + len * 0.56, WALL_H * 0.56, len * 0.14, WALL_H * 0.12);
     downpipe(z0 + len * 0.88, WALL_H * 0.93);
-    // faded ghost sign painted straight onto the brick
-    tag(z0 + len * 0.5, WALL_H * 0.16, len * 0.42, WALL_H * 0.16,
-      'rgba(240,226,204,0.3)', S.seed * 9.1, true);
+    // An old painted ad still legible under fifty years of soot. Flat, no
+    // keyline — the brick eats it rather than the other way round.
+    const text = pickSign(S, S.seed * 9.1, len * 0.5, WALL_H * 0.14);
+    if (text) {
+      ghostWord(S, text, z0 + len * 0.24, WALL_H * 0.15, len * 0.52, WALL_H * 0.14,
+        'rgba(238,224,202,0.32)', S.seed * 9.1);
+      S.tagged = true;
+    }
   }
 }
 
 function kindStorefront() {
-  const { z0, len, lod } = S;
+  const { z0, len, lod, seed } = S;
   // boarded-up window: plywood over the opening
-  face(z0 + len * 0.08, z0 + len * 0.56, WALL_H * 0.24, WALL_H * 0.66, 'rgba(12,7,16,0.85)');
+  face(z0 + len * 0.08, z0 + len * 0.56, WALL_H * 0.24, WALL_H * 0.66, 'rgba(10,5,14,0.9)');
   faceGrad(z0 + len * 0.1, z0 + len * 0.54, WALL_H * 0.26, WALL_H * 0.64,
     '#5a4530', '#8a6c46');
   if (lod > 0) {
@@ -582,6 +629,11 @@ function kindStorefront() {
   }
   awning(z0 + len * 0.06, z0 + len * 0.6, WALL_H * 0.74, 0.5);
   doorway(z0 + len * 0.68, z0 + len * 0.88, WALL_H * 0.52);
+  if (lod > 0) {
+    signBoard(z0 + len * 0.05, z0 + len * 0.72, WALL_H * 0.77, WALL_H * 0.915,
+      pickSign(S, seed * 2.9, len * 0.6, WALL_H * 0.09),
+      TAG_COLORS[Math.floor(hash01(seed * 3.7) * TAG_COLORS.length)]);
+  }
   if (lod === 2) {
     // flyers pasted next to the door
     face(z0 + len * 0.92, z0 + len * 0.97, WALL_H * 0.32, WALL_H * 0.44, 'rgba(242,232,210,0.75)');
@@ -590,10 +642,16 @@ function kindStorefront() {
 }
 
 function kindCanvas() {
-  const { z0, len, lod } = S;
-  // A clean-ish stucco face that exists to carry one big burner.
-  const ci = Math.floor(hash01(S.seed * 4.9) * TAG_COLORS.length);
-  tag(z0 + len * 0.14, WALL_H * 0.3, len * 0.66, WALL_H * 0.24, TAG_COLORS[ci], S.seed * 2.1);
+  const { z0, len, lod, seed } = S;
+  // A clean-ish stucco face that exists to carry one big piece. This is the
+  // wall the crew stencil goes up on.
+  const col = TAG_COLORS[Math.floor(hash01(seed * 4.9) * TAG_COLORS.length)];
+  if (lod === 2 && logoReady() && hash01(seed * 8.3) > 0.52) {
+    logoStencil(S, z0 + len * 0.4, WALL_H * 0.24, WALL_H * 0.44, seed * 2.1);
+  } else {
+    autoTag(S, z0 + len * 0.12, WALL_H * 0.28, len * 0.68, WALL_H * 0.26, col, seed * 2.1);
+  }
+  S.tagged = true;
   if (lod > 0) {
     vent(z0 + len * 0.08, WALL_H * 0.78, len * 0.12, WALL_H * 0.1);
     vent(z0 + len * 0.3, WALL_H * 0.78, len * 0.12, WALL_H * 0.1);
@@ -604,11 +662,18 @@ function kindCanvas() {
 
 function garageDoor(za, zb, hTop) {
   const { u, lod, lit, ctx } = S;
-  face(za - 0.1, zb + 0.1, 0, hTop + 0.16, 'rgba(16,8,20,0.7)');          // reveal
+  // Painted surround, then a near-black reveal. The jump from the brightest
+  // value on the wall to the darkest across one edge is what makes the bay
+  // read as a hole rather than a panel.
+  if (lod > 0) {
+    face(za - 0.19, zb + 0.19, 0, hTop + 0.26,
+      lit ? 'rgba(252,232,198,0.42)' : 'rgba(146,136,178,0.15)');
+  }
+  face(za - 0.1, zb + 0.1, 0, hTop + 0.16, 'rgba(6,3,10,0.88)');          // reveal
   faceGrad(za, zb, 0, hTop, tint(PAL.garage, lit ? 0.5 : 0.32),
     tint(PAL.garage, lit ? 1.1 : 0.68));
 
-  const n = lod === 2 ? 11 : lod === 1 ? 7 : 4;
+  const n = lod === 2 ? 9 : lod === 1 ? 6 : 4;
   ctx.beginPath();
   for (let i = 1; i < n; i++) edge(za, (i / n) * hTop, zb, (i / n) * hTop);
   strokeNow('rgba(8,4,12,0.5)', u * 0.014);
@@ -624,8 +689,12 @@ function garageDoor(za, zb, hTop) {
   if (lod > 0) {
     face(za, za + 0.05, 0, hTop, 'rgba(8,4,12,0.45)');                     // guide rails
     face(zb - 0.05, zb, 0, hTop, 'rgba(8,4,12,0.45)');
-    face(za, zb, 0, 0.06, 'rgba(6,3,9,0.9)');                              // rubber seal
-    face(za - 0.06, zb + 0.06, hTop - 0.05, hTop + 0.08, 'rgba(12,6,16,0.72)'); // lintel
+    // Heavy bottom rail + rubber seal. A roll-up door's silhouette is that
+    // one thick dark bar sitting on the asphalt.
+    face(za - 0.02, zb + 0.02, 0, 0.19, tint(PAL.garage, lit ? 0.44 : 0.26));
+    face(za - 0.02, zb + 0.02, 0.16, 0.19, lit ? 'rgba(255,222,178,0.4)' : 'rgba(180,190,220,0.16)');
+    face(za, zb, 0, 0.06, 'rgba(6,3,9,0.9)');
+    face(za - 0.09, zb + 0.09, hTop - 0.05, hTop + 0.11, 'rgba(9,4,13,0.82)'); // lintel
     const mz = (za + zb) * 0.5;
     face(mz - 0.18, mz + 0.18, hTop * 0.15, hTop * 0.2, 'rgba(18,12,24,0.85)');
     face(mz - 0.18, mz + 0.18, hTop * 0.19, hTop * 0.2, 'rgba(200,196,210,0.25)');
@@ -644,22 +713,26 @@ function barWindow(za, zb, y0, y1) {
     lit ? 'rgba(255,186,116,0.8)' : 'rgba(118,138,190,0.5)');
 
   if (lod > 0) {
-    const nb = lod === 2 ? 5 : 3;
+    // Fewer, fatter bars. Security grilles read by their rhythm, and a fine
+    // one turns to grey mush two segments away where a coarse one still reads.
+    const nb = lod === 2 ? 4 : 3;
     ctx.beginPath();
     for (let i = 1; i <= nb; i++) {
       const z = za + (zb - za) * (i / (nb + 1));
       edge(z, y0, z, y1);
     }
     edge(za, (y0 + y1) * 0.5, zb, (y0 + y1) * 0.5);
-    strokeNow('rgba(6,3,10,0.8)', u * 0.022);
+    strokeNow('rgba(5,2,9,0.88)', u * 0.03);
     if (lod === 2) {
       ctx.beginPath();
       for (let i = 1; i <= nb; i++) {
         const z = za + (zb - za) * (i / (nb + 1)) - 0.015;
         edge(z, y0, z, y1);
       }
-      strokeNow('rgba(190,190,210,0.28)', u * 0.007);                      // round-bar rim
+      strokeNow('rgba(190,190,210,0.28)', u * 0.009);                      // round-bar rim
     }
+    // Lintel: one hard shadow bar over the head of the opening.
+    face(za - 0.12, zb + 0.12, y1 + 0.04, y1 + 0.13, 'rgba(9,4,13,0.62)');
     face(za - 0.1, zb + 0.1, y0 - 0.11, y0 - 0.03,
       lit ? 'rgba(255,208,152,0.8)' : 'rgba(86,78,110,0.65)');             // sill
   }
@@ -739,13 +812,15 @@ function mural(za, zb, y0, y1, sd) {
 
   const zc = (za + zb) * 0.5, yc = y0 + (y1 - y0) * 0.42;
   const rz = (zb - za) * 0.5, ry = (y1 - y0) * 0.5;
-  const nr = lod === 2 ? 9 : 6;
+  // Six fat rays, not nine thin ones. A mural seen at 40kph is a silhouette;
+  // count reads as noise, width reads as design.
+  const nr = 6;
   const pc = S.P(S.wx, yc, zc);
   if (pc) {
     ctx.beginPath();
     for (let i = 0; i < nr; i++) {
       const a = (i / nr) * TAU + 0.2;
-      const w = 0.07;
+      const w = 0.115;
       const pa = S.P(S.wx, yc + Math.sin(a - w) * ry * 2, zc + Math.cos(a - w) * rz * 2);
       const pb = S.P(S.wx, yc + Math.sin(a + w) * ry * 2, zc + Math.cos(a + w) * rz * 2);
       if (!pa || !pb) continue;
@@ -771,9 +846,18 @@ function mural(za, zb, y0, y1, sd) {
   face(za, zb, y0 + (y1 - y0) * 0.1, y0 + (y1 - y0) * 0.14, tintA(c3, 0.9, 0.55));
   ctx.restore();
 
+  // A mural is a commissioned piece, so it gets a name across it rather than
+  // an anonymous throw-up — and this is the wall the crew signs.
   if (lod > 0) {
-    tag(za + (zb - za) * 0.14, y0 + (y1 - y0) * 0.18, (zb - za) * 0.72,
-      (y1 - y0) * 0.26, '#f7edd8', sd * 5.7);
+    const bz = za + (zb - za) * 0.12, bw = (zb - za) * 0.76, bh = (y1 - y0) * 0.28;
+    const by = y0 + (y1 - y0) * 0.16;
+    const text = pickWord(S, sd * 5.7, bw, bh);
+    if (text) wordTag(S, text, bz, by, bw, bh, '#f7edd8', sd * 5.7);
+    else throwUp(S, bz, by, bw, bh, '#f7edd8', sd * 5.7);
+    if (lod === 2 && logoReady() && hash01(sd * 6.9) > 0.5) {
+      logoStencil(S, zb - (zb - za) * 0.12, y0 + (y1 - y0) * 0.6,
+        (y1 - y0) * 0.28, sd * 8.3);
+    }
   }
   // Painted border, brighter on the sunlit wall.
   ctx.beginPath();
@@ -807,6 +891,28 @@ function vent(zc, yc, w, h) {
     S.lit ? 'rgba(226,210,224,0.4)' : 'rgba(140,130,164,0.22)');
 }
 
+/** A run of surface conduit — three flat strips and two straps, no more. */
+function conduit(zz, y0, y1) {
+  face(zz - 0.02, zz + 0.07, y0, y1, 'rgba(10,5,14,0.35)');
+  face(zz, zz + 0.05, y0, y1, S.lit ? '#7a7080' : '#443c50');
+  face(zz, zz + 0.02, y0, y1, '#241d2a');
+  face(zz - 0.03, zz + 0.08, y0 + (y1 - y0) * 0.3, y0 + (y1 - y0) * 0.34, '#241d2a');
+  face(zz - 0.03, zz + 0.08, y0 + (y1 - y0) * 0.78, y0 + (y1 - y0) * 0.82, '#241d2a');
+}
+
+/** Steel pipe bollard guarding a loading bay. Real depth, so it silhouettes. */
+function bollard(z) {
+  const h = 0.85, out = 0.34;
+  const shaft = S.lit ? '#c8a23c' : '#6d5a30';
+  fixPoly([[0, 0, z - 0.09], [out, 0, z - 0.09], [out, 0, z + 0.09], [0, 0, z + 0.09]],
+    'rgba(8,4,12,0.5)');                                                   // contact shadow
+  fixPoly([[out, 0, z - 0.09], [out, h, z - 0.09], [out, h, z + 0.09], [out, 0, z + 0.09]], shaft);
+  fixPoly([[out, 0, z + 0.04], [out, h, z + 0.04], [out, h, z + 0.09], [out, 0, z + 0.09]],
+    'rgba(10,5,14,0.4)');                                                  // round-off
+  fixPoly([[out, h - 0.14, z - 0.09], [out, h - 0.09, z - 0.09],
+           [out, h - 0.09, z + 0.09], [out, h - 0.14, z + 0.09]], 'rgba(14,7,18,0.6)');
+}
+
 function meterBox(zc, yc, w, h) {
   face(zc - 0.04, zc + w + 0.04, yc - 0.04, yc + h, 'rgba(10,5,14,0.5)');
   faceGrad(zc, zc + w, yc, yc + h, '#2f3540', S.lit ? '#6a7280' : '#414855');
@@ -817,51 +923,198 @@ function meterBox(zc, yc, w, h) {
   }
 }
 
-// Fat marker glyphs — enough shape variety to read as lettering at speed.
-const GLYPHS = [
-  [[0, 0], [0, 1], [0.62, 0.92], [0.62, 0.5], [0.05, 0.46]],
-  [[0, 0], [0, 1], [0.62, 0.7], [0.05, 0.44], [0.62, 0]],
-  [[0.62, 0.95], [0.05, 0.82], [0.6, 0.5], [0.02, 0.16], [0.6, 0.05]],
-  [[0, 0], [0.02, 1], [0.32, 0.42], [0.6, 1], [0.62, 0]],
-  [[0.02, 0.28], [0, 0.74], [0.3, 1], [0.6, 0.72], [0.58, 0.26], [0.3, 0], [0.02, 0.28]],
-  [[0, 1], [0.3, 0], [0.6, 1], [0.12, 0.5], [0.5, 0.5]],
-];
+/**
+ * A flat painted sign board — the single strongest "back of a real building"
+ * cue there is, and it costs three fills and a word. Deliberately blunt: a
+ * dark plate, a bright field, a keyline, lettering. No gradients, no chrome.
+ */
+function signBoard(za, zb, y0, y1, text, col, ink) {
+  // A sign on a wall segment level with the camera projects across most of the
+  // screen as a flat slab — it lands over the score, reads as a UI panel rather
+  // than as signage, and its lettering is far too large to parse. Signs are the
+  // biggest thing on a wall, so they need a wider berth than the tags (3.5) or
+  // the bolt-on fixtures (2.5).
+  // Measured: the nearest segment the renderer draws sits at dz ~4.4, so a 4.0
+  // gate lets the closest wall keep its sign — and a sign there lands square in
+  // the top corner behind the score, reading as a UI panel rather than as
+  // signage. 9 keeps them at a distance where the lettering is still legible
+  // but the board no longer competes with the HUD.
+  if (S.dz < 9.0) return;
+  face(za - 0.05, zb + 0.05, y0 - 0.05, y1 + 0.05, 'rgba(10,5,14,0.7)');   // shadow/plate
+  face(za, zb, y0, y1, tintA(col, S.lit ? 1 : 0.6, 0.95));
+  face(za, zb, y1 - (y1 - y0) * 0.14, y1, 'rgba(255,255,255,0.14)');       // top light
+  face(za, zb, y0, y0 + (y1 - y0) * 0.16, 'rgba(12,6,16,0.3)');            // bottom shade
+  if (!text) return;
+  const pad = (y1 - y0) * 0.2;
+  // No clip: the lettering is laid out inside the board with padding, so it
+  // cannot escape, and a wall-face clip per sign is not worth the layer.
+  ghostWord(S, text, za + (zb - za) * 0.05, y0 + pad, (zb - za) * 0.9,
+    (y1 - y0) - pad * 2, ink || 'rgba(16,8,20,0.9)', S.seed * 4.3, { noClip: true });
+}
 
-/** A throw-up: dark outline, colour fill, then a highlight cut on the top-left. */
-function tag(zc, yc, w, h, col, sd, flat) {
-  const { ctx, u, lod } = S;
-  // Letter count follows the box, not the LOD — pick it from the aspect ratio
-  // or narrow boxes squash the glyphs into unreadable vertical bars.
-  const n = Math.max(2, Math.min(lod === 2 ? 5 : 4, Math.round(w / (h * 0.8))));
-  const gw = w / n;
-  const lw = Math.max(1, u * h * 0.12);
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
+// ---------------------------------------------------------------- fixtures
+//
+// Hardware bolted to the walls: drainpipes, AC units, fire escapes, service
+// lamps. This is most of what separates "an alley" from "a corridor with murals
+// on it" — the silhouette of a fire escape against the sunset is the single
+// most recognisable thing in the frame after the graffiti.
+//
+// Everything projects off the wall plane by offsetting x toward the middle of
+// the alley, so these read as real objects with depth rather than as more paint.
 
-  const pass = (dz, dy, colour, width) => {
-    ctx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const g = GLYPHS[Math.floor(hash01(sd * 3.7 + i * 11.1) * GLYPHS.length)];
-      const bz = zc + i * gw * 0.96 + dz;
-      const skew = (hash01(sd + i * 2.3) - 0.5) * 0.16;
-      for (let k = 0; k < g.length; k++) {
-        const p = S.P(S.wx, yc + dy + (g[k][1] + skew * g[k][0]) * h, bz + g[k][0] * gw * 1.4);
-        if (!p) continue;
-        if (k === 0) ctx.moveTo(p.x, p.y);
-        else ctx.lineTo(p.x, p.y);
-      }
+/** Project a point that sits `out` units off the wall, into the alley. */
+function offWall(out, y, z) {
+  return S.P(S.wx - S.side * out, y, z);
+}
+
+function fixPoly(pts, fill) {
+  const { ctx } = S;
+  const p = pts.map(([o, y, z]) => offWall(o, y, z));
+  if (p.some((q) => !q)) return false;
+  ctx.beginPath();
+  ctx.moveTo(p[0].x, p[0].y);
+  for (let i = 1; i < p.length; i++) ctx.lineTo(p[i].x, p[i].y);
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
+  return true;
+}
+
+function fixLine(a, b, col, w) {
+  const { ctx } = S;
+  const p = offWall(a[0], a[1], a[2]);
+  const q = offWall(b[0], b[1], b[2]);
+  if (!p || !q) return;
+  ctx.beginPath();
+  ctx.moveTo(p.x, p.y);
+  ctx.lineTo(q.x, q.y);
+  ctx.strokeStyle = col;
+  ctx.lineWidth = Math.max(0.5, p.scale * w);
+  ctx.stroke();
+}
+
+function alleyFixtures() {
+  const { lod, seed, z0, len, lit } = S;
+  if (lod === 0 || S.dz < 2.5) return;
+  const r = hash01(seed * 4.41);
+
+  if (r < 0.3) fireEscape(z0 + len * 0.15);
+  else if (r < 0.52) acUnit(z0 + len * (0.25 + hash01(seed * 3.3) * 0.4));
+  if (hash01(seed * 6.13) > 0.55) drainPipe(z0 + len * (0.1 + hash01(seed * 2.7) * 0.75));
+  if (lod === 2 && hash01(seed * 8.9) > 0.72) wallLamp(z0 + len * 0.5);
+}
+
+/** Rusted steel landing with a rail and a stair run down to the next floor. */
+function fireEscape(z) {
+  const lit = S.lit;
+  const steel = lit ? '#6d6a72' : '#4a4652';
+  const dark = lit ? '#3d3a44' : '#2b2833';
+  const rust = '#7a4a32';
+  const w = 1.5;                     // how far along z the landing runs
+  const out = 0.5;                   // how far it sticks into the alley
+
+  for (const lvl of [2.35, 3.5]) {
+    // underside first, so the deck reads as having thickness
+    fixPoly([[0, lvl - 0.07, z], [out, lvl - 0.07, z], [out, lvl - 0.07, z + w], [0, lvl - 0.07, z + w]], dark);
+    fixPoly([[0, lvl, z], [out, lvl, z], [out, lvl, z + w], [0, lvl, z + w]], steel);
+
+    // Slatted deck — a few gaps so light shows through.
+    for (let i = 1; i < 5; i++) {
+      const zz = z + (w * i) / 5;
+      fixLine([0, lvl + 0.002, zz], [out, lvl + 0.002, zz], 'rgba(18,12,24,0.5)', 0.012);
     }
-    ctx.strokeStyle = colour;
-    ctx.lineWidth = Math.max(0.7, width);
-    ctx.stroke();
-  };
 
-  if (flat) { pass(0, 0, col, lw * 0.8); ctx.lineCap = 'butt'; return; }
-  pass(0.05, -h * 0.07, 'rgba(8,4,12,0.4)', lw * 1.05);                    // drop shadow
-  if (lod > 0) pass(0, 0, 'rgba(12,6,16,0.85)', lw * 1.3);                 // outline
-  pass(0, 0, col.charCodeAt(0) === 35 ? hexA(col, 0.82) : col, lw);
-  if (lod === 2) pass(-0.02, h * 0.04, 'rgba(255,255,255,0.32)', lw * 0.22);
-  ctx.lineCap = 'butt';
+    // rail: top bar, uprights, mid bar
+    fixLine([out, lvl, z], [out, lvl + 0.52, z], steel, 0.022);
+    fixLine([out, lvl, z + w], [out, lvl + 0.52, z + w], steel, 0.022);
+    fixLine([out, lvl + 0.52, z], [out, lvl + 0.52, z + w], steel, 0.026);
+    fixLine([out, lvl + 0.27, z], [out, lvl + 0.27, z + w], rust, 0.016);
+    for (let i = 1; i < 4; i++) {
+      const zz = z + (w * i) / 4;
+      fixLine([out, lvl, zz], [out, lvl + 0.52, zz], dark, 0.012);
+    }
+
+    // brackets tying the landing back to the brick
+    fixLine([0, lvl - 0.05, z + 0.1], [out * 0.9, lvl - 0.42, z + 0.1], rust, 0.02);
+    fixLine([0, lvl - 0.05, z + w - 0.1], [out * 0.9, lvl - 0.42, z + w - 0.1], rust, 0.02);
+  }
+
+  // Stair run between the two landings, drawn as a filled ramp plus treads.
+  fixPoly([[out * 0.15, 3.5, z + w], [out * 0.85, 3.5, z + w],
+           [out * 0.85, 2.42, z + w + 0.95], [out * 0.15, 2.42, z + w + 0.95]], dark);
+  for (let i = 0; i <= 7; i++) {
+    const k = i / 7;
+    const y = 3.5 - k * 1.08;
+    const zz = z + w + k * 0.95;
+    fixLine([out * 0.15, y, zz], [out * 0.85, y, zz], steel, 0.016);
+  }
+}
+
+/** Window-mounted air conditioner, dripping onto the asphalt below. */
+function acUnit(z) {
+  const body = S.lit ? '#8b8894' : '#5d5a68';
+  const shade = S.lit ? '#6a6773' : '#43404b';
+  const y = 2.1 + hash01(z * 3.1) * 0.8;
+  const w = 0.52, out = 0.26;
+
+  fixPoly([[0, y, z], [out, y, z], [out, y, z + w], [0, y, z + w]], shade);        // underside
+  fixPoly([[out, y, z], [out, y + 0.42, z], [out, y + 0.42, z + w], [out, y, z + w]], body);
+  fixPoly([[0, y + 0.42, z], [out, y + 0.42, z], [out, y + 0.42, z + w], [0, y + 0.42, z + w]],
+    'rgba(255,255,255,0.1)');
+  // grille
+  for (let i = 1; i < 5; i++) {
+    const yy = y + 0.08 + i * 0.07;
+    fixLine([out + 0.004, yy, z + 0.05], [out + 0.004, yy, z + w - 0.05], 'rgba(20,14,26,0.45)', 0.012);
+  }
+  // the stain it has left down the wall
+  face(z + 0.1, z + w - 0.1, 0, y, 'rgba(40,52,60,0.12)');
+}
+
+/** Cast-iron downpipe with joint collars. */
+function drainPipe(z) {
+  const col = S.lit ? '#5a5560' : '#403c48';
+  const hi = S.lit ? 'rgba(255,220,180,0.3)' : 'rgba(190,180,220,0.14)';
+  fixLine([0.09, 0, z], [0.09, WALL_H * 0.96, z], col, 0.052);
+  fixLine([0.065, 0, z], [0.065, WALL_H * 0.96, z], hi, 0.016);
+  for (let i = 1; i < 6; i++) {
+    const y = (WALL_H * 0.96 * i) / 6;
+    fixLine([0.11, y, z - 0.03], [0.11, y, z + 0.03], '#2e2a36', 0.07);
+  }
+  // Wet patch where it has been discharging onto the wall for years.
+  face(z - 0.12, z + 0.12, 0, WALL_H * 0.3, 'rgba(30,44,40,0.16)');
+}
+
+/** Bare service lamp in a cage — the only warm light down here. */
+function wallLamp(z) {
+  const { ctx } = S;
+  const y = 2.9;
+  const p = offWall(0.2, y, z);
+  if (!p) return;
+  const u = p.scale;
+
+  fixLine([0, y + 0.16, z], [0.2, y + 0.06, z], '#3a3640', 0.026);
+
+  // glow first, so the fixture sits inside its own halo
+  const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, u * 0.75);
+  g.addColorStop(0, 'rgba(255,214,140,0.5)');
+  g.addColorStop(0.45, 'rgba(255,180,100,0.16)');
+  g.addColorStop(1, 'rgba(255,170,90,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, u * 0.75, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = '#ffe9b0';
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, Math.max(0.8, u * 0.055), 0, TAU);
+  ctx.fill();
+
+  // cage
+  ctx.strokeStyle = 'rgba(30,24,34,0.75)';
+  ctx.lineWidth = Math.max(0.5, u * 0.012);
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, u * 0.09, 0, TAU);
+  ctx.stroke();
 }
 
 // ------------------------------------------------------------------ skyline
@@ -1289,16 +1542,3 @@ function tint(hex, k) {
   return `rgb(${r},${g},${b})`;
 }
 
-function hexA(hex, a) {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
-}
-
-/** Brightness-scaled + alpha in one go — the common case for painted surfaces. */
-function tintA(hex, k, a) {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.min(255, ((n >> 16) & 255) * k) | 0;
-  const g = Math.min(255, ((n >> 8) & 255) * k) | 0;
-  const b = Math.min(255, (n & 255) * k) | 0;
-  return `rgba(${r},${g},${b},${a})`;
-}

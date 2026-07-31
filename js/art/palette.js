@@ -71,6 +71,27 @@ export function quad(ctx, a, b, c, d, fill) {
   ctx.fill();
 }
 
+/**
+ * Colour maths for painted surfaces. Both tolerate a non-hex string and hand
+ * it straight back, so a caller can pass a ready-made rgba() through the same
+ * path as a palette entry without special-casing it.
+ */
+export function hexA(hex, a) {
+  if (hex.charCodeAt(0) !== 35) return hex;
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+/** Brightness-scaled + alpha in one go — the common case for painted surfaces. */
+export function tintA(hex, k, a) {
+  if (hex.charCodeAt(0) !== 35) return hex;
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, ((n >> 16) & 255) * k) | 0;
+  const g = Math.min(255, ((n >> 8) & 255) * k) | 0;
+  const b = Math.min(255, (n & 255) * k) | 0;
+  return `rgba(${r},${g},${b},${a})`;
+}
+
 /** Haze factor 0..1 — 1 means fully swallowed by smog. */
 export function fogAmount(dz, start, end) {
   if (dz <= start) return 0;
