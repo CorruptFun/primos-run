@@ -14,7 +14,7 @@
 //   · Identity is a Google account, so progress survives a cleared browser and
 //     follows the player to a new phone.
 
-import { SUPABASE_ANON_KEY, SUPABASE_ESM, SUPABASE_URL } from './cloud-config.js';
+import { GAME_ID, SUPABASE_ANON_KEY, SUPABASE_ESM, SUPABASE_URL } from './cloud-config.js';
 import { mergeSaves } from './merge.js';
 import * as store from './store.js';
 
@@ -85,10 +85,14 @@ export async function pullCloudSave() {
   const c = await sb();
   if (!c || !session) return null;
   try {
+    // public.game_saves is SHARED across every game in this project, keyed
+    // (user_id, game) — see GAME_ID in cloud-config.js. Both halves of the key
+    // are required or a player's Turbo Maze save would answer for this one.
     const { data, error } = await c
-      .from('primos_saves')
+      .from('game_saves')
       .select('data')
       .eq('user_id', session.userId)
+      .eq('game', GAME_ID)
       .maybeSingle();
     if (error || !data) return null;
     return store.coerce(data.data);
@@ -140,9 +144,9 @@ async function flushPush() {
   pending = null;
   if (!c || !session || !data) return;
   try {
-    await c.from('primos_saves').upsert(
-      { user_id: session.userId, data, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' },
+    await c.from('game_saves').upsert(
+      { user_id: session.userId, game: GAME_ID, data, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id,game' },   // the composite key — 'user_id' alone would collide across games
     );
     // The board rides the same beat — no second traffic path, no timer of its
     // own. Fire-and-forget and lazily imported: a leaderboard must never block

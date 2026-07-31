@@ -91,6 +91,20 @@ boards all no-op and the game runs local-only — supabase-js is never even
 fetched. Filling in the URL + anon key is what turns the whole layer on. Device
 backup/restore in ACCOUNT works either way, on purpose.
 
+**One project, one player base, designated per game.** The Supabase project
+(`deskabqqxqqibxjffwmb`) hosts every Corrupt game: one Google sign-in, one
+`auth.users` row, recognised everywhere. **Saves go in the SHARED
+`public.game_saves`**, keyed `(user_id, game)`, with this game's slug
+`GAME_ID = 'primos-run'`. That table is owned by Turbo Maze's
+`0001_game_saves.sql` — a new game needs no new table and no new migration,
+only a fresh slug. Do NOT give this game a private saves table; it would work
+and would quietly keep its players out of the shared registry.
+
+Only the **boards** are Primos-owned, because a leaderboard cannot be generic —
+ranking columns, guard, continue flag, weekly rollup. Every object this repo's
+migration creates is `primos_`-prefixed. Viva Maya is the exception to all of
+this: it predates the shared table and keeps its own `public.saves`.
+
 Use the **`cloud-saves-and-leaderboards` skill** before changing anything
 score-, board-, sign-in- or name-related. It is the distilled version of this
 exact stack and most of what looks fussy in these files is a scar it explains.

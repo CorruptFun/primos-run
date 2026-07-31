@@ -58,12 +58,20 @@ else
 fi
 
 # --- saves: private ---------------------------------------------------------
+# Saves live in the SHARED public.game_saves, keyed (user_id, game) — this game
+# is 'primos-run'. It is shared with Turbo Maze and every future game, so this
+# probe is checking a table other games depend on too: a leak here is a leak of
+# the whole player base, not just this one's.
 echo
-echo "primos_saves — must be invisible to an anonymous reader"
-R="$(anon "$REST/primos_saves?select=user_id")"
+echo "game_saves — must be invisible to an anonymous reader (shared across games)"
+R="$(anon "$REST/game_saves?select=user_id,game")"
 [ "$R" = "[]" ] && ok "anonymous SELECT returns no rows" || bad "anonymous SELECT leaked rows" "$R"
 
-C="$(code -X POST "$REST/primos_saves" -d "{\"user_id\":\"$FAKE\",\"data\":{}}")"
+R="$(anon "$REST/game_saves?select=user_id&game=eq.primos-run")"
+[ "$R" = "[]" ] && ok "anonymous SELECT scoped to this game returns no rows" \
+                || bad "anonymous SELECT leaked this game's rows" "$R"
+
+C="$(code -X POST "$REST/game_saves" -d "{\"user_id\":\"$FAKE\",\"game\":\"primos-run\",\"data\":{}}")"
 [ "$C" = "401" ] || [ "$C" = "403" ] || [ "$C" = "400" ] \
   && ok "anonymous INSERT refused (HTTP $C)" || bad "anonymous INSERT was accepted" "HTTP $C"
 

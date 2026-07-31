@@ -32,55 +32,35 @@
 
 
 -- ==========================================
--- TABLE: public.primos_saves
--- One row per user; the whole save blob as jsonb.
+-- SAVES LIVE IN public.game_saves, WHICH THIS MIGRATION DOES NOT OWN.
 --
--- jsonb rather than columns because the save's shape changes every time the
--- game grows, and a schema migration per gameplay feature is a tax you stop
--- paying after the third one. js/store.js coerce() already has to tolerate old
--- shapes (people come back after months), so the client owns validation either
--- way.
+-- This Supabase project hosts the whole player base: one Google sign-in, one
+-- auth.users row, recognised by every game. Players are designated per game by
+-- the composite key (user_id, game) on the SHARED public.game_saves table, so a
+-- new game needs no new table and no new migration — only a fresh slug, which
+-- for this one is 'primos-run' (see GAME_ID in js/cloud-config.js).
+--
+-- That table belongs to Turbo Maze's supabase/migrations/0001_game_saves.sql,
+-- already applied to this project. Primos deliberately does NOT create a
+-- primos_saves table: a private one would work and would quietly keep this
+-- game's players out of the shared registry, which is the whole point of
+-- sharing the project.
+--
+-- Only the BOARDS below are Primos-owned, because a leaderboard cannot be
+-- generic — it carries this game's ranking columns, its guard, its continue
+-- flag and its weekly rollup. Every one of those objects is primos_-prefixed.
+--
+-- Viva Maya remains the exception: it predates the shared table and keeps its
+-- own public.saves. Folding it in is a separate, careful job on live data.
 -- ==========================================
-create table if not exists public.primos_saves (
-    user_id    uuid primary key references auth.users(id) on delete cascade,
-    data       jsonb not null,
-    updated_at timestamptz not null default now()
-);
-
-alter table public.primos_saves enable row level security;
-
-drop policy if exists "Users can view own save" on public.primos_saves;
-create policy "Users can view own save"
-    on public.primos_saves for select using (auth.uid() = user_id);
-
-drop policy if exists "Users can insert own save" on public.primos_saves;
-create policy "Users can insert own save"
-    on public.primos_saves for insert with check (auth.uid() = user_id);
-
-drop policy if exists "Users can update own save" on public.primos_saves;
-create policy "Users can update own save"
-    on public.primos_saves for update
-    using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-drop policy if exists "Users can delete own save" on public.primos_saves;
-create policy "Users can delete own save"
-    on public.primos_saves for delete using (auth.uid() = user_id);
-
--- updated_at must be SERVER time whatever the client sends. The column default
--- covers INSERT; this covers overwrite. search_path pinned to '' as hardening
--- (now() is in pg_catalog, always resolvable).
-create or replace function public.primos_saves_touch()
-returns trigger language plpgsql set search_path = '' as $$
+do $$
 begin
-    new.updated_at = now();
-    return new;
-end;
+    if to_regclass('public.game_saves') is null then
+        raise exception
+            'public.game_saves is missing — apply Turbo Maze''s 0001_game_saves.sql to this project first; Primos stores its saves there under game = ''primos-run''';
+    end if;
+end
 $$;
-
-drop trigger if exists trg_primos_saves_touch on public.primos_saves;
-create trigger trg_primos_saves_touch
-    before update on public.primos_saves
-    for each row execute function public.primos_saves_touch();
 
 
 -- ==========================================

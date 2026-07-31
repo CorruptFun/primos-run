@@ -22,6 +22,18 @@
 export const SUPABASE_URL = '';
 export const SUPABASE_ANON_KEY = '';
 
+// Which game's rows these are, inside the SHARED public.game_saves table.
+//
+// One Supabase project hosts the whole player base — a player signs in with
+// Google once and auth.users knows them in every game — and the composite key
+// (user_id, game) is what designates them per game. That table is owned by
+// Turbo Maze's supabase/migrations/0001_game_saves.sql and a new game needs no
+// new table and no new migration, only a fresh slug.
+//
+// The slug is the repo name, matching Turbo Maze's 'turbo-maze'. Changing it
+// after players exist orphans every save written under the old one.
+export const GAME_ID = 'primos-run';
+
 // Where the supabase-js client is loaded from. This project has no build step,
 // so there is no bundler to resolve a bare specifier — it comes from a CDN, and
 // only ever inside the dynamic import in cloud.js, which never runs while the
