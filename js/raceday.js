@@ -70,12 +70,32 @@ export function bestForDay(save, key) {
  * returns the save — callers persist it themselves, on the same beat as every
  * other end-of-run write.
  */
-export function recordDay(save, score, now = new Date()) {
+export function recordDay(save, score, now = new Date(), continued = false) {
   const key = dayKey(now);
   if (!save.days || typeof save.days !== 'object') save.days = {};
+  if (!save.contDays || typeof save.contDays !== 'object') save.contDays = {};
   const prev = bestForDay(save, key);
-  if (score > prev) save.days[key] = Math.floor(score);
+  if (score > prev) {
+    save.days[key] = Math.floor(score);
+    // The mark belongs to the run that SET the standing score, so it is written
+    // here and nowhere else. A later clean run that fails to beat it must not
+    // scrub the mark off a score that is still the one on the board.
+    if (continued) save.contDays[key] = true;
+    else delete save.contDays[key];
+  }
   return save;
+}
+
+/**
+ * Did the run that set this day's best pay for a continue?
+ *
+ * Continued runs ARE eligible for the boards — a decision made deliberately, on
+ * the grounds that the score shown at game over should be the score submitted.
+ * The cost of that is a board where a full wallet buys distance, so every place
+ * one of these scores is displayed says so. This is what the UI asks.
+ */
+export function dayWasContinued(save, key) {
+  return !!(save && save.contDays && save.contDays[key]);
 }
 
 /**
@@ -85,10 +105,14 @@ export function recordDay(save, score, now = new Date()) {
  * already immutable on the server — nothing is lost by forgetting them here.
  */
 export function pruneDays(save, keep = 60, now = new Date()) {
-  if (!save.days || typeof save.days !== 'object') return save;
   const cutoff = dayKey(new Date(now.getTime() - keep * 86400000));
-  for (const key of Object.keys(save.days)) {
-    if (key < cutoff) delete save.days[key];
+  // Both maps, or the continue marks outlive the scores they annotate and the
+  // save grows the exact history pruning exists to stop.
+  for (const map of [save.days, save.contDays]) {
+    if (!map || typeof map !== 'object') continue;
+    for (const key of Object.keys(map)) {
+      if (key < cutoff) delete map[key];
+    }
   }
   return save;
 }

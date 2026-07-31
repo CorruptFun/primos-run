@@ -79,7 +79,7 @@ worker (`primos-run-v1`) when testing there.
 | `js/cloud.js` | Google sign-in, cloud save pull/merge/push |
 | `js/leaderboard.js` | board submit/read + the race-name rules |
 | `js/merge.js`, `js/raceday.js` | pure: save reconciliation, day/week keys |
-| `js/account.js`, `js/boards.js` | the CUENTA and LA TABLA screens |
+| `js/account.js`, `js/boards.js` | the ACCOUNT and LEADERBOARD screens |
 | `scripts/gen_art.py` | Gemini art generation + chroma key |
 | `scripts/make-icons.js` | PWA icons, zero dependencies |
 | `scripts/verify-rls.sh` | RLS audit — run after any migration |
@@ -89,7 +89,7 @@ worker (`primos-run-v1`) when testing there.
 **It ships DORMANT.** `js/cloud-config.js` is empty, so sign-in, sync and the
 boards all no-op and the game runs local-only — supabase-js is never even
 fetched. Filling in the URL + anon key is what turns the whole layer on. Device
-backup/restore in CUENTA works either way, on purpose.
+backup/restore in ACCOUNT works either way, on purpose.
 
 Use the **`cloud-saves-and-leaderboards` skill** before changing anything
 score-, board-, sign-in- or name-related. It is the distilled version of this

@@ -40,6 +40,15 @@ function rowsInto(list, board) {
     const v = document.createElement('span');
     v.className = 'v';
     v.textContent = e.valueText ?? Math.floor(e.score).toLocaleString();
+    // A run that paid for a continue still ranks — that is the decision — so the
+    // board has to say which ones did. Marked on the SCORE, not the name: it is
+    // the number that was bought, not the player who is suspect.
+    if (e.continued) {
+      const c = document.createElement('i');
+      c.className = 'cont';
+      c.textContent = t('board.contTag');
+      v.append(c);
+    }
 
     li.append(r, n, v);
     list.append(li);
@@ -57,10 +66,12 @@ async function paint() {
   const list = $('board-list');
   const me = $('board-me');
   const key = $('board-key');
+  const note = $('board-note');
 
   key.textContent = t('board.loading');
   list.replaceChildren();
   me.classList.add('hidden');
+  note.classList.add('hidden');
 
   const board = tab === 'daily' ? await fetchDailyBoard() : await fetchWeeklyBoard();
   if (mine !== token) return;   // the player switched tabs while this was in flight
@@ -79,12 +90,22 @@ async function paint() {
 
   rowsInto(list, board);
 
+  // The legend earns its place only when something on screen actually carries
+  // the mark — an unexplained tag is worse than no tag, and a permanent line
+  // about a rule most boards never hit is noise.
+  const marked = board.entries.some((e) => e.continued) || !!board.myContinued;
+  if (marked) {
+    note.textContent = t('board.contNote');
+    note.classList.remove('hidden');
+  }
+
   // The pinned footer is only interesting when the player is NOT already visible
   // in the rows above it.
   const inRows = board.entries.some((e) => e.you);
   if (!inRows && board.myRank) {
     const value = board.myValueText ?? Math.floor(board.myScore).toLocaleString();
-    me.textContent = `${t('board.you')} · #${board.myRank} · ${value}`;
+    const mark = board.myContinued ? ` ${t('board.contTag')}` : '';
+    me.textContent = `${t('board.you')} · #${board.myRank} · ${value}${mark}`;
     me.classList.remove('hidden');
   }
 }
@@ -144,9 +165,15 @@ export async function showRunStanding() {
     await new Promise((r) => setTimeout(r, 1200));
     const board = await fetchDailyBoard(25);
     if (!board.myRank) return;
-    el.textContent = board.myRank === 1
-      ? t('over.rankFirst')
-      : t('over.rank').replace('%n', String(board.myRank));
+    // Continued runs count, so the rank shown here is the rank that stands — but
+    // it says outright that it was bought, because this is the moment the player
+    // is looking straight at the number and the board will carry the same mark.
+    const first = board.myRank === 1;
+    const key = board.myContinued
+      ? (first ? 'over.rankFirstCont' : 'over.rankCont')
+      : (first ? 'over.rankFirst' : 'over.rank');
+    el.textContent = t(key).replace('%n', String(board.myRank));
+    el.classList.toggle('bought', !!board.myContinued);
     el.classList.remove('hidden');
   } catch {
     // the standing is a garnish — never let it surface

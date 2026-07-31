@@ -30,10 +30,15 @@
 <div id="total"></div>
 
 <script type="module">
-import { dayKey, previousDayKey, weekOfDay, weekKey, bestForDay, recordDay, pruneDays, formatWeekStanding }
-  from '../js/raceday.js';
-import { mergeSaves } from '../js/merge.js';
-import { anonName, sanitizeName } from '../js/leaderboard.js';
+// Dynamic imports with a cache-buster: python's http.server answers with
+// Last-Modified, and the browser happily reuses a stale ES module across
+// reloads. On a test page that is worse than anywhere else — it shows you a
+// green wall of assertions against the build you just replaced.
+const V = `?t=${Date.now()}`;
+const { dayKey, previousDayKey, weekOfDay, weekKey, bestForDay, recordDay, pruneDays,
+        dayWasContinued, formatWeekStanding } = await import(`../js/raceday.js${V}`);
+const { mergeSaves } = await import(`../js/merge.js${V}`);
+const { anonName, sanitizeName } = await import(`../js/leaderboard.js${V}`);
 
 const out = document.getElementById('out');
 let pass = 0, fail = 0;
@@ -126,6 +131,111 @@ group('merge — the one function that can destroy progress');
   const cleared = { best: 0, bestBeers: 0, runs: 0, totalBeers: 0, days: {}, handle: null, handleSetAt: 0 };
   eq(mergeSaves(cleared, cloud).handle, 'cloud', 'a cleared browser adopts the cloud’s name');
   eq(mergeSaves(cleared, cloud).best, 500, 'and its progress');
+}
+
+group('merge — money, where a mistake MINTS currency');
+{
+  // The shape a max would reward: the spend already happened on the side that
+  // also holds the better run, and the other device has not heard about it.
+  const rich  = { best: 100, walletSeeded: true, chelas: 500, days: {} };
+  const spent = { best: 900, walletSeeded: true, chelas: 0,   days: {} };
+  eq(mergeSaves(spent, rich).chelas, 0, 'chelas is NOT maxed — a max hands back what was already spent');
+  eq(mergeSaves(rich, spent).chelas, 0, 'and that does not depend on argument order');
+
+  // Both seeded → the balance rides the progress winner, like the rest of the
+  // record. Always a number some device genuinely held; nothing is invented.
+  const a300 = { best: 900, walletSeeded: true, chelas: 300, days: {} };
+  const b50  = { best: 100, walletSeeded: true, chelas: 50,  days: {} };
+  eq(mergeSaves(b50, a300).chelas, 300, 'two seeded wallets ride the progress winner');
+
+  // The one-time latch. Without the union the seed re-runs against a totalBeers
+  // that LATCHES has just maxed, and mints the whole lifetime total again.
+  const seeded   = { best: 100, walletSeeded: true,  chelas: 200, days: {} };
+  const unseeded = { best: 900, walletSeeded: false, totalBeers: 5000, days: {} };
+  const mixed = mergeSaves(unseeded, seeded);
+  eq(mixed.walletSeeded, true, 'walletSeeded UNIONS — true wins, so the seed can never run twice');
+  eq(mixed.chelas, 200, 'and the seeded side’s balance carries, even though it LOST on progress');
+  eq(mergeSaves(seeded, unseeded).walletSeeded, true, 'the union is order-independent');
+
+  // Neither side has seeded yet: the latch stays down and the seed is still to
+  // come, which is the truth — it has not happened on either device.
+  const fresh1 = { best: 900, totalBeers: 400, days: {} };
+  const fresh2 = { best: 100, totalBeers: 900, days: {} };
+  const neither = mergeSaves(fresh1, fresh2);
+  eq(neither.walletSeeded, false, 'neither seeded leaves the latch down');
+  eq(neither.totalBeers, 900, 'lifetime total is still maxed — that one is a record');
+  eq(neither.chelas, 0, 'and the wallet is zero until the one-time seed runs');
+
+  eq(mergeSaves({ best: 1, walletSeeded: true, chelas: NaN, days: {} },
+                { best: 0, walletSeeded: true, chelas: 5, days: {} }).chelas,
+     0, 'a corrupt balance degrades to 0 — never NaN into a save');
+}
+
+group('merge — the shelf is BOUGHT GOODS');
+{
+  const winner = { best: 900, shelf: { vida: 1 }, days: {} };
+  const loser  = { best: 100, shelf: { magnet: 2 }, days: {} };
+  const m = mergeSaves(winner, loser);
+  eq(m.shelf, { vida: 1, magnet: 2 },
+     'the LOSING side’s purchase survives — riding the winner would bin something paid for');
+  const flipped = mergeSaves(loser, winner);
+  eq(Object.keys(flipped.shelf).sort(), ['magnet', 'vida'], 'union is order-independent');
+  eq(flipped.shelf.magnet, 2, 'and so are the counts');
+
+  eq(mergeSaves({ best: 900, shelf: { vida: 1 }, days: {} },
+                { best: 100, shelf: { vida: 3 }, days: {} }).shelf,
+     { vida: 3 }, 'per item it takes the MAX, so a stack is not silently cut down');
+
+  eq(mergeSaves({ best: 1, shelf: { vida: NaN, gone: 0, bad: -2 }, days: {} },
+                { best: 0, days: {} }).shelf,
+     {}, 'junk counts are dropped rather than written back into the save');
+  eq(mergeSaves({ best: 1, days: {} }, { best: 0, days: {} }).shelf, {},
+     'no shelf on either side is an empty shelf, not undefined');
+}
+
+group('continues — eligible, but marked');
+{
+  const at = new Date('2026-07-29T10:00:00Z');
+  const s = { days: {}, contDays: {} };
+
+  recordDay(s, 400, at, true);
+  eq(dayWasContinued(s, '2026-07-29'), true, 'a bought run marks the day it takes');
+
+  recordDay(s, 200, at, false);
+  eq(bestForDay(s, '2026-07-29'), 400, 'a weaker clean run does not take the day');
+  eq(dayWasContinued(s, '2026-07-29'), true,
+     'and cannot scrub the mark off the score that still stands');
+
+  recordDay(s, 900, at, false);
+  eq(bestForDay(s, '2026-07-29'), 900, 'a better clean run does take it');
+  eq(dayWasContinued(s, '2026-07-29'), false, 'and the mark goes with the old score');
+
+  eq(dayWasContinued({}, '2026-07-29'), false, 'a save with no map is unmarked, never undefined');
+
+  // Pruning has to take both maps or the marks outlive their scores.
+  const old = { days: { '2026-01-01': 5, '2026-07-29': 9 },
+                contDays: { '2026-01-01': true, '2026-07-29': true } };
+  pruneDays(old, 60, new Date('2026-07-29T00:00:00Z'));
+  eq(Object.keys(old.contDays), ['2026-07-29'], 'marks are pruned with the days they annotate');
+}
+
+group('continues — the mark survives a merge intact');
+{
+  const boughtHigh = { best: 1, days: { d: 900 }, contDays: { d: true } };
+  const cleanLow   = { best: 1, days: { d: 400 }, contDays: {} };
+  eq(mergeSaves(cleanLow, boughtHigh).days.d, 900, 'the better day wins, as always');
+  eq(mergeSaves(cleanLow, boughtHigh).contDays, { d: true },
+     'and its mark comes with it — the surviving score really was bought');
+
+  const cleanHigh  = { best: 1, days: { d: 900 }, contDays: {} };
+  const boughtLow  = { best: 1, days: { d: 400 }, contDays: { d: true } };
+  eq(mergeSaves(cleanHigh, boughtLow).contDays, {},
+     'a losing bought day does NOT mark a clean winner — a union would smear it');
+  eq(mergeSaves(boughtLow, cleanHigh).contDays, {}, 'and that holds in either order');
+
+  eq(mergeSaves({ best: 1, days: { a: 1 }, contDays: { a: true } },
+                { best: 1, days: { b: 2 }, contDays: {} }).contDays,
+     { a: true }, 'days only one device played keep their own marks');
 }
 
 group('formatting');

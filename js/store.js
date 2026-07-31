@@ -43,6 +43,9 @@ const DEFAULTS = {
   lang: null,
   // --- cloud/leaderboard fields ---------------------------------------------
   days: {},            // { 'YYYY-MM-DD': best score that day } — the daily board's source
+  // { 'YYYY-MM-DD': true } for the days whose BEST was bought a continue. Only
+  // marked days are listed, so an untouched save carries nothing.
+  contDays: {},
   handle: null,        // chosen race name; null means "show the anonymous one"
   handleSetAt: 0,      // when it was chosen — the merge tiebreak (see js/merge.js)
 };
@@ -87,6 +90,15 @@ export function coerce(raw) {
     }
   }
   out.days = days;
+  const contDays = {};
+  if (out.contDays && typeof out.contDays === 'object') {
+    // Truthy only, and only against a real day key: this rides into a board
+    // submission, so a hand-edited entry must not put a string on the wire.
+    for (const [key, v] of Object.entries(out.contDays)) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(key) && v) contDays[key] = true;
+    }
+  }
+  out.contDays = contDays;
   return out;
 }
 
@@ -113,7 +125,28 @@ export function onSave(cb) {
   return () => listeners.delete(cb);
 }
 
-export function save(data) {
+/**
+ * Hand the subscribers the blob that is now AUTHORITATIVE — what went to disk,
+ * never what a caller happened to be holding. The two differ: save() restores
+ * the econ fields from disk over a caller's stale copy, and pushing the copy
+ * instead would mirror a stale balance over a correct one in the cloud.
+ */
+function notify(blob) {
+  for (const l of listeners) {
+    try { l(blob); } catch { /* a listener must not cascade into the game */ }
+  }
+}
+
+/**
+ * @param {object} data
+ * @param {boolean} [econIsAuthoritative] skip the econ-restore below and write
+ *   the caller's money as given. ONLY the cloud reconcile may pass this: its
+ *   input is a fresh load() merged against the remote row, so it already holds
+ *   the newest local balance. Every other caller is holding a boot-time copy
+ *   that predates the shop, which is exactly what the restore protects.
+ */
+export function save(data, econIsAuthoritative = false) {
+  let out = data;
   try {
     const prev = read();
     // `trainedAt` is written out of band by markTrained(), because the tutorial
@@ -121,13 +154,12 @@ export function save(data) {
     // guard the next ordinary save() — game over, mute toggle, crew pick —
     // would carry that stale `trainedAt: 0` back to disk and the training
     // would replay forever.
-    let out = data;
     if (!data.trainedAt && prev && prev.trainedAt) out = { ...data, trainedAt: prev.trainedAt };
     // Same hazard, same fix, for the money: main.js holds ONE copy of the save
     // taken at boot, and a purchase made three screens later moves the balance
     // on disk without touching that copy. Whatever is on disk wins for these
     // keys, always — otherwise the next mute toggle refunds the shop.
-    if (prev) {
+    if (prev && !econIsAuthoritative) {
       for (let i = 0; i < ECON_KEYS.length; i++) {
         const k = ECON_KEYS[i];
         if (prev[k] !== undefined) {
@@ -141,11 +173,8 @@ export function save(data) {
     /* out of quota or blocked — the run still plays, it just won't persist */
   }
   // Notified even when the write above failed: a blocked localStorage is exactly
-  // the case where getting the save into the cloud matters most. Each listener
-  // is isolated so one throwing can never break a persist.
-  for (const l of listeners) {
-    try { l(data); } catch { /* a listener must not cascade into the game */ }
-  }
+  // the case where getting the save into the cloud matters most.
+  notify(out);
 }
 
 // --- device backup ----------------------------------------------------------
@@ -201,12 +230,26 @@ export function readEcon() {
  */
 export function writeEcon(fn) {
   const blob = read() || {};
+  const before = JSON.stringify(blob);
   fn(blob);
+  const after = JSON.stringify(blob);
+  // A refused purchase runs this with a no-op fn. Returning early keeps the
+  // push beat meaning "money MOVED" rather than "someone asked", so being short
+  // at the counter costs no traffic and no redundant upsert.
+  if (after === before) return blob;
   try {
-    localStorage.setItem(KEY, JSON.stringify(blob));
+    localStorage.setItem(KEY, after);
   } catch {
     /* blocked — the purchase still applies to this session, it just won't persist */
   }
+  // Money moved, so the cloud has to hear about it. The push is a save()
+  // listener and nothing on this path goes through save(), which is why a spend
+  // or a shelf item used to be invisible to it. Coerced because `blob` is a
+  // bare {} on a first-ever write and a partial row must never reach the cloud.
+  //
+  // One fn, one write, one notify — so a purchase and the spend that paid for
+  // it are mirrored together or not at all. See wallet.buy().
+  notify(coerce(blob));
   return blob;
 }
 

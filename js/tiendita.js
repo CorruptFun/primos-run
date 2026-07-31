@@ -284,15 +284,15 @@ function renderShelf() {
 
 function attemptBuy(item) {
   sfx.resume();
-  // Pay first, grant second. A failed spend can never hand out goods.
-  const left = wallet.spend(item.price);
-  if (left === null) {
+  // Pay first, grant second — and in ONE write, so the cloud can never be shown
+  // the money gone with nothing bought. See wallet.buy().
+  const bought = wallet.buy(item.id, item.price);
+  if (bought === null) {
     sfx.uiClick();
     note(t('shop.denied'));
     renderShelf();
     return;
   }
-  wallet.addStock(item.id);
   sfx.powerUp();
   note(t('shop.bought').replace('%s', t(item.name)));
   renderShelf();

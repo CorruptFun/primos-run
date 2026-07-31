@@ -371,7 +371,11 @@ function fillGameOver() {
   // Today's board takes the day's BEST, not the last run — recordDay keeps the
   // max. pruneDays stops the map growing forever, since it rides every cloud
   // push; days older than the cutoff are already immutable on the server.
-  recordDay(saved, game.score);
+  //
+  // A run that bought a continue is still eligible, so the score submitted is
+  // the score on screen — but it goes up MARKED. game.continues counts only the
+  // ones paid for during this run, so this is exactly "did they pay to be here".
+  recordDay(saved, game.score, new Date(), game.continues > 0);
   pruneDays(saved);
   store.save(saved);   // the store listener debounce-pushes this, boards included
   paintWallet();

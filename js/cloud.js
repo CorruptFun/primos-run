@@ -162,7 +162,11 @@ export async function syncNow() {
   const remote = await pullCloudSave();
   const local = store.load();
   const winner = remote ? mergeSaves(local, remote) : local;   // LOCAL first — it wins ties
-  store.save(winner);
+  // The one caller allowed to write the money as-is: `local` above is a fresh
+  // read, so `winner` already holds the newest balance this device has. Without
+  // the flag save() would restore the econ fields from disk and the reconciled
+  // wallet — the whole point of the money rules in js/merge.js — never lands.
+  store.save(winner, true);
   // The race name rides the save. Adopt the merge winner's handle into this
   // device FIRST, then repair the player's board rows — in that order, or the
   // repair publishes whatever name this device happened to have instead of the

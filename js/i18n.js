@@ -353,9 +353,20 @@ const STR = {
   'board.nobody':     { en: 'Nobody has run this one yet. Be the first.',
                         es: 'Nadie ha corrido esta todavía. Sé el primero.' },
   'board.you':        { en: 'YOU', es: 'TÚ' },
+  // The continue mark. A run that bought its way past the bust still ranks —
+  // so the tag rides the score wherever it is shown, and the note explains it
+  // the first time one appears on the board. Short, because it sits inside a
+  // ~60px column at 320px.
+  'board.contTag':    { en: 'CONT', es: 'CONT' },
+  'board.contNote':   { en: 'CONT · that run paid Corrupt to keep going. It still counts.',
+                        es: 'CONT · esa corrida le pagó a Corrupt para seguir. Cuenta igual.' },
   // %n is the rank. The game-over line, under the score.
   'over.rankFirst':   { en: "#1 ON TODAY'S BOARD", es: '#1 EN LA TABLA DE HOY' },
   'over.rank':        { en: "#%n ON TODAY'S BOARD", es: '#%n EN LA TABLA DE HOY' },
+  'over.rankFirstCont': { en: "#1 ON TODAY'S BOARD — BOUGHT",
+                          es: '#1 EN LA TABLA DE HOY — PAGADA' },
+  'over.rankCont':    { en: "#%n ON TODAY'S BOARD — BOUGHT",
+                        es: '#%n EN LA TABLA DE HOY — PAGADA' },
 
   // -------------------------------------------------- the account / cuenta
   'acct.title':       { en: 'ACCOUNT', es: 'CUENTA' },

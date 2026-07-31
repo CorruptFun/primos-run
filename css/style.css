@@ -1357,3 +1357,34 @@ h2 {
 }
 
 #acct-status.bad:not(:empty) { border-left-color: var(--red); }
+
+/* ------------------------------------------------- the continue mark
+
+   Continued runs are eligible for the boards, so every place one of their
+   scores is shown carries this. Deliberately quiet — it is a fact about the
+   run, not an accusation, and the score beside it still counts. */
+
+.board .cont {
+  margin-left: 5px;
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  vertical-align: 1px;
+}
+
+/* Sits under the rows, in the same register as .board-key. */
+.board-note {
+  margin: 8px 0 0;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.board-note.hidden { display: none; }
+
+/* The game-over standing when the run was bought. Same line, same place —
+   dimmed off the teal so it reads as qualified rather than celebrated. */
+.rank-line.bought { color: var(--ink-dim); }

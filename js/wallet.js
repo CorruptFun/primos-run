@@ -142,6 +142,41 @@ export function addStock(id, n = 1) {
 }
 
 /**
+ * Buy one of something: check the funds, take the money and put the goods on
+ * the shelf in a SINGLE storage write.
+ *
+ * Pay-first-grant-second still holds — the funds check and the debit happen
+ * before the shelf is touched, inside the same blob, so being short hands out
+ * nothing. What this adds is that the pair cannot TEAR, which started to matter
+ * the moment economy writes began mirroring to the cloud: a push landing
+ * between a separate spend() and addStock() publishes "money gone, nothing
+ * bought", and that is the version a new device would then restore.
+ *
+ * spend() stays for the caller that genuinely is one-sided — paying for a
+ * continue buys no goods. addStock() stays as the other half of the seam, for
+ * granting something that was not paid for here.
+ *
+ * @returns {{left: number, held: number}|null} null when short — nothing taken.
+ */
+export function buy(id, price) {
+  const cost = int(price);
+  if (!id) return null;
+  state();                                 // migrate/repair before we do sums
+  let out = null;
+  writeEcon((b) => {
+    const have = int(b.chelas);
+    if (have < cost) return;               // short — no debit, no goods
+    const shelf = cleanShelf(b.shelf);
+    const held = Math.min(MAX_STOCK, (shelf[id] || 0) + 1);
+    shelf[id] = held;
+    b.chelas = have - cost;
+    b.shelf = shelf;
+    out = { left: have - cost, held };
+  });
+  return out;
+}
+
+/**
  * Consume ONE of each thing on the shelf and hand back the ids. Surplus stays
  * banked — buying three chanclas gets you a chancla on each of the next three
  * runs, not one thirty-second chancla.

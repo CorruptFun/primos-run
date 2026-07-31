@@ -23,7 +23,7 @@
 // PWA client can keep submitting an old name for days after a deploy.
 
 import { cloudSession, flushCloudSaveNow, isCloudConfigured, sbClient } from './cloud.js';
-import { bestForDay, dayKey, formatWeekStanding, weekKey } from './raceday.js';
+import { bestForDay, dayKey, dayWasContinued, formatWeekStanding, weekKey } from './raceday.js';
 import * as store from './store.js';
 
 /** Lazy, shared client — cloud.js owns the singleton; this never makes a second. */
@@ -205,8 +205,18 @@ export async function maybeSubmitDaily(save, now = new Date()) {
     if (lastSent && lastSent.day === day && lastSent.score >= score) return;
     const c = await client();
     if (!c) return;
+    // `continued` rides the score it belongs to. The guard preserves the old
+    // value on any write that does not RAISE the score, so this can only ever
+    // be set by the run that actually took the standing — a rename cannot
+    // launder a bought run into a clean one.
     const { error } = await c.from('primos_daily_scores').upsert(
-      { user_id: s.userId, day_key: day, score, display_name: preferredName() },
+      {
+        user_id: s.userId,
+        day_key: day,
+        score,
+        display_name: preferredName(),
+        continued: dayWasContinued(save, day),
+      },
       { onConflict: 'user_id,day_key' },
     );
     // Only memo a write that SUCCEEDED, or one offline blip suppresses
@@ -240,7 +250,7 @@ export async function fetchDailyBoard(limit = 25, now = new Date()) {
     const s = cloudSession();
     const { data, error } = await c
       .from('primos_daily_scores')
-      .select('user_id, display_name, score')
+      .select('user_id, display_name, score, continued')
       .eq('day_key', day)
       // Byte-identical to the primos_daily_day_rank index, or it stops being used.
       .order('score', { ascending: false })
@@ -252,27 +262,31 @@ export async function fetchDailyBoard(limit = 25, now = new Date()) {
       rank: i + 1,
       name: sanitizeName(r.display_name),
       score: r.score,
+      continued: !!r.continued,
       you: !!s && r.user_id === s.userId,
     }));
 
     let myRank = null;
     let myScore = null;
+    let myContinued = false;
     const mine = entries.find((e) => e.you);
     if (mine) {
       myRank = mine.rank;
       myScore = mine.score;
+      myContinued = mine.continued;
     } else if (s) {
       // Outside the top rows: read own row, then COUNT how many beat it —
       // head: true, so no rows cross the wire.
       const own = await c
         .from('primos_daily_scores')
-        .select('score')
+        .select('score, continued')
         .eq('day_key', day)
         .eq('user_id', s.userId)
         .maybeSingle();
       const score = own.data?.score;
       if (typeof score === 'number') {
         myScore = score;
+        myContinued = !!own.data.continued;
         const { count } = await c
           .from('primos_daily_scores')
           .select('user_id', { count: 'exact', head: true })
@@ -281,7 +295,7 @@ export async function fetchDailyBoard(limit = 25, now = new Date()) {
         myRank = typeof count === 'number' ? count + 1 : null;
       }
     }
-    return { key: day, entries, myRank, myScore };
+    return { key: day, entries, myRank, myScore, myContinued };
   } catch {
     return emptyBoard(day);
   }
@@ -308,7 +322,7 @@ export async function fetchWeeklyBoard(limit = 25, now = new Date()) {
     const s = cloudSession();
     const { data, error } = await c
       .from('primos_weekly_totals')
-      .select('user_id, display_name, total, days_played')
+      .select('user_id, display_name, total, days_played, continued')
       .eq('week_key', week)
       .order('total', { ascending: false })
       .order('days_played', { ascending: false })
@@ -320,6 +334,10 @@ export async function fetchWeeklyBoard(limit = 25, now = new Date()) {
       rank: i + 1,
       name: sanitizeName(r.display_name),
       score: r.total,
+      // A weekly total is bought if ANY day inside it was — the view takes
+      // bool_or. Marking the whole total is the honest reading: the number
+      // ranked here is partly made of a run that was paid for.
+      continued: !!r.continued,
       you: !!s && r.user_id === s.userId,
       valueText: formatWeekStanding(r.total, r.days_played),
     }));
@@ -327,15 +345,17 @@ export async function fetchWeeklyBoard(limit = 25, now = new Date()) {
     let myRank = null;
     let myScore = null;
     let myValueText;
+    let myContinued = false;
     const mine = entries.find((e) => e.you);
     if (mine) {
       myRank = mine.rank;
       myScore = mine.score;
       myValueText = mine.valueText;
+      myContinued = mine.continued;
     } else if (s) {
       const own = await c
         .from('primos_weekly_totals')
-        .select('total, days_played')
+        .select('total, days_played, continued')
         .eq('week_key', week)
         .eq('user_id', s.userId)
         .maybeSingle();
@@ -343,6 +363,7 @@ export async function fetchWeeklyBoard(limit = 25, now = new Date()) {
       if (row) {
         myScore = row.total;
         myValueText = formatWeekStanding(row.total, row.days_played);
+        myContinued = !!row.continued;
         const higher = await c
           .from('primos_weekly_totals')
           .select('user_id', { count: 'exact', head: true })
@@ -359,7 +380,7 @@ export async function fetchWeeklyBoard(limit = 25, now = new Date()) {
         }
       }
     }
-    return { key: week, entries, myRank, myScore, myValueText };
+    return { key: week, entries, myRank, myScore, myValueText, myContinued };
   } catch {
     return emptyBoard(week);
   }

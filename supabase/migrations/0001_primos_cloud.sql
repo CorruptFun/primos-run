@@ -164,10 +164,25 @@ create table if not exists public.primos_daily_scores (
     day_key      text not null check (day_key ~ '^\d{4}-\d{2}-\d{2}$'),
     score        bigint not null check (score >= 0),
     display_name text not null default 'player',
+    -- Did the run that set this score pay Corrupt to keep going?
+    --
+    -- Continued runs ARE eligible for the boards. The alternative — submitting
+    -- the score at the first bust — makes the number on the game-over sheet
+    -- differ from the number that goes up, which is worse than a board where
+    -- some rows were bought, PROVIDED the board says which ones. Hence a column
+    -- rather than a filter: it ranks normally and is marked wherever shown.
+    --
+    -- Defaulted, so a cached client that predates this column still submits.
+    continued    boolean not null default false,
     scored_at    timestamptz not null default now(),
     updated_at   timestamptz not null default now(),
     primary key (user_id, day_key)
 );
+
+-- Additive and defaulted, so re-running this migration over an earlier install
+-- costs nothing and old rows read as clean runs — which is what they were.
+alter table public.primos_daily_scores
+    add column if not exists continued boolean not null default false;
 
 -- The daily board's exact query shape: top-N for a day, best first, earliest to
 -- reach it breaking ties. KEEP js/leaderboard.js's ORDER BY BYTE-IDENTICAL TO
@@ -252,6 +267,7 @@ begin
             new.score     := old.score;      -- monotonic: an update can never lower it
             new.scored_at := old.scored_at;  -- a no-rise update can't touch the tiebreak
             new.day_key   := old.day_key;    -- nor silently move the row to another board
+            new.continued := old.continued;  -- nor launder a bought run into a clean one
         end if;
     else
         new.scored_at := now();
@@ -295,6 +311,10 @@ select
     (array_agg(display_name order by day_key desc))[1]  as display_name,
     sum(score)::bigint                                  as total,
     count(*)::int                                       as days_played,
+    -- A weekly total is marked if ANY day inside it was bought. The total is
+    -- made partly of that run, so saying otherwise would be the lie the daily
+    -- mark exists to prevent.
+    bool_or(continued)                                  as continued,
     max(scored_at)                                      as last_scored_at
 from public.primos_daily_scores
 where score > 0
