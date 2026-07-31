@@ -19,8 +19,12 @@
 //    .claude/skills/cloud-saves-and-leaderboards/references/rollout.md
 //    (the Google OAuth redirect URLs are the part that is easy to get wrong).
 
-export const SUPABASE_URL = '';
-export const SUPABASE_ANON_KEY = '';
+// Corrupt Games — the one project behind every game (see GAME_ID below).
+// Publishable pair: safe in a public repo, because RLS is the protection and
+// these two grant a reader exactly what the leaderboard already shows them.
+// Audited live with scripts/verify-rls.sh before this was filled in.
+export const SUPABASE_URL = 'https://deskabqqxqqibxjffwmb.supabase.co';
+export const SUPABASE_ANON_KEY = 'sb_publishable_7wa6_dSbX29APJymBsi1hg_r0ls0rFi';
 
 // Which game's rows these are, inside the SHARED public.game_saves table.
 //
