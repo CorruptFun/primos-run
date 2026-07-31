@@ -487,6 +487,31 @@ is how the whole ACCOUNT screen was. Written up in `docs/BUILD_OVERVIEW.md`.
   `opacity: 1` to opt out of it. It is a shorter button with a 2px lip and its
   own tuning; without the opt-out the two dimmings stack.
 
+## The interface has three containers, and the alert box is not one of them
+
+The v18 UI pass stripped `border-left` accent bars from every status, note,
+warning, payout row and the toast — nine instances of the stock callout-box
+pattern, which bends visibly around rounded corners and belongs to a dashboard,
+not this game. Do not reintroduce one "to make a message stand out"; pick from
+the three surfaces the game already owns:
+
+- **Recessed well** (inset shadow on near-black) — settings and inputs: the
+  language switch, the URL rows, the browse grid, the till.
+- **Tinted card** (colour at ~10% fill + ~30% hairline) — gold for *yours*
+  (racha chip, payout rows, TELL CORRUPT, your board row and `.board-me`,
+  owned shelf rows), red for *danger* (the help warning, the failed toast).
+- **Pill** (999px) — chips and controls: the wallet chip, the toast, and
+  `.tabs`, which is deliberately the SAME segmented control as `.lang` —
+  TODAY/WEEK and GLITCH/IDEA/OTHER must never grow a second pick-one style.
+
+Inline statuses (`#acct-status`, `#fb-status`, `#primo-status`, `.shop-note`)
+are SPOKEN, not boxed: bold teal text, red under `.bad`, in the register
+`.rank-line` set. The shop's per-item `--tone` lives on the icon plate
+(`color-mix` frame + inner glow; neutral where unsupported, muted for free by
+`.broke`'s grayscale) — never on a row edge. And the racha chip's count/label
+gap is CSS (`#racha-len`'s margin), because the i18n swap rewrites the label's
+textContent and eats any leading space a string carries.
+
 ## Checks
 
 ES modules, so `node --check` needs an `.mjs` copy:

@@ -501,9 +501,12 @@ export function drawPrimoBody(ctx, sx, sy, u, rig, pose, laneLean) {
   } else {
     drawBackHead(ctx, hs, rig, pose, skin.base);
   }
-  // The chain drapes at the nape, over the collar, under nothing — it is the
-  // one piece of gear that must read at 40px or it is not worth 250 chelas.
-  if (fit && fit.chain) drawChainBack(ctx, 0, -hs * 0.02, hs * 0.34, fit.chain);
+  // The chain draws over the collar, under nothing — it is the one piece of
+  // gear that must read at 40px or it is not worth 250 chelas. It anchors to
+  // the SKULL like the mask does: gear.js draws it as the visible arc of a
+  // loop around that ball, ends tucking in at the silhouette, because a
+  // strand laid across the back reads as a necklace sliding off.
+  if (fit && fit.chain) drawChainBack(ctx, 0, -hs * 0.42, hs * 0.345, fit.chain);
   ctx.restore();
 
   // --- near arm and near leg, over everything

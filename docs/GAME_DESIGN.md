@@ -129,8 +129,9 @@ would have quietly binned a 55-chela item.
 Late in the run, ICE starts flying drones down your lane. It is an **event, not
 a prop**: a siren screams, a searchlight locks the lane you are standing in,
 and ~1.7 seconds later the drone dives down that lane at strike height. Later
-events make multiple passes (1 → 2 → 2 → 3), each with its own re-lock and a
-shorter warning.
+events make multiple passes (1 → 1 → 2 → 2 → 3), each with its own re-lock and
+a shorter warning — the first two events are single passes by owner direction,
+so the drone introduces itself before it escalates.
 
 | | value (`DRONE` in config) |
 |---|---|

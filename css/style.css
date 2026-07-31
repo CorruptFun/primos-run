@@ -220,8 +220,26 @@ html, body {
   margin: 6px 0 2px;
 }
 
-.pager .btn { margin-top: 0; min-height: 38px; }
-.pager .btn:disabled { opacity: 0.35; cursor: default; }
+/* Ghost weight, not gold: gold is the sheet's verb (GO, RUN AS THIS ONE) and
+   turning a page is not it. Two gold squares flanking the range read as two
+   more calls to action and drown the one that matters. */
+.pager .btn {
+  margin-top: 0;
+  min-height: 38px;
+  color: var(--ink);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.pager .btn::after { inset: 1px 1px 60%; background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent); }
+.pager .btn::before { display: none; }
+.pager .btn:active,
+.pager .btn.pressed {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0.35), inset 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.pager .btn:disabled { opacity: 0.35; cursor: default; box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.14); }
 
 .pager-range {
   text-align: center;
@@ -738,8 +756,14 @@ html, body {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
   border: 1px solid var(--line);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  font-size: 13px;
-  font-weight: 700;
+  /* Caps like every other control — this was the one sentence-case button in
+     the game, and one lowercase button on an all-caps screen reads as a
+     different, cheaper kind of thing. */
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-indent: 0.1em;
+  text-transform: uppercase;
   cursor: pointer;
   transition: transform 0.1s var(--ease-out), border-color 0.16s ease;
 }
@@ -885,13 +909,13 @@ html, body {
 
 #btn-claim:disabled::before { display: none; }
 
+/* Status lines are SPOKEN, not boxed. The rank line on game over set the
+   register — teal, bold, bare — and every inline status follows it: one
+   voice for "here is what just happened", no callout furniture around it. */
 #primo-status:not(:empty) {
   margin-top: 10px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border-left: 2px solid var(--teal);
-  color: var(--ink);
+  font-weight: 700;
+  color: var(--teal);
   animation: rise 0.24s var(--ease-out) both;
 }
 
@@ -980,8 +1004,7 @@ html, body {
   padding: 11px 13px;
   text-align: left;
   border-radius: 14px;
-  border: 1px solid rgba(255, 107, 107, 0.34);
-  border-left: 3px solid var(--red);
+  border: 1px solid rgba(255, 107, 107, 0.4);
   background: linear-gradient(180deg, rgba(255, 107, 107, 0.12), rgba(255, 107, 107, 0.04));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
@@ -1175,18 +1198,15 @@ html, body {
 
 #btn-feedback-send { margin-top: 14px; }
 
+/* Same voice as #primo-status — see the note there. */
 #fb-status:not(:empty) {
   margin-top: 12px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border-left: 2px solid var(--teal);
-  color: var(--ink);
-  text-align: left;
+  font-weight: 700;
+  color: var(--teal);
   animation: rise 0.24s var(--ease-out) both;
 }
 
-#fb-status.bad:not(:empty) { border-left-color: var(--red); }
+#fb-status.bad:not(:empty) { color: var(--red); }
 
 /* ------------------------------------------------------------- game over */
 
@@ -1427,7 +1447,12 @@ h2 {
 .shop-list { display: flex; flex-direction: column; gap: 8px; }
 
 /* One shelf row: the goods, what they do, the price. --tone is set per item
-   from the catalog, so a new row needs no new CSS. */
+   from the catalog, so a new row needs no new CSS.
+
+   The item's tone lives on the ICON PLATE (frame + inner glow), not on an
+   accent bar down the row's edge. A border-left stripe is furniture from a
+   different product — an alert box — and it bends around the row's rounded
+   corners besides. The icon is already the thing the tone describes. */
 .shop-item {
   --tone: var(--gold);
   display: flex;
@@ -1437,14 +1462,13 @@ h2 {
   text-align: left;
   border-radius: 14px;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--tone);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
   box-shadow: var(--lift-1), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   animation: rise 0.28s var(--ease-out) both;
 }
 
 /* Only goods you can actually reach for look alive on the shelf. */
-.shop-item.broke { opacity: 0.62; border-left-color: var(--line-hi); }
+.shop-item.broke { opacity: 0.62; }
 
 .shop-icon {
   flex: 0 0 58px;
@@ -1453,6 +1477,16 @@ h2 {
   border-radius: 13px;
   border: 1px solid var(--line);
   background: linear-gradient(180deg, #33203f, #1a1026);
+}
+
+/* The tone, worn by the goods themselves. color-mix so the catalog's solid
+   hex softens against the glass; where color-mix is unsupported these two
+   declarations drop and the plate keeps its neutral frame above — quieter,
+   never broken. `.broke`'s grayscale filter mutes the tint along with the
+   art, so an unaffordable row dims as one object with no extra rule. */
+.shop-item .shop-icon {
+  border-color: color-mix(in srgb, var(--tone) 52%, transparent);
+  box-shadow: inset 0 0 16px -6px color-mix(in srgb, var(--tone) 55%, transparent);
 }
 
 .shop-item.broke .shop-icon { filter: grayscale(0.6) brightness(0.8); }
@@ -1499,16 +1533,13 @@ h2 {
   color: var(--ink-dim);
 }
 
+/* Same voice as #primo-status — see the note there. */
 .shop-note:not(:empty) {
   margin: 14px 0 0;
-  padding: 9px 11px;
   font-size: 11.5px;
+  font-weight: 700;
   line-height: 1.5;
-  text-align: left;
-  border-radius: 10px;
-  border-left: 2px solid var(--teal);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--ink);
+  color: var(--teal);
   animation: rise 0.24s var(--ease-out) both;
 }
 
@@ -1623,36 +1654,60 @@ h2 {
   border-top: 1px solid var(--line);
 }
 
-/* --- board tabs --- */
+/* --- board + feedback tabs ---
+
+   The SAME segmented control as the language switch, stretched to the sheet:
+   one recessed well, one gold thumb with the house lip. Two different
+   pick-one controls on one game is one too many — a player who has used
+   ENGLISH/ESPAÑOL has already learned this one. */
 
 .tabs {
   display: flex;
-  gap: 6px;
+  gap: 3px;
   margin-bottom: 12px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.34);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.42);
 }
 
 .tab {
   flex: 1;
-  padding: 9px 8px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: rgba(0, 0, 0, 0.28);
+  padding: 8px 10px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
   color: var(--ink-dim);
   font: inherit;
   font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-indent: 0.12em;
   cursor: pointer;
-  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  transition:
+    color 0.16s ease,
+    background 0.22s var(--ease-out),
+    box-shadow 0.22s var(--ease-out),
+    transform 0.09s var(--ease-out);
 }
 
 .tab:hover { color: var(--ink); }
-.tab:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.tab:active,
+.tab.pressed { transform: translateY(1px); }
+.tab:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.75); outline-offset: 2px; }
 
 .tab.on {
-  color: #2a1a06;
-  border-color: transparent;
+  color: #2a1a08;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
   background: linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-lo));
+  box-shadow:
+    0 2px 0 var(--gold-deep),
+    var(--lift-1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
 /* Which board you are looking at. Without it a daily board reads as a broken
@@ -1732,13 +1787,15 @@ h2 {
 .board li.you .n { font-weight: 800; }
 
 /* Pinned own-rank readout, for when you are outside the top rows — otherwise
-   the board is a wall of strangers and says nothing about you. */
+   the board is a wall of strangers and says nothing about you. Dressed
+   EXACTLY like `.board li.you` above: "you" is one visual word on this
+   screen, whether your row is in the list or summarised under it. */
 .board-me {
   margin: 10px 0 0;
   padding: 9px 10px;
   border-radius: 10px;
-  background: rgba(255, 201, 60, 0.11);
-  border-left: 2px solid var(--gold);
+  background: rgba(255, 201, 60, 0.13);
+  box-shadow: inset 0 0 0 1px rgba(255, 201, 60, 0.34);
   font-size: 12px;
   font-weight: 700;
   color: var(--ink);
@@ -1791,17 +1848,15 @@ h2 {
 
 .backup-out.hidden { display: none; }
 
+/* Same voice as #primo-status — see the note there. */
 #acct-status:not(:empty) {
   margin-top: 12px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border-left: 2px solid var(--teal);
-  color: var(--ink);
+  font-weight: 700;
+  color: var(--teal);
   animation: rise 0.24s var(--ease-out) both;
 }
 
-#acct-status.bad:not(:empty) { border-left-color: var(--red); }
+#acct-status.bad:not(:empty) { color: var(--red); }
 
 /* ------------------------------------------------- the continue mark
 
@@ -1905,10 +1960,11 @@ h2 {
   bottom: calc(var(--safe-b) + 18px + var(--toast-lift, 0px));
   z-index: 90;
   max-width: min(360px, calc(100vw - 28px));
-  padding: 11px 16px;
-  border-radius: 14px;
+  /* A pill, like the wallet chip and the language switch — the round ends
+     want a touch more side padding than the old rounded box did. */
+  padding: 11px 19px;
+  border-radius: 999px;
   border: 1px solid var(--line-hi);
-  border-left: 3px solid var(--teal);
   background: rgba(18, 10, 28, 0.96);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
@@ -1927,9 +1983,14 @@ h2 {
 
 #ui-toast.show { opacity: 1; transform: translateY(0); }
 
-/* Same teal/red split the inline #acct-status uses — one language for "that
-   worked" and "that did not". */
-#ui-toast.bad { border-left-color: var(--red); }
+/* A confirmation is a quiet dark pill; only FAILURE changes its clothes —
+   the same red-tinted card the help sheet's warning wears, so "that did not
+   work" and "this will get you caught" are one colour, one surface. */
+#ui-toast.bad {
+  border-color: rgba(255, 107, 107, 0.55);
+  background: linear-gradient(180deg, rgba(255, 107, 107, 0.16), rgba(255, 107, 107, 0.07)),
+    rgba(18, 10, 28, 0.96);
+}
 
 /* ------------------------------------------------------------------ el fit */
 /* The gear half of la tiendita shares .shop-item wholesale; these are only
@@ -1944,9 +2005,10 @@ h2 {
   text-transform: uppercase;
 }
 
-/* Owned reads as settled, not dead: full opacity (unlike .broke), tone bar
-   lit, and the button carries the WEAR/TAKE OFF verb instead of a price. */
-.shop-item.owned { border-left-color: var(--tone, var(--gold)); }
+/* Owned reads as settled, not dead: full opacity (unlike .broke), a faint
+   gold edge — the same "yours" tint the racha chip and your board row wear —
+   and the button carries the WEAR/TAKE OFF verb instead of a price. */
+.shop-item.owned { border-color: rgba(255, 201, 60, 0.3); }
 .shop-item.owned .shop-name::after {
   content: ' ✓';
   color: var(--lime);
@@ -1969,6 +2031,10 @@ h2 {
   font-size: 12px;
 }
 .racha-chip b { color: var(--gold); letter-spacing: 0.08em; white-space: nowrap; }
+/* The count and the word are separate spans and the i18n swap rewrites the
+   word's textContent, which eats the leading space the markup carried — "4LA
+   RACHA". The gap lives here in CSS where no translation can lose it. */
+#racha-len { margin-right: 0.34em; }
 .racha-chip .racha-note { color: var(--ink-dim); font-size: 11px; line-height: 1.35; }
 
 /* At risk: the border warms up and the flame does one slow breath. Loss
@@ -2005,7 +2071,10 @@ h2 {
 }
 .jale-row .jale-name { color: var(--ink); letter-spacing: 0.04em; }
 .jale-row .jale-prog { color: var(--ink-dim); font-weight: 700; white-space: nowrap; }
-.jale-row.done .jale-name { color: var(--ink-faint); text-decoration: line-through; }
+/* Done wears the check the shop's owned rows wear — one mark for "settled"
+   everywhere. Strikethrough is how a to-do list talks, not a game. */
+.jale-row.done .jale-name { color: var(--ink-faint); }
+.jale-row.done .jale-name::before { content: '✓ '; color: var(--lime); font-weight: 800; }
 .jale-row.done .jale-prog { color: var(--lime); }
 .jales-sweep {
   margin: 6px 0 2px;
@@ -2015,20 +2084,22 @@ h2 {
 .jales-sweep.done { color: var(--lime); }
 
 /* The game-over payout lines. Gold for money, one row per thing that landed —
-   the sheet is where "one more run" gets decided, so these are loud. */
+   the sheet is where "one more run" gets decided, so these are loud. Same
+   tinted card the racha chip wears on the menu: the promise up there and the
+   payout down here are the same object in the same clothes. */
 .over-bonos { margin: 10px 0 2px; display: grid; gap: 5px; }
 .over-bono {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  padding: 6px 10px;
-  border-radius: 10px;
+  padding: 6px 11px;
+  border-radius: 11px;
   background: rgba(255, 201, 60, 0.10);
-  border-left: 3px solid var(--gold);
+  border: 1px solid rgba(255, 201, 60, 0.28);
   font-size: 12px;
 }
 .over-bono span { color: var(--ink); letter-spacing: 0.04em; }
 .over-bono b { color: var(--gold); }
-.over-bono.sweep { border-left-color: var(--teal); }
+.over-bono.sweep { border-color: rgba(40, 195, 184, 0.36); background: rgba(40, 195, 184, 0.09); }
 .over-bono.sweep b { color: var(--teal); }

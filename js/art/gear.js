@@ -16,6 +16,30 @@
 
 import { hexA, tintA } from './palette.js';
 
+const TAU = Math.PI * 2;
+
+// The head's own edge treatment, byte-for-byte (js/art/head-back.js): a warm
+// catch nudged up, a dark hold-off under it. The mask replaces the hair
+// silhouette, so it has to bring the silhouette's edge language with it.
+const RIM = 'rgba(255,178,98,0.60)';
+const KEY = 'rgba(30,17,42,0.60)';
+
+/**
+ * Cel tones derived from a mask colourway once and stashed on the entry —
+ * this draw runs every frame and tintA builds strings. Dark colourways need
+ * the light tone pushed harder: 1.9× of near-black is still near-black.
+ * (Chains don't come through here — their deep/gleam tones are authored.)
+ */
+function tones(st) {
+  if (!st._t) {
+    st._t = {
+      dark: tintA(st.base, 0.68, 1),
+      light: tintA(st.base, 1.9 + (st.sheen || 0) * 1.5, 1),
+    };
+  }
+  return st._t;
+}
+
 /**
  * Colourways, keyed by the catalog's `style` field — NOT by item id, so a
  * future "Pasamontañas Azul" is one catalog row plus one entry here and no
@@ -33,63 +57,143 @@ export const GEAR_STYLE = {
 // ------------------------------------------------------------------ the mask
 
 /**
- * The back of a masked head: knit dome over the head sphere, ribbed hem at the
- * nape, a few knit courses so it reads as fabric rather than paint.
+ * The back of a masked head: a smooth knit dome swallowing skull and ears,
+ * a rolled hem hugging the nape, one crown sheen. That is the whole drawing.
  *
- * Drawn OVER the head sphere the rig already painted, in the same lighting
- * language the body uses (top-lit, depth-shaded). `r` is the head sphere's
- * screen radius; x/y its centre.
+ * The first version textured the dome with full-ellipse "knit courses" and
+ * lit it with a radial gradient — at 75px the courses were scribbled loops on
+ * a shiny balloon. Same lesson as every hat in head-back.js: the interior of
+ * the shape carries nothing; the hem and the sheen carry everything. So the
+ * dome is now cel-filled exactly the way the body's materials are (shadow
+ * tone, then the same shape offset toward the light), the sheen is the proven
+ * tapered band riding the crown, and the only knit left is a run of short
+ * ribs on the hem roll — dark and radial, so they can never pair into a face.
  *
  * @param {CanvasRenderingContext2D} c
- * @param {number} x head centre, screen px
- * @param {number} y head centre, screen px
- * @param {number} r head radius, screen px
+ * @param {number} x skull centre, screen px
+ * @param {number} y skull centre, screen px
+ * @param {number} r skull radius, screen px (head-back's 0.345 · size)
  * @param {object} st a mask entry from GEAR_STYLE
  */
 export function drawMaskBack(c, x, y, r, st) {
   if (!st) return;
-  const R = r * 1.06;                     // knit sits proud of the scalp
+  const T = tones(st);
+  // Knit sits proud of the scalp and widest LOW — a pasamontañas covers the
+  // ears outright, so the dome must reach past where head-back puts them.
+  const rx = r * 1.10, ry = r * 1.14;
+  const cy = y + r * 0.03;
+
   c.save();
 
-  // Dome. One path, one fill — the union-fill rule the whole body obeys.
+  // Edge: the head's own two-fill treatment, warm catch then dark hold-off,
+  // because this dome IS the head silhouette while it is worn.
+  c.fillStyle = RIM;
   c.beginPath();
-  c.arc(x, y, R, 0, Math.PI * 2);
-  const g = c.createRadialGradient(x - R * 0.35, y - R * 0.45, R * 0.15, x, y, R * 1.05);
-  g.addColorStop(0, tintA(st.base, 1 + st.sheen * 1.6, 1));
-  g.addColorStop(0.62, st.base);
-  g.addColorStop(1, tintA(st.base, 0.62, 1));
-  c.fillStyle = g;
+  c.ellipse(x, cy - r * 0.06, rx * 1.045, ry * 1.045, 0, 0, TAU);
+  c.fill();
+  c.fillStyle = KEY;
+  c.beginPath();
+  c.ellipse(x, cy, rx * 1.03, ry * 1.03, 0, 0, TAU);
   c.fill();
 
-  // Knit courses — horizontal rows that follow the dome. Kept faint: texture,
-  // not stripes.
+  // Dome, two-tone cel: offset copy, never inset, never a gradient.
+  c.beginPath();
+  c.ellipse(x, cy, rx, ry, 0, 0, TAU);
+  c.fillStyle = T.dark;
+  c.fill();
+  c.save();
   c.clip();
-  c.strokeStyle = hexA('#000000', 0.14);
-  c.lineWidth = Math.max(1, R * 0.045);
-  for (let i = -2; i <= 3; i++) {
-    const yy = y + i * R * 0.30;
-    const squash = Math.max(0.2, 1 - Math.abs(i) * 0.18);
-    c.beginPath();
-    c.ellipse(x, yy, R * 0.98, R * 0.34 * squash, 0, 0, Math.PI * 2);
-    c.stroke();
-  }
-
-  // Ribbed hem at the nape — the fold that says "this rolls down".
-  const hemY = y + R * 0.62;
-  c.fillStyle = st.hem;
+  c.translate(-r * 0.09, -r * 0.11);
   c.beginPath();
-  c.ellipse(x, hemY, R * 0.99, R * 0.34, 0, 0, Math.PI * 2);
+  c.ellipse(x, cy, rx, ry, 0, 0, TAU);
+  c.fillStyle = st.base;
   c.fill();
-  c.strokeStyle = hexA('#000000', 0.22);
-  c.lineWidth = Math.max(1, R * 0.05);
-  for (let i = -3; i <= 3; i++) {
-    const xx = x + i * R * 0.26;
+  c.restore();
+
+  // Crown sheen — head-back's band-that-follows-the-crown, in the knit's
+  // light tone. Two unequal tapered arcs, broken off-centre; the break is
+  // what keeps the pair from pairing up. st.sheen is the material's gloss:
+  // gold catches harder than wool.
+  c.save();
+  c.globalAlpha = Math.min(0.85, 0.42 + st.sheen * 1.1);
+  c.fillStyle = T.light;
+  const OUT = 0.90, FAT = 0.20, N = 10;
+  for (const [a0, a1, k] of [[Math.PI * 1.08, Math.PI * 1.40, 1],
+    [Math.PI * 1.52, Math.PI * 1.68, 0.72]]) {
     c.beginPath();
-    c.moveTo(xx, hemY - R * 0.30);
-    c.lineTo(xx, hemY + R * 0.30);
-    c.stroke();
+    for (let i = 0; i <= N; i++) {
+      const a = a0 + (a1 - a0) * (i / N);
+      const px = x + Math.cos(a) * rx * OUT, py = cy + Math.sin(a) * ry * OUT;
+      if (i) c.lineTo(px, py); else c.moveTo(px, py);
+    }
+    for (let i = N; i >= 0; i--) {
+      const t = i / N;
+      const a = a0 + (a1 - a0) * t;
+      const rr = OUT - FAT * k * Math.pow(Math.sin(t * Math.PI), 0.7);
+      c.lineTo(x + Math.cos(a) * rx * rr, cy + Math.sin(a) * ry * rr);
+    }
+    c.closePath();
+    c.fill();
   }
   c.restore();
+
+  // The fold crease the roll casts on the dome, just above where the hem
+  // lands. Dark, clipped inside the dome — the value break that stops hem
+  // and dome reading as one blob (the cap's hard-shadow trick).
+  c.save();
+  c.beginPath();
+  c.ellipse(x, cy, rx, ry, 0, 0, TAU);
+  c.clip();
+  c.fillStyle = hexA('#000000', 0.20);
+  c.beginPath();
+  hemEdge(c, x, cy, rx, ry, 0.84, -0.03, true);
+  hemEdge(c, x, cy, rx, ry, 0.72, 0.05, false);
+  c.closePath();
+  c.fill();
+  c.restore();
+
+  // Rolled hem: a crescent hugging the lower contour, sticking a little proud
+  // — a roll is fatter than the knit above it. Never a full ellipse; the old
+  // hem's upper arc crossed the skull as one more scribble.
+  c.beginPath();
+  hemEdge(c, x, cy, rx, ry, 1.055, -0.045, true);
+  hemEdge(c, x, cy, rx, ry, 0.855, 0.09, false);
+  c.closePath();
+  c.fillStyle = st.hem;
+  c.fill();
+
+  // Rib ticks across the roll. Radial and dark: nothing running up and down
+  // can be read as a face, which is why the cap's seams are vertical too.
+  c.strokeStyle = hexA('#000000', 0.26);
+  c.lineWidth = Math.max(0.8, r * 0.045);
+  c.lineCap = 'round';
+  c.beginPath();
+  for (let i = -3; i <= 3; i++) {
+    const a = Math.PI * 0.5 + i * 0.155;
+    const wob = 0.02 * ((i & 1) ? 1 : -1);
+    c.moveTo(x + Math.cos(a) * rx * (0.88 + wob), cy + Math.sin(a) * ry * (0.88 + wob) + r * 0.045);
+    c.lineTo(x + Math.cos(a) * rx * (1.03 + wob), cy + Math.sin(a) * ry * (1.03 + wob));
+  }
+  c.stroke();
+
+  c.restore();
+}
+
+/**
+ * One edge of the hem crescent: an arc across the bottom of the dome at
+ * radius factor `f`, thickness varied by `taper` so the band is fattest at
+ * the nape and thins as it climbs. `fwd` traces left-to-right, else back.
+ */
+function hemEdge(c, x, cy, rx, ry, f, taper, fwd) {
+  const A0 = Math.PI * 0.20, A1 = Math.PI * 0.80, HN = 12;
+  for (let i = 0; i <= HN; i++) {
+    const t = fwd ? i / HN : 1 - i / HN;
+    const a = A0 + (A1 - A0) * t;
+    const ff = f + taper * Math.abs(2 * t - 1);
+    const px = x + Math.cos(a) * rx * ff;
+    const py = cy + Math.sin(a) * ry * ff;
+    if (!fwd || i) c.lineTo(px, py); else c.moveTo(px, py);
+  }
 }
 
 /**
@@ -130,29 +234,96 @@ export function drawMaskIcon(c, w, st) {
 // ----------------------------------------------------------------- the chain
 
 /**
- * The back of a worn chain: a run of round links across the nape, hanging
- * between the head and the shoulder line. `x, y` is the neck point (base of
- * the head sphere), `r` the head radius for scale.
+ * The back of a worn chain. `x, y` is the SKULL CENTRE and `r` the head
+ * radius — the same anchor the mask takes — because the strand is drawn as
+ * the visible arc of a loop AROUND that ball: snug under it, ends climbing
+ * steeply until they tuck in at the silhouette just below the ears,
+ * foreshortening and darkening as they turn away toward the front. The eye
+ * completes the loop behind the head, which is what "worn" looks like.
+ *
+ * The first version hung a garland ACROSS the back — wide span, deep middle
+ * sag, ends afloat on the shirt — and a strand lying on the back surface is
+ * exactly what a necklace that has slid off the shoulders does.
+ *
+ * Links are batched: one understrand stroke, one shadow fill, one lit fill
+ * offset toward the light, one gleam fill. The old per-link radial gradients
+ * were both off-language and ~10 allocations a frame.
  */
 export function drawChainBack(c, x, y, r, st) {
   if (!st) return;
-  const links = st.fat ? 7 : 9;
-  const span = r * 1.7;
-  const sag = r * (st.fat ? 0.34 : 0.26);
-  const lr = r * (st.fat ? 0.16 : 0.10);
+  const fat = !!st.fat;
+  const N = fat ? 15 : 21;
+  // Strand ellipse, centred LOW on the skull so the visible arc hangs just
+  // clear of the mask hem / hairline, with its ends bending back inside the
+  // head's contour. TUCK is how far past the visible sweep the end links
+  // carry on — the couple that overlap the silhouette and sell the wrap.
+  const ox = x, oy = y + r * 0.41;
+  const ax = r * 0.88, ay = r * 0.93;
+  const TM = 1.26;
+  const lr0 = r * (fat ? 0.115 : 0.075);
+
   c.save();
-  for (let i = 0; i < links; i++) {
-    const t = i / (links - 1);
-    const lx = x - span / 2 + span * t;
-    // Catenary-ish sag — parabola is plenty at this size.
-    const ly = y + sag * (1 - Math.pow(2 * t - 1, 2) * 0.9);
-    const g = c.createRadialGradient(lx - lr * 0.4, ly - lr * 0.4, lr * 0.2, lx, ly, lr * 1.1);
-    g.addColorStop(0, st.gleam);
-    g.addColorStop(0.5, st.link);
-    g.addColorStop(1, st.deep);
-    c.fillStyle = g;
+  c.lineCap = 'round';
+  c.lineJoin = 'round';
+
+  // Pass 0: the understrand — a continuous line through every link centre.
+  // This is what makes separated circles read as ONE chain, and it is the
+  // dark edge that holds the gold against the white tee.
+  c.strokeStyle = st.deep;
+  c.lineWidth = Math.max(1, lr0 * 1.1);
+  c.beginPath();
+  for (let i = 0; i < N; i++) {
+    const th = -TM + (2 * TM * i) / (N - 1);
+    const px = ox + Math.sin(th) * ax;
+    const py = oy + Math.cos(th) * ay;
+    if (i) c.lineTo(px, py); else c.moveTo(px, py);
+  }
+  c.stroke();
+
+  // Passes 1–3 share the same link geometry.
+  for (let pass = 1; pass <= 3; pass++) {
     c.beginPath();
-    c.arc(lx, ly, lr, 0, Math.PI * 2);
+    for (let i = 0; i < N; i++) {
+      const th = -TM + (2 * TM * i) / (N - 1);
+      const turn = Math.abs(th) / TM;
+      // Foreshorten toward the ends: the strand is turning away from us.
+      const k = 1 - 0.34 * Math.pow(turn, 2.2);
+      const px = ox + Math.sin(th) * ax;
+      const py = oy + Math.cos(th) * ay;
+      const lr = lr0 * k;
+      if (pass === 1) {
+        // Shadow body of every link.
+        if (fat) {
+          const rot = Math.atan2(ay * Math.sin(th), ax * Math.cos(th));
+          c.moveTo(px + lr * 1.3, py);
+          c.ellipse(px, py, lr * 1.3, lr * 0.92, rot, 0, TAU);
+        } else {
+          c.moveTo(px + lr, py);
+          c.arc(px, py, lr, 0, TAU);
+        }
+      } else if (pass === 2) {
+        // Lit copy, offset toward the light — skipped on the end links,
+        // which stay in shadow because they face away.
+        if (turn > 0.86) continue;
+        const lx = px - r * 0.030, ly = py - r * 0.038;
+        if (fat) {
+          const rot = Math.atan2(ay * Math.sin(th), ax * Math.cos(th));
+          c.moveTo(lx + lr, ly);
+          c.ellipse(lx, ly, lr, lr * 0.68, rot, 0, TAU);
+        } else {
+          c.moveTo(lx + lr * 0.74, ly);
+          c.arc(lx, ly, lr * 0.74, 0, TAU);
+        }
+      } else {
+        // Gleam: every fat link is a pearl with one hot point; on the fine
+        // chain a few catches along the top are plenty.
+        if (turn > 0.8 || (!fat && i % 3)) continue;
+        c.moveTo(px - r * 0.040 + lr * 0.3, py - r * 0.050);
+        c.arc(px - r * 0.040, py - r * 0.050, lr * 0.3, 0, TAU);
+      }
+    }
+    c.fillStyle = pass === 1 ? st.deep : pass === 2 ? st.link : st.gleam;
+    if (pass === 3) c.globalAlpha = 0.9;
     c.fill();
   }
   c.restore();

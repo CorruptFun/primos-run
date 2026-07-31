@@ -172,9 +172,11 @@ export const DRONE = {
   height: 1.12,         // hull underside during the dive: slide clears, standing does not
   w: 0.72,              // hull half-width-ish for the lane hit test
   // Passes per event, escalating with the event count and clamping at the
-  // tail. The first drone is a warning shot; by the third event it is a
-  // proper strafing run.
-  passes: [1, 2, 2, 3],
+  // tail. The first TWO events are single passes by owner direction — the
+  // drone must never spike the difficulty the run it appears; a typical
+  // 3–4 minute run sees two or three events, so most players meet the
+  // multi-pass strafing runs only once the single-pass version is familiar.
+  passes: [1, 1, 2, 2, 3],
 };
 
 // Getting back up after La Migra had you. Shared by the vida bought ahead of

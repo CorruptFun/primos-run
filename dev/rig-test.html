@@ -18,6 +18,17 @@
 <body>
 <div class="controls">
   <label>head: <select id="who"></select></label>
+  <label>mask: <select id="mask">
+    <option value="none">none</option>
+    <option value="maskNegro">negro</option>
+    <option value="maskRosa">rosa</option>
+    <option value="maskOro">oro</option>
+  </select></label>
+  <label>chain: <select id="chain">
+    <option value="none">none</option>
+    <option value="chainOro">oro</option>
+    <option value="chainCubana">cubana</option>
+  </select></label>
   <label>speed: <input id="speed" type="range" min="0" max="1" step="0.05" value="0.5"
          style="width:90px"></label>
   <label><input id="anim" type="checkbox" checked> animate</label>
@@ -54,6 +65,7 @@ const { drawRunner, CREW } = await import(`../js/art/runner.js${V}`);
 const { headFromCharacter, loadHead } = await import(`../js/art/primo-head.js${V}`);
 const { applyTraits } = await import(`../js/art/primo-traits.js${V}`);
 const { traitsFor } = await import(`../js/primo-picker.js${V}`);
+const { GEAR_STYLE } = await import(`../js/art/gear.js${V}`);
 
 const Q = new URLSearchParams(location.search);
 const MAG = Q.get('mag') === '1';
@@ -149,7 +161,18 @@ const poseCtx = ['jump up', 'apex', 'falling', 'slide', 'lean L', 'lean R',
   'ride', 'ride lean', 'ride jump']
   .map((l) => cell(document.getElementById('poses'), l, CW, CH));
 
-function rig() { return rigs.get(who.value) || rigs.get('none'); }
+// El fit rides the rig the same way main.js hangs it on the player's:
+// GEAR_STYLE entries under rig.fit, nulls when nothing is worn.
+function rig() {
+  const r = rigs.get(who.value) || rigs.get('none');
+  const m = document.getElementById('mask').value;
+  const ch = document.getElementById('chain').value;
+  r.fit = m === 'none' && ch === 'none' ? null : {
+    mask: m === 'none' ? null : GEAR_STYLE[m],
+    chain: ch === 'none' ? null : GEAR_STYLE[ch],
+  };
+  return r;
+}
 function speedK() { return Number(document.getElementById('speed').value); }
 
 function paint(x, o) {
@@ -206,7 +229,8 @@ function paintAll(t) {
 // page is simply black and every screenshot lies to you.
 window.step = (t = 0) => paintAll(t);
 paintAll(0);
-for (const el of [who, document.getElementById('speed'), document.getElementById('anim')]) {
+for (const el of [who, document.getElementById('speed'), document.getElementById('anim'),
+  document.getElementById('mask'), document.getElementById('chain')]) {
   el.addEventListener('input', () => { note(); paintAll(lastT); });
 }
 
