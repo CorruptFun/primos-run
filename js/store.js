@@ -257,6 +257,12 @@ export function writeEcon(fn) {
 // Read/modify/write straight against storage rather than through a caller's
 // in-memory blob, so finishing the tutorial can never clobber a stat and a
 // stat can never clobber the tutorial flag.
+//
+// Both writers below therefore bypass save() — and so must notify() by hand, for
+// the same reason writeEcon() does: the cloud push is a save() listener (see
+// js/cloud.js), so a write that never reaches it never reaches the cloud. That
+// is not cosmetic here. `trainedAt` stuck on disk means a player who finishes
+// the training on a phone gets sat down for it again on a tablet.
 
 export function isTrained() {
   const blob = read();
@@ -267,22 +273,42 @@ export function isTrained() {
 
 export function markTrained() {
   const blob = read() || {};
+  // Already taught — a real stamp or a grandfathered LEGACY. Re-stamping would
+  // move the number without changing the answer to "has this player been
+  // taught", and every write here costs a cloud upsert, so nothing moved and
+  // nothing is sent. finishTutorial()'s "never again" guarantee is unaffected:
+  // it is the existing truthy value that provides it.
+  if (blob.trainedAt) return;
   blob.trainedAt = Date.now();
   try {
     localStorage.setItem(KEY, JSON.stringify(blob));
   } catch {
     /* nothing to do — they will simply be offered the training again */
   }
+  // Coerced for the same reason writeEcon() coerces: `blob` is a bare {} on a
+  // first-ever write and a partial row must never reach the cloud. `trainedAt`
+  // itself passes through coerce() untouched, by design — see the note there.
+  notify(coerce(blob));
 }
 
 /** Dev hook. A reload is the honest way to see it, since main.js caches load(). */
 export function clearTrained() {
   const blob = read();
   if (!blob) return;
+  // Already cleared, so nothing moves. Note ABSENT is not cleared: a save that
+  // predates the tutorial has no `trainedAt` key at all and still reads as
+  // trained (see isTrained), so writing the 0 over it is the thing that clears
+  // it. `undefined === 0` is false, which is exactly the wanted answer.
+  if (blob.trainedAt === 0) return;
   blob.trainedAt = 0;
   try {
     localStorage.setItem(KEY, JSON.stringify(blob));
   } catch {
     /* ignore */
   }
+  // Mirrored like markTrained, so the cloud row matches the device. The merge
+  // latches "has trained at all" (js/merge.js pickTrained), so the next
+  // reconcile against a device that HAS been taught will set this back — this
+  // clears the tutorial here and now, which is all the dev hook is for.
+  notify(coerce(blob));
 }

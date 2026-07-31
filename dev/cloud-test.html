@@ -238,6 +238,40 @@ group('continues — the mark survives a merge intact');
      { a: true }, 'days only one device played keep their own marks');
 }
 
+group('training — a latch, and a max would break it');
+{
+  // The ordinary case, not an unlucky one: the tutorial finishes BEFORE the
+  // first run, so a freshly-taught save ties an untouched one on every metric
+  // progressWinner looks at — and the tie prefers local.
+  const taught = { best: 0, runs: 0, days: {}, trainedAt: 1754000000000 };
+  const fresh  = { best: 0, runs: 0, days: {}, trainedAt: 0 };
+  eq(mergeSaves(fresh, taught).trainedAt, 1754000000000,
+     'a second device adopts the training instead of replaying it');
+  eq(mergeSaves(taught, fresh).trainedAt, 1754000000000, 'and that does not depend on argument order');
+
+  // LEGACY is -1: a marker for a save that predates the tutorial, not a
+  // timestamp. Math.max(-1, 0) is 0 — the grandfathered player sat back down.
+  const legacy = { best: 900, runs: 40, days: {}, trainedAt: -1 };
+  eq(mergeSaves(legacy, fresh).trainedAt, -1, 'the LEGACY sentinel survives a max that would flatten it to 0');
+  eq(mergeSaves(fresh, legacy).trainedAt, -1, 'in either order');
+  eq(mergeSaves(legacy, taught).trainedAt, 1754000000000, 'a real session beats the sentinel');
+
+  // The property itself: nothing here moves a player back to untrained.
+  const untaughtRecord = { best: 9000, runs: 99, days: {}, trainedAt: 0 };
+  eq(mergeSaves(untaughtRecord, taught).trainedAt, 1754000000000,
+     'training survives even when the side holding it LOSES on progress');
+
+  eq(mergeSaves(fresh, fresh).trainedAt, 0, 'neither side taught stays untaught — the tutorial is still owed');
+  eq(mergeSaves({ best: 1, days: {} }, { best: 0, days: {} }).trainedAt, 0,
+     'absent on both sides is untrained, never undefined');
+  eq(mergeSaves({ best: 1, days: {}, trainedAt: 200 },
+                { best: 0, days: {}, trainedAt: 100 }).trainedAt,
+     200, 'two real sessions keep the newer stamp');
+  eq(mergeSaves({ best: 1, days: {}, trainedAt: NaN },
+                { best: 0, days: {}, trainedAt: 500 }).trainedAt,
+     500, 'a corrupt stamp degrades rather than poisoning the latch');
+}
+
 group('formatting');
 eq(formatWeekStanding(18204, 5), '18,204 · 5d', 'the total, then the turnout that explains it');
 

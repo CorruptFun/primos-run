@@ -14,6 +14,9 @@
  * THE SPENDABLE FIELDS ARE NOT HERE AND MUST NOT BE ADDED. `chelas` is a
  * balance and `shelf` is goods; both are handled below, for stated reasons.
  * Maxing a spendable number across two devices mints it.
+ *
+ * `trainedAt` is not here either, for the opposite reason — it IS a latch, but
+ * one a max silently breaks. See pickTrained().
  */
 const LATCHES = ['best', 'bestBeers', 'totalBeers', 'runs'];
 
@@ -154,8 +157,36 @@ function pickHandle(a, b) {
 }
 
 /**
+ * THE TUTORIAL LATCH — "has this player been taught at all", never "when".
+ *
+ * It cannot ride the progress winner. Finish the training on a phone and sign in
+ * on a tablet and NEITHER side has a run yet, so every metric in progressWinner
+ * ties, the tie prefers local, and the tablet's `trainedAt: 0` sits the player
+ * back down for a course they already did. The tie is not the unlucky case here,
+ * it is the ordinary one: finishing the tutorial is the moment before the first
+ * run, so a freshly-taught save looks identical to an untouched one.
+ *
+ * Nor can it join LATCHES. A save that predates the tutorial carries the
+ * sentinel -1 (LEGACY in js/store.js — a marker, not a timestamp), and
+ * Math.max(-1, 0) is 0. That would replay the training for every grandfathered
+ * player, which is the exact thing the sentinel exists to prevent.
+ *
+ * So: a real stamp beats the sentinel, the sentinel beats never-trained, and
+ * only "neither side has trained" comes out untrained. Nothing here can move a
+ * player from trained back to untrained, which is the whole property. The -1 is
+ * returned by carrying whichever side holds it rather than by naming it, so this
+ * file stays dependency-free with no second copy of the constant to drift.
+ */
+function pickTrained(a, b) {
+  const at = Number(a.trainedAt) || 0;               // absent / NaN / junk → 0
+  const bt = Number(b.trainedAt) || 0;
+  if (at > 0 || bt > 0) return Math.max(at, bt);     // a real session wins, newest of the two
+  return at || bt || 0;                              // else the sentinel, if either side holds it
+}
+
+/**
  * Merge local (`a`) with cloud (`b`). Returns a WHOLE record — never a
- * field-wise blend of the two, except for the three categories above that are
+ * field-wise blend of the two, except for the categories above that are
  * blended deliberately and for stated reasons.
  */
 export function mergeSaves(a, b) {
@@ -166,6 +197,7 @@ export function mergeSaves(a, b) {
   out.days = boards.days;
   out.contDays = boards.contDays;
   out.shelf = mergeShelf(a, b);
+  out.trainedAt = pickTrained(a, b);
   Object.assign(out, pickWallet(a, b, winner));
   Object.assign(out, pickHandle(a, b));
   return out;
