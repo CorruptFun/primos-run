@@ -39,6 +39,8 @@ const { dayKey, previousDayKey, weekOfDay, weekKey, bestForDay, recordDay, prune
         dayWasContinued, formatWeekStanding } = await import(`../js/raceday.js${V}`);
 const { mergeSaves } = await import(`../js/merge.js${V}`);
 const { anonName, sanitizeName } = await import(`../js/leaderboard.js${V}`);
+const { coerce } = await import(`../js/store.js${V}`);
+const { inviteLink } = await import(`../js/referrals.js${V}`);
 
 const out = document.getElementById('out');
 let pass = 0, fail = 0;
@@ -270,6 +272,65 @@ group('training — a latch, and a max would break it');
   eq(mergeSaves({ best: 1, days: {}, trainedAt: NaN },
                 { best: 0, days: {}, trainedAt: 500 }).trainedAt,
      500, 'a corrupt stamp degrades rather than poisoning the latch');
+}
+
+group('invites — the link that actually circulates');
+{
+  // Hardcoded to the canonical origin on purpose. A link built from location
+  // would spread whichever origin the sender happened to be on, and localStorage
+  // is per-origin — so the friend would land on a different save entirely.
+  eq(inviteLink('ABC123'), 'https://corrupt.solutions/games/primos/?ref=ABC123',
+     'the canonical origin, not wherever the sender happens to be running');
+  // The trailing slash stays: the proxy 308s the slash-less form, so dropping it
+  // costs a redirect on every invite ever sent.
+  eq(inviteLink('ZZ0099').includes('/primos/?ref='), true, 'the trailing slash survives the query');
+}
+
+group('invites — the welcome latch, where a mistake MINTS beers');
+{
+  // Same shape as the training latch, and the ordinary case for the same reason:
+  // collecting a welcome happens to a nearly-new account, so both sides sit on
+  // the same tiny numbers, every metric ties, and the tie prefers local.
+  const paid  = { best: 0, runs: 0, days: {}, referralWelcomeClaimed: true };
+  const fresh = { best: 0, runs: 0, days: {}, referralWelcomeClaimed: false };
+  eq(mergeSaves(fresh, paid).referralWelcomeClaimed, true,
+     'a cleared device cannot re-open a welcome that was already paid');
+  eq(mergeSaves(paid, fresh).referralWelcomeClaimed, true, 'and that does not depend on argument order');
+
+  const richUnpaid = { best: 9000, runs: 99, days: {}, referralWelcomeClaimed: false };
+  eq(mergeSaves(richUnpaid, paid).referralWelcomeClaimed, true,
+     'the latch survives even when the side holding it LOSES on progress');
+  eq(mergeSaves(fresh, fresh).referralWelcomeClaimed, false,
+     'neither side paid leaves the welcome still owed');
+  eq(mergeSaves({ best: 1, days: {} }, { best: 0, days: {} }).referralWelcomeClaimed, false,
+     'absent on both sides is unpaid, never undefined');
+}
+
+group('invites — referredBy is a set-once label');
+{
+  const invited = { best: 0, days: {}, referredBy: 'ABC123' };
+  const organic = { best: 0, days: {}, referredBy: null };
+  eq(mergeSaves(organic, invited).referredBy, 'ABC123', 'a cleared device recovers who invited it');
+  eq(mergeSaves(invited, organic).referredBy, 'ABC123', 'in either order');
+  eq(mergeSaves(invited, { best: 0, days: {}, referredBy: 'ZZ9999' }).referredBy, 'ABC123',
+     'a disagreement keeps local, like everywhere else in the merge');
+  eq(mergeSaves(organic, organic).referredBy, null, 'nobody invited them and that stays true');
+}
+
+group('invites — a referral code has to survive a hand-edited save');
+{
+  // These ride into a cloud lookup, so junk must degrade to "no inviter" rather
+  // than go on the wire. captureRefFromUrl and setReferredBy both upper-case
+  // before writing, so lower case on disk means someone edited it.
+  eq(coerce({ referredBy: 'ABC123' }).referredBy, 'ABC123', 'a real code passes through');
+  eq(coerce({ referredBy: 'abc123' }).referredBy, null, 'lower case never reached disk honestly');
+  eq(coerce({ referredBy: 'TOOLONG7' }).referredBy, null, 'wrong length is refused');
+  eq(coerce({ referredBy: 'AB-123' }).referredBy, null, 'punctuation is refused');
+  eq(coerce({ referredBy: 12345 }).referredBy, null, 'a number is not a code');
+  eq(coerce({}).referredBy, null, 'absent is null, never undefined');
+  eq(coerce({ referralWelcomeClaimed: 'yes' }).referralWelcomeClaimed, false,
+     'only a real true counts as paid — a truthy string must not spend the latch');
+  eq(coerce({ referralWelcomeClaimed: true }).referralWelcomeClaimed, true, 'and a real true does');
 }
 
 group('formatting');

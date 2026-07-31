@@ -78,6 +78,7 @@ worker (`primos-run-v1`) when testing there.
 | `js/store.js` | localStorage + backup code — the AUTHORITATIVE save |
 | `js/cloud.js` | Google sign-in, cloud save pull/merge/push |
 | `js/leaderboard.js` | board submit/read + the race-name rules |
+| `js/referrals.js` | invite codes, `?ref=` capture, qualify + payout |
 | `js/merge.js`, `js/raceday.js` | pure: save reconciliation, day/week keys |
 | `js/account.js`, `js/boards.js` | the ACCOUNT and LEADERBOARD screens |
 | `scripts/gen_art.py` | Gemini art generation + chroma key |
@@ -131,6 +132,47 @@ Three things that will bite otherwise:
 Migrations are applied by hand; CI never applies them. So applying to production
 and merging to `main` are two separate acts, and *the repo does not describe
 production until both have happened*.
+
+## Invites (`js/referrals.js`, migration `0002`)
+
+Send a link → your friend signs in and puts up `QUALIFY_SCORE` → you get
+`REFERRER_CHELAS`, they get `REFEREE_CHELAS`. All four constants live at the top
+of `js/referrals.js`. Ported from Viva Maya's `src/core/referrals.ts`, which is
+the shipped original if you need to compare.
+
+- **The `primos_` prefix here is not style, it is the whole safety.** Viva Maya
+  already owns UNPREFIXED `referral_codes`, `referrals` and
+  `resolve_referral_code()` in this same Supabase project. Unlike the
+  `anon_display_name` collision — which at least aborted with 42P13 —
+  `create table if not exists public.referral_codes` finds Viva Maya's table,
+  **quietly does nothing, and reports success**, after which this game reads and
+  writes Viva Maya's live referral data. `create or replace function` on the
+  matching signature would silently replace theirs. Nothing warns you.
+- **Ship-hardened in one migration, deliberately unlike Viva Maya's three.**
+  Their `referral_codes` shipped world-readable (`for select using (true)`) and
+  closing it took 0008 → *client deploy* → 0009, sequenced that way because
+  tightening the policy under a cached PWA client makes real codes look dead —
+  and a dead code is a DEFINITIVE rejection, so the stash is cleared and the
+  referral destroyed rather than retried. Primos has no cached client that ever
+  resolved a code, so the hole never has to exist. **Do not add a permissive
+  select policy to "make it work"** — `primos_resolve_referral_code()` is how it
+  works. `scripts/verify-rls.sh` asserts exactly this, with a control pair that
+  distinguishes a real permission denial from a function that was never applied.
+- **The invite link hardcodes `https://corrupt.solutions/games/primos/?ref=`**,
+  not `location.href`. localStorage is per-origin, so a link built from wherever
+  the sender happened to be spreads the github.io origin and lands the friend on
+  a different save. The trailing slash stays — the proxy 308s the slash-less
+  form with `?ref=` intact, but only the slashed form skips the redirect.
+- **`referralWelcomeClaimed` is in `ECON_KEYS` and unioned by `mergeSaves`.**
+  Both are load-bearing and both mint chelas if removed: without the first, the
+  next ordinary `save()` carries a boot-time `false` back over the spent latch;
+  without the second, a fresh device wins the progress tie (collecting a welcome
+  happens to a nearly-new account, so every metric ties) and re-opens it.
+- **Registration must run before qualification** in the push chain —
+  `maybeQualify` memoizes "never referred" as terminal for the session.
+- The referee's welcome pays out on the visit *after* the run that qualified
+  them, because the qualify stamp goes up on the save push. That is the accepted
+  simplification, not a bug.
 
 ## Checks
 

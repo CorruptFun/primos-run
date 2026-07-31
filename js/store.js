@@ -12,10 +12,19 @@ const KEY = 'primos-run.v1';
 // counts as trained, and distinguishable from a real timestamp if we ever care.
 const LEGACY = -1;
 
-// Fields the wallet owns. They are read/modified/written straight against
-// storage by js/wallet.js, never through a caller's in-memory blob — see
-// readEcon/writeEcon at the bottom of this file and the guard in save().
-const ECON_KEYS = ['chelas', 'shelf', 'walletSeeded'];
+// Fields written STRAIGHT AGAINST STORAGE — by js/wallet.js and js/referrals.js
+// — never through a caller's in-memory blob. See readEcon/writeEcon at the
+// bottom of this file and the guard in save(): for these keys whatever is on
+// disk always wins, because the caller's copy is routinely older than they are.
+//
+// The referral pair is here for exactly the wallet's reason and one sharper one.
+// `referralWelcomeClaimed` is the latch that makes the newcomer's welcome chelas
+// a one-time grant; it flips long after main.js took its copy of the save, so
+// without this the next ordinary save() — a mute toggle, a crew pick — would
+// carry the stale `false` back to disk and the welcome could be collected
+// again, and again, minting currency. `referredBy` is set once at boot from a
+// ?ref= link, before there is any account to attach it to.
+const ECON_KEYS = ['chelas', 'shelf', 'walletSeeded', 'referredBy', 'referralWelcomeClaimed'];
 
 const DEFAULTS = {
   best: 0,
@@ -48,6 +57,14 @@ const DEFAULTS = {
   contDays: {},
   handle: null,        // chosen race name; null means "show the anonymous one"
   handleSetAt: 0,      // when it was chosen — the merge tiebreak (see js/merge.js)
+  // --- referral fields (js/referrals.js) -------------------------------------
+  // The invite code this player arrived on, mirrored out of the ?ref= stash so
+  // the ACCOUNT screen can say they were invited. SET ONCE — the first inviter
+  // wins, here and in the stash. null means they came on their own.
+  referredBy: null,
+  // Spent latch for the one-time welcome grant. Unioned by js/merge.js, never
+  // taken from the progress winner: a re-opened latch pays the welcome twice.
+  referralWelcomeClaimed: false,
 };
 
 function read() {
@@ -99,6 +116,13 @@ export function coerce(raw) {
     }
   }
   out.contDays = contDays;
+  // Referral fields. `referredBy` rides into a cloud lookup, so a hand-edited or
+  // truncated value must degrade to "no inviter" rather than go on the wire —
+  // the same shape rule js/referrals.js applies to the stash.
+  out.referredBy = typeof out.referredBy === 'string' && /^[A-Z0-9]{6}$/.test(out.referredBy)
+    ? out.referredBy
+    : null;
+  out.referralWelcomeClaimed = out.referralWelcomeClaimed === true;
   return out;
 }
 
@@ -310,5 +334,33 @@ export function clearTrained() {
   // latches "has trained at all" (js/merge.js pickTrained), so the next
   // reconcile against a device that HAS been taught will set this back — this
   // clears the tutorial here and now, which is all the dev hook is for.
+  notify(coerce(blob));
+}
+
+// ------------------------------------------------------------------ referrals
+// Written straight against storage for the same reason as the two above: this
+// happens at BOOT, from a ?ref= link, long before main.js has a save in hand —
+// and on a page load where the player may never sign in at all.
+
+/**
+ * Record the invite code this player arrived on. SET ONCE: an existing code is
+ * never overwritten, so a second invite link cannot reassign a player who is
+ * already somebody's referral. Mirrors the same rule the localStorage stash
+ * enforces in js/referrals.js — both have to hold, because either one alone can
+ * be cleared independently of the other.
+ */
+export function setReferredBy(code) {
+  const clean = String(code ?? '').trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(clean)) return;
+  const blob = read() || {};
+  if (blob.referredBy) return;               // first inviter wins — nothing moves
+  blob.referredBy = clean;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(blob));
+  } catch {
+    /* blocked — the stash is still authoritative for registration */
+  }
+  // Coerced for the same reason writeEcon() and markTrained() coerce: `blob` is
+  // a bare {} on a first-ever write and a partial row must never reach the cloud.
   notify(coerce(blob));
 }

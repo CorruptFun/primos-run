@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================================
-# verify-rls.sh — prove the exposure rules of 0001_primos_cloud.sql against a
-# LIVE API.
+# verify-rls.sh — prove the exposure rules of 0001_primos_cloud.sql and
+# 0002_primos_referrals.sql against a LIVE API.
 #
 # Migrations proving themselves locally is not the same statement as "production
 # is safe". This is what turns one into the other, and it has to run at least
@@ -155,6 +155,51 @@ case "$R" in
   \[*) ok "the weekly view is readable and exposes only shareable columns" ;;
   *)   bad "the weekly view should be readable but was not" "$R" ;;
 esac
+
+# --- invites: both tables private, the lookup function the only door ---------
+# THE ASSERTION THAT MATTERS: Viva Maya shipped `referral_codes` with
+# `for select using (true)`, so anyone holding the publishable key could dump
+# every invite code alongside its owner's auth UUID. It took two migrations
+# sequenced around a client deploy to close. 0002 never opens it — these probes
+# are what proves that stayed true.
+echo
+echo "primos_referral_codes — must NOT be enumerable (Viva Maya's scar)"
+R="$(anon "$REST/primos_referral_codes?select=code,user_id")"
+[ "$R" = "[]" ] && ok "anonymous SELECT returns no codes" \
+                || bad "invite codes are ENUMERABLE — this is the hole 0002 exists to avoid" "$R"
+
+C="$(code -X POST "$REST/primos_referral_codes" -d "{\"code\":\"ZZZZZZ\",\"user_id\":\"$FAKE\"}")"
+{ [ "$C" = "401" ] || [ "$C" = "403" ] || [ "$C" = "400" ]; } \
+  && ok "anonymous INSERT refused (HTTP $C)" || bad "anonymous INSERT was accepted" "HTTP $C"
+
+echo
+echo "primos_referrals — who invited whom is private to the two parties"
+R="$(anon "$REST/primos_referrals?select=referee_user_id,referrer_user_id")"
+[ "$R" = "[]" ] && ok "anonymous SELECT returns no rows" \
+                || bad "the referral graph leaked" "$R"
+
+C="$(code -X POST "$REST/primos_referrals" \
+       -d "{\"referee_user_id\":\"$FAKE\",\"referrer_user_id\":\"$FAKE\"}")"
+{ [ "$C" = "401" ] || [ "$C" = "403" ] || [ "$C" = "400" ]; } \
+  && ok "anonymous INSERT refused (HTTP $C)" || bad "anonymous INSERT was accepted" "HTTP $C"
+
+# The lookup function, with a CONTROL PAIR. EXECUTE is granted to `authenticated`
+# only, so anonymous must be denied — but a function that does not exist is ALSO
+# refused, with a different code. Probing one alone cannot tell "permission
+# denied on a real function" from "you never applied the migration", and the
+# second reads as a pass if you only check that anon was refused.
+echo
+echo "primos_resolve_referral_code — the only way to resolve someone else's code"
+C="$(code -X POST "$REST/rpc/primos_resolve_referral_code" -d '{"p_code":"ABC123"}')"
+CTRLFN="$(code -X POST "$REST/rpc/primos_function_that_does_not_exist" -d '{}')"
+if [ "$C" = "$CTRLFN" ]; then
+  meh "anonymous RPC refused (HTTP $C) — INCONCLUSIVE" \
+      "a nonexistent function answers HTTP $CTRLFN too, so this cannot tell a real permission denial from a missing function — has 0002 been applied?"
+elif [ "$C" = "401" ] || [ "$C" = "403" ]; then
+  ok "anonymous EXECUTE denied (HTTP $C, vs HTTP $CTRLFN for a function that isn't there)"
+else
+  bad "anonymous callers can resolve invite codes" "HTTP $C"
+fi
 
 # --- the guard --------------------------------------------------------------
 # Not RLS, but what the board's fairness actually rests on. Both of these have

@@ -152,6 +152,18 @@ async function flushPush() {
     // own. Fire-and-forget and lazily imported: a leaderboard must never block
     // or fail a save, and the boot path must not pull it in.
     void import('./leaderboard.js').then((m) => { void m.maybeSubmitDaily(data); });
+    // Invites ride the same beat, for the same reasons — no second traffic path,
+    // no timer, and lazily imported so the boot path never pulls them in.
+    //
+    // THE ORDER IS LOAD-BEARING. maybeQualify memoizes "this account was never
+    // referred" as terminal for the session; run it first and it would latch
+    // that against a row maybeRegisterReferral is about to create, so a friend
+    // who signed in and immediately beat the qualify score would not pay out
+    // until their next session.
+    void import('./referrals.js').then(async (r) => {
+      await r.maybeRegisterReferral();
+      await r.maybeQualify(data);
+    });
   } catch {
     pending = data;   // offline / transient → retry on the next persist or 'online'
   }

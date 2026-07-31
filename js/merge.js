@@ -185,6 +185,34 @@ function pickTrained(a, b) {
 }
 
 /**
+ * THE REFERRAL PAIR — a spent latch and a set-once label. The latch is the one
+ * that matters, and it mints chelas if it rides the progress winner.
+ *
+ * `referralWelcomeClaimed` MUST UNION, for walletSeeded's reason sharpened by
+ * pickTrained's. It means "the welcome grant has been spent", so letting a
+ * `false` from either side win pays it a second time — js/referrals.js
+ * claimWelcome() checks exactly this field and nothing else. And the tie is the
+ * ORDINARY case here, not the unlucky one: collecting a welcome is something
+ * that happens to a nearly-new account, so both sides sit on the same tiny
+ * numbers, every metric in progressWinner ties, the tie prefers local, and a
+ * freshly-cleared device would hand back a grant it already made. Nothing may
+ * ever move this from claimed back to unclaimed.
+ *
+ * `referredBy` is a set-once label — who invited this player. Whichever side has
+ * one carries it, and a disagreement keeps local like everywhere else in this
+ * file. It cannot be wrong in a way that costs anything: the REAL referral is
+ * the cloud row, whose primary key is the referee, so a player has at most one
+ * no matter what this field says. It exists so the invite panel can say "you
+ * were invited by" after a cleared browser.
+ */
+function pickReferral(a, b) {
+  return {
+    referralWelcomeClaimed: !!a.referralWelcomeClaimed || !!b.referralWelcomeClaimed,
+    referredBy: a.referredBy ?? b.referredBy ?? null,
+  };
+}
+
+/**
  * Merge local (`a`) with cloud (`b`). Returns a WHOLE record — never a
  * field-wise blend of the two, except for the categories above that are
  * blended deliberately and for stated reasons.
@@ -200,5 +228,6 @@ export function mergeSaves(a, b) {
   out.trainedAt = pickTrained(a, b);
   Object.assign(out, pickWallet(a, b, winner));
   Object.assign(out, pickHandle(a, b));
+  Object.assign(out, pickReferral(a, b));
   return out;
 }

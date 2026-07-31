@@ -281,6 +281,25 @@
         <p class="hint" id="name-preview"></p>
       </div>
 
+      <!-- Invites. Hidden unless the cloud is configured AND the player is signed
+           in — a code is minted against an account, so there is nothing honest to
+           show a signed-out player. js/account.js owns the visibility. -->
+      <div id="acct-invite" class="hidden">
+        <p class="sec sep" data-i18n="invite.title">Invite a friend</p>
+        <p class="hint" id="invite-copy"></p>
+        <div class="url-row">
+          <input type="text" id="invite-link" readonly spellcheck="false"
+                 aria-label="Your invite link">
+          <button class="btn btn-small" id="btn-invite-copy" data-i18n="invite.copy">COPY</button>
+        </div>
+        <!-- Unhidden by js/account.js only where navigator.share exists, which is
+             most phones and almost no desktops. -->
+        <button class="btn btn-ghost btn-small wide hidden" id="btn-invite-share"
+                data-i18n="invite.share">SHARE</button>
+        <p class="hint" id="invite-stats"></p>
+        <button class="btn btn-primary wide hidden" id="btn-invite-claim"></button>
+      </div>
+
       <p class="sec sep" data-i18n="acct.backupTitle">Backup on this device</p>
       <p class="hint" data-i18n="acct.backupCopy"></p>
       <button class="btn btn-ghost btn-small wide" id="btn-backup-file" data-i18n="acct.backupFile">DOWNLOAD BACKUP</button>

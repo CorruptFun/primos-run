@@ -428,6 +428,36 @@ const STR = {
   'acct.badCode':     { en: 'That code did not work.', es: 'Ese código no jaló.' },
   'acct.badBackup':   { en: 'That file did not work.', es: 'Ese archivo no jaló.' },
 
+  // ------------------------------------------------------------- invites
+  // The currency is BEERS in `en` and CHELAS in `es`, like everywhere else.
+  // Corrupt handles the payout, so he gets to have an opinion about it.
+  'invite.title':     { en: 'Invite a friend', es: 'Invita a un amigo' },
+  'invite.pitch':     { en: 'Send them your link. Once they sign in and put up %s, '
+                          + 'you get %r beers and they get %f. Corrupt keeps the receipts.',
+                        es: 'Mándales tu liga. Cuando entren y hagan %s, '
+                          + 'tú te llevas %r chelas y ellos %f. Corrupt guarda los recibos.' },
+  'invite.copy':      { en: 'COPY', es: 'COPIAR' },
+  'invite.share':     { en: 'SHARE', es: 'COMPARTIR' },
+  'invite.minting':   { en: 'Making your link…', es: 'Armando tu liga…' },
+  'invite.noCode':    { en: 'No link yet — try again in a moment.',
+                        es: 'Sin liga todavía — inténtalo en un momento.' },
+  'invite.stats':     { en: '%i invited · %q played enough · %c collected',
+                        es: '%i invitados · %q ya jugaron · %c cobrados' },
+  'invite.statsOff':  { en: 'Could not check your invites right now.',
+                        es: 'No se pudieron revisar tus invitaciones ahora.' },
+  'invite.claim':     { en: 'COLLECT · %c BEERS', es: 'COBRAR · %c CHELAS' },
+  'invite.claimed':   { en: '+%c beers. Corrupt counted them out loud.',
+                        es: '+%c chelas. Corrupt las contó en voz alta.' },
+  'invite.claimFail': { en: 'Could not collect that. Try again.',
+                        es: 'No se pudo cobrar. Inténtalo otra vez.' },
+  'invite.copied':    { en: 'Link copied. Go send it.', es: 'Liga copiada. Ve a mandarla.' },
+  // The game's own title, so it stays as-is in both — see the PROPER NOUNS list.
+  'invite.shareTitle': { en: 'Primos: Barrio Run', es: 'Primos: Barrio Run' },
+  'invite.shareText': { en: 'Run the alley with me. ICE is already behind you.',
+                        es: 'Córrele conmigo en el callejón. La Migra ya viene atrás.' },
+  'invite.welcome':   { en: '+%c beers for showing up on a friend’s link. Welcome to the alley.',
+                        es: '+%c chelas por llegar con la liga de un amigo. Bienvenido al callejón.' },
+
   // ----------------------------------------------- the shop / la tiendita
   // `en` calls it the corner store, `es` calls it la tiendita. Corrupt is
   // doing you a favour and would like you to know it.

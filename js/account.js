@@ -16,6 +16,10 @@ import {
 } from './cloud.js';
 import { t } from './i18n.js';
 import { anonName, getHandle, sanitizeName, setHandle } from './leaderboard.js';
+import {
+  QUALIFY_SCORE, REFEREE_CHELAS, REFERRER_CHELAS,
+  claimReferralRewards, fetchMyReferralStats, fetchPendingRewards, inviteLink, mintMyCode,
+} from './referrals.js';
 import * as store from './store.js';
 
 const $ = (id) => document.getElementById(id);
@@ -127,6 +131,104 @@ function paintName() {
   preview.textContent = nameHint(input.value, anonFallback);
 }
 
+// --- invites ----------------------------------------------------------------
+
+/**
+ * Paint generation. Every repaint bumps this and the async steps below check it
+ * before touching the DOM, so a slow mintMyCode() that resolves after the player
+ * has signed out — or after a newer repaint already ran — cannot write a stale
+ * code into a panel that has moved on.
+ */
+let invitePaint = 0;
+
+/** The pending rewards the claim button is currently offering, if any. */
+let pendingRewards = [];
+
+function paintInvite() {
+  const gen = ++invitePaint;
+  const wrap = $('acct-invite');
+  const claim = $('btn-invite-claim');
+  const share = $('btn-invite-share');
+
+  // A code belongs to an account, so there is nothing truthful to show without
+  // one — and nothing at all on the build this game ships as.
+  const on = isCloudConfigured() && !!cloudSession();
+  wrap.classList.toggle('hidden', !on);
+  claim.classList.add('hidden');
+  pendingRewards = [];
+  if (!on) return;
+
+  $('invite-copy').textContent = t('invite.pitch')
+    .replace('%r', String(REFERRER_CHELAS))
+    .replace('%f', String(REFEREE_CHELAS))
+    // Grouped like every other score the game prints — a bare 1500 next to two
+    // two-digit beer counts reads as a fourth small number rather than a target.
+    .replace('%s', QUALIFY_SCORE.toLocaleString());
+
+  const link = $('invite-link');
+  link.value = '';
+  link.placeholder = t('invite.minting');
+  $('invite-stats').textContent = '';
+  // navigator.share is a phone affordance and absent on most desktops. Asking
+  // first is the difference between a share sheet and a button that does nothing.
+  share.classList.toggle('hidden', typeof navigator.share !== 'function');
+
+  void mintMyCode().then((code) => {
+    if (gen !== invitePaint) return;
+    if (!code) {
+      // Offline, or the mint did not land. Not an error state the player can act
+      // on, so it reads as "not yet" and the next repaint tries again.
+      link.placeholder = t('invite.noCode');
+      share.classList.add('hidden');
+      return;
+    }
+    link.value = inviteLink(code);
+  });
+
+  void fetchMyReferralStats().then((s) => {
+    if (gen !== invitePaint) return;
+    // Null means "we could not ask", which is not the same as zero — showing a
+    // confident 0 to someone whose friends HAVE joined is the worse lie.
+    $('invite-stats').textContent = s
+      ? t('invite.stats')
+        .replace('%i', String(s.invited))
+        .replace('%q', String(s.qualified))
+        .replace('%c', String(s.claimed))
+      : t('invite.statsOff');
+  });
+
+  void fetchPendingRewards().then((rows) => {
+    if (gen !== invitePaint || rows.length === 0) return;
+    pendingRewards = rows;
+    claim.textContent = t('invite.claim')
+      .replace('%n', String(rows.length))
+      .replace('%c', String(rows.length * REFERRER_CHELAS));
+    claim.disabled = false;
+    claim.classList.remove('hidden');
+  });
+}
+
+/**
+ * The newcomer's welcome, paid here because this is a screen they reach with the
+ * cloud already reconciled.
+ *
+ * It lands on the visit AFTER the run that qualified them: the qualify stamp
+ * goes up on the save push, so the earliest anything can know is the next time
+ * the client asks. That is a deliberate simplification, not an oversight — the
+ * alternative is threading a reward moment through the game-over path for a
+ * grant the player is not waiting on.
+ */
+function payWelcomeIfDue() {
+  if (!isCloudConfigured() || !cloudSession()) return;
+  void import('./referrals.js').then(async (r) => {
+    if (!(await r.isWelcomePending(store.load()))) return;
+    const left = r.claimWelcome();
+    if (left === null) return;                 // already collected — say nothing
+    status(t('invite.welcome').replace('%c', String(REFEREE_CHELAS)));
+    paintInvite();
+  });
+}
+
 // --- wiring -----------------------------------------------------------------
 
 /** Wire the screen once, at boot. */
@@ -148,6 +250,56 @@ export function initAccount() {
   };
   $('btn-name').addEventListener('click', saveName);
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveName(); });
+
+  // --- invites ---
+  $('btn-invite-copy').addEventListener('click', () => {
+    const url = $('invite-link').value;
+    if (!url) { status(t('invite.noCode'), true); return; }
+    // The readonly input IS the fallback here — unlike the backup code there is
+    // always something on screen to copy by hand, so a blocked clipboard just
+    // selects it rather than revealing anything new.
+    const fallback = () => {
+      const el = $('invite-link');
+      el.focus();
+      el.select();
+      status(t('acct.copyManual'));
+    };
+    try {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(url)
+          .then(() => status(t('invite.copied')))
+          .catch(fallback);
+      } else fallback();
+    } catch {
+      fallback();
+    }
+  });
+
+  $('btn-invite-share').addEventListener('click', () => {
+    const url = $('invite-link').value;
+    if (!url || typeof navigator.share !== 'function') return;
+    // A dismissed share sheet rejects, and that is not a failure worth reporting.
+    navigator.share({ title: t('invite.shareTitle'), text: t('invite.shareText'), url })
+      .catch(() => {});
+  });
+
+  $('btn-invite-claim').addEventListener('click', () => {
+    const btn = $('btn-invite-claim');
+    if (pendingRewards.length === 0) return;
+    btn.disabled = true;
+    void claimReferralRewards(pendingRewards).then((res) => {
+      if (res.claimed > 0) {
+        status(t('invite.claimed')
+          .replace('%n', String(res.claimed))
+          .replace('%c', String(res.claimed * REFERRER_CHELAS)));
+      } else {
+        // Nothing stamped — offline, or another device collected first. The rows
+        // are untouched either way, so a repaint offers them again.
+        status(t('invite.claimFail'), true);
+      }
+      paintInvite();
+    });
+  });
 
   // --- backup ---
   $('btn-backup-file').addEventListener('click', () => {
@@ -223,11 +375,15 @@ export function refreshAccount() {
   status('');
   paintAuth();
   paintName();
+  paintInvite();
+  // After paintInvite, so a welcome that pays out repaints over a panel that has
+  // already been built rather than racing it.
+  payWelcomeIfDue();
   // Repaint whenever auth changes while the screen is open. Only meaningful on
   // a configured build — auth never changes otherwise, so the friendly
   // not-configured path never depends on a live client.
   if (isCloudConfigured() && !unsub) {
-    unsub = onCloudChange(() => { paintAuth(); paintName(); });
+    unsub = onCloudChange(() => { paintAuth(); paintName(); paintInvite(); });
   }
 }
 

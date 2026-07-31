@@ -27,6 +27,7 @@ import {
   openShop, offerContinue, closeContinue, continueCost, loadoutFor, paintWallet,
 } from './tiendita.js';
 import { bootstrapCloud } from './cloud.js';
+import { captureRefFromUrl } from './referrals.js';
 import { pruneDays, recordDay } from './raceday.js';
 import { initBoards, refreshBoards, relangBoards, showRunStanding } from './boards.js';
 import { initAccount, refreshAccount, relangAccount, releaseAccount } from './account.js';
@@ -1006,6 +1007,12 @@ document.addEventListener('visibilitychange', () => {
 
 function boot() {
   resize();
+
+  // Stash a ?ref= invite FIRST, before any other boot step can navigate the URL
+  // away — the OAuth return in particular rewrites it. Local-only, never
+  // overwrites an earlier invite, and safe on the dormant build: the code simply
+  // waits in storage until the player signs in, which may be days later.
+  captureRefFromUrl();
 
   // Painted body parts and props. The rig falls back to procedural drawing
   // until (or unless) the parts land, so a slow network never blocks the menu.
