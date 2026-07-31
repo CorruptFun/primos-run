@@ -15,6 +15,7 @@
 // like a still frame with animation pasted on top.
 
 import { drawPrimoPortrait } from './art/runner.js';
+import { drawIceAgent } from './art/ice.js';
 import { PAL } from './art/palette.js';
 // Aliased: this module already uses `t` for elapsed seconds, and importing
 // the translator under that name is a hard redeclaration error that takes the
@@ -173,9 +174,10 @@ function drawHero(ctx, W, H, turn, heroK) {
  * the obstacles are checkpoints and border walls — so the opening shows who is
  * actually chasing you rather than an unrelated crew.
  *
- * Flat silhouettes on purpose: they run AT the camera here, and the runner rig
- * only knows how to draw a back view. A silhouette sidesteps that entirely and
- * reads as more of a threat than a fully lit figure would at this size.
+ * They run AT the camera here, and the runner rig only knows how to draw a back
+ * view — so they get their own front-facing rig in art/ice.js. Backlit by the
+ * same low sun as the hero, which is what lets the view work without ever having
+ * to render a face.
  */
 function drawPursuers(ctx, W, H, turn) {
   const fade = 1 - Math.min(1, turn * 1.5);
@@ -190,7 +192,11 @@ function drawPursuers(ctx, W, H, turn) {
     { x: 0.47, z: 0.34, tint: '#120a18' },
   ];
 
-  for (let i = 0; i < crew.length; i++) {
+  // Back to front. The crew is authored in increasing depth, so iterating it
+  // forwards paints the furthest agent LAST and it cuts across the nearest one.
+  // Three flat silhouettes of nearly the same colour hid that; three lit figures
+  // would not.
+  for (let i = crew.length - 1; i >= 0; i--) {
     const c = crew[i];
     // Closing in over the sequence — they start further back and gain on you.
     const depth = c.z + 0.30 - Math.min(0.28, t * 0.19);
@@ -202,87 +208,9 @@ function drawPursuers(ctx, W, H, turn) {
     const px = W * 0.5 + (c.x - 0.5) * spread + turn * W * 0.5 * (i + 1);
     const py = H * 0.545 - depth * H * 0.10;
 
-    // Stride is offset per crew member so they never move as one block.
-    const ph = t * 7.5 + i * 2.1;
-    drawSilhouette(ctx, px, py, h, ph, c.tint);
-  }
-  ctx.restore();
-}
-
-function drawSilhouette(ctx, cx, cy, h, phase, tint) {
-  const w = h * 0.42;
-  const swing = Math.sin(phase);
-  const lift = Math.abs(Math.cos(phase)) * h * 0.04;
-
-  ctx.save();
-  ctx.translate(cx, cy - lift);
-  ctx.fillStyle = tint;
-
-  // legs — one forward, one back, in counter-phase
-  for (const s of [-1, 1]) {
-    const k = s * swing;
-    ctx.beginPath();
-    ctx.moveTo(-w * 0.12, 0);
-    ctx.lineTo(w * 0.12, 0);
-    ctx.lineTo(w * 0.16 + k * w * 0.5, h * 0.46);
-    ctx.lineTo(-w * 0.06 + k * w * 0.5, h * 0.46);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  // Torso — squared off and bulked out at the shoulders. A tactical vest has a
-  // blockier silhouette than a person, and at this size the outline is doing
-  // all the work of saying who these are.
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.52, -h * 0.46);
-  ctx.lineTo(w * 0.52, -h * 0.46);
-  ctx.lineTo(w * 0.44, h * 0.02);
-  ctx.lineTo(-w * 0.44, h * 0.02);
-  ctx.closePath();
-  ctx.fill();
-
-  // Vest plate + stencilled letters. Small, low-contrast — a label, not a sign.
-  ctx.fillStyle = 'rgba(255,255,255,0.16)';
-  ctx.fillRect(-w * 0.30, -h * 0.34, w * 0.60, h * 0.20);
-  if (h > 34) {
-    ctx.fillStyle = 'rgba(240,238,232,0.72)';
-    ctx.font = `900 ${Math.round(h * 0.15)}px ui-rounded, system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText('ICE', 0, -h * 0.19);
-  }
-
-  // arms, opposite the legs
-  for (const s of [-1, 1]) {
-    const k = -s * swing;
-    ctx.beginPath();
-    ctx.moveTo(s * w * 0.38, -h * 0.40);
-    ctx.lineTo(s * w * 0.58, -h * 0.36);
-    ctx.lineTo(s * w * 0.52 + k * w * 0.3, -h * 0.02);
-    ctx.lineTo(s * w * 0.32 + k * w * 0.3, -h * 0.05);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  // Head under a cap. The bill is the single most recognisable part of the
-  // silhouette at this size — more than the head shape itself.
-  ctx.beginPath();
-  ctx.ellipse(0, -h * 0.60, w * 0.30, h * 0.19, 0, 0, TAU);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.34, -h * 0.66);
-  ctx.lineTo(w * 0.34, -h * 0.66);
-  ctx.lineTo(w * 0.40, -h * 0.72);
-  ctx.lineTo(-w * 0.40, -h * 0.72);
-  ctx.closePath();
-  ctx.fill();
-
-  // Hot eyes. The only bright thing in the silhouette, so it is where the
-  // player's attention lands — and it makes the crew read as looking at you.
-  ctx.fillStyle = 'rgba(255,90,70,0.9)';
-  for (const s of [-1, 1]) {
-    ctx.beginPath();
-    ctx.ellipse(s * w * 0.12, -h * 0.61, w * 0.055, h * 0.022, 0, 0, TAU);
-    ctx.fill();
+    // Cadence, stride and roll are per-agent inside ice.js — they used to share
+    // one formula offset by index, which is what made them move as one block.
+    drawIceAgent(ctx, px, py, h, t, i, c.tint);
   }
   ctx.restore();
 }

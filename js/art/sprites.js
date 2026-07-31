@@ -9,10 +9,10 @@
 // runner.js falls back to drawing the body procedurally.
 
 // Painted props obey the same affordance language as the procedural ones, so
-// the ground half of the dodge rule comes straight from props.js rather than
-// being re-typed here — one set of flasher colours, one rule. props.js imports
-// nothing from this file, so there is no cycle.
-import { coldSpill } from './props.js';
+// the ground half of BOTH rules comes straight from props.js rather than being
+// re-typed here — one set of flasher colours, one patch of road paint, one
+// rule. props.js imports nothing from this file, so there is no cycle.
+import { coldSpill, hazardBase, PROP_SPEC } from './props.js';
 
 // Resolved against this module, not the page, so dev/ harnesses load it too.
 const BASE = new URL('../../art/', import.meta.url).href;
@@ -101,6 +101,7 @@ const RIM_ALPHA = { pickup: 0.45, power: 0.45, jump: 0.34, slide: 0.34, dodge: 0
 const images = new Map();
 const props = new Map();
 const rims = new Map();
+const caps = new Map();
 let state = 'idle';   // idle | loading | ready | missing
 
 export function spritesReady() {
@@ -143,6 +144,7 @@ export function loadProps() {
       const clean = mip(dekey(img), 256);
       props.set(type, clean);
       if (cfg.rim) rims.set(type, stamp(clean, cfg.rim));
+      if ((PROP_SPEC[type] || {}).kind === 'jump') caps.set(type, topCap(clean));
     };
     img.src = `${BASE}${file}.png`;
   }
@@ -237,6 +239,78 @@ function stamp(img, colour) {
   return c;
 }
 
+// Two-band lit cap for painted art, matching litTop's cream-then-amber in
+// props.js. Same rule, same colours, different medium.
+const CAP_LIT = 'rgba(255,240,200,0.9)';
+const CAP_LIP = 'rgba(255,176,88,0.88)';
+const CAP_FRAC = 0.042;   // crown thickness as a fraction of the art's height
+const CAP_DROP = 0.1;     // how far below the highest point the crown may run
+
+/**
+ * `litTop` for a painted prop: the top edge of the sprite's OWN silhouette,
+ * lit, built once at load.
+ *
+ * A jump prop is supposed to be brightest along the plane you clear, and the
+ * painted dumpster does the exact opposite — the top eighth of that art
+ * averages luminance 50 against 76 for the prop as a whole, so the plane
+ * carrying the whole affordance is the darkest thing on it. Nothing available
+ * here can repaint a bitmap, and the existing rim stamp cannot fix it either:
+ * the rim is the whole outline at low alpha, so pushing it hard enough to sell
+ * a top plane also draws a bright line down both flanks and around the base,
+ * which is a selection outline and not a light.
+ *
+ * So: walk down each column to the first opaque pixel and paint a band from
+ * there. The crown lands on the real edge whatever shape that edge is, and the
+ * silhouette masks it at the end so it can never spill past the art.
+ */
+function topCap(img) {
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  if (!w || !h) return null;
+  const src = document.createElement('canvas');
+  src.width = w; src.height = h;
+  const sc = src.getContext('2d', { willReadFrequently: true });
+  sc.drawImage(img, 0, 0, w, h);
+  let d;
+  try {
+    d = sc.getImageData(0, 0, w, h).data;
+  } catch {
+    return null;    // tainted canvas: no crown, the rim still runs
+  }
+
+  const th = Math.max(2, Math.round(h * CAP_FRAC));
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  const ox = out.getContext('2d');
+
+  const top = new Int32Array(w).fill(-1);
+  let hi = h;
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) {
+      if (d[(y * w + x) * 4 + 3] > 60) { top[x] = y; if (y < hi) hi = y; break; }
+    }
+  }
+  // Only the columns near the highest point get lit. Follow the silhouette all
+  // the way round and the crown runs down both shoulders and turns into an
+  // outline — the same failure the rim alpha is kept low to avoid. The light is
+  // on TOP, so it stops where the top does.
+  const cut = hi + h * CAP_DROP;
+  // One path per band, so the whole crown is two fills no matter how ragged
+  // the edge it is following.
+  ox.fillStyle = CAP_LIP;
+  ox.beginPath();
+  for (let x = 0; x < w; x++) if (top[x] >= 0 && top[x] <= cut) ox.rect(x, top[x] + th, 1, th * 0.6);
+  ox.fill();
+  ox.fillStyle = CAP_LIT;
+  ox.beginPath();
+  for (let x = 0; x < w; x++) if (top[x] >= 0 && top[x] <= cut) ox.rect(x, top[x], 1, th);
+  ox.fill();
+
+  ox.globalCompositeOperation = 'destination-in';
+  ox.drawImage(img, 0, 0, w, h);
+  return out;
+}
+
 const TAU = Math.PI * 2;
 
 /**
@@ -295,11 +369,12 @@ export function drawPropSprite(ctx, img, sx, sy, u, o, t) {
       ctx.fill();
     }
   } else {
-    // Dodge rule, ground half: cold flasher spill on the road first, since it
-    // is light and everything else sits in it.
+    // Ground half of whichever rule this prop is under, first: both of them are
+    // light on the road, and everything else stands in them.
     const dodge = o.kind === 'dodge';
     const beat = Math.floor(t * 6 + o.seed) % 2 === 0;
     if (dodge) coldSpill(ctx, sx, base, w * 0.8, cfg.lamp ? (beat ? 0 : 1) : 2);
+    else if (o.kind === 'jump') hazardBase(ctx, sx, base, u, w);
 
     // contact shadow so it isn't pasted onto the asphalt
     ctx.save();
@@ -340,6 +415,25 @@ export function drawPropSprite(ctx, img, sx, sy, u, o, t) {
   }
 
   ctx.drawImage(img, sx0, 0, sw, ih, x, y, w, h);
+
+  // Jump rule, light half: the crown, over the art.
+  //
+  // Restacked rather than scaled. The crown is a fixed fraction of the art, so
+  // once the prop is small enough to matter it is drawn a fraction of a pixel
+  // thick and the one line carrying the affordance averages itself away into
+  // the asphalt. `litTop` never has that problem because it floors its
+  // thickness in screen pixels; a bitmap has no such floor, so the floor is put
+  // back by drawing the crown two or three times, each a crown-thickness lower.
+  // Costs a handful of tiny textured quads and only at the distance where the
+  // prop is a handful of pixels wide anyway.
+  const cap = caps.get(o.type);
+  if (cap) {
+    const capPx = h * CAP_FRAC;
+    const reps = Math.min(4, Math.max(1, Math.ceil(1.6 / Math.max(0.35, capPx))));
+    for (let i = 0; i < reps; i++) {
+      ctx.drawImage(cap, sx0, 0, sw, ih, x, y + i * capPx * 0.85, w, h);
+    }
+  }
 
   // Dodge rule, light half. The painted light bar is a still frame — both lamps
   // are already in the art — so all that is missing is the flash, which goes on

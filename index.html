@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Primos: Barrio Run</title>
-<meta name="description" content="An endless run through Los Angeles alleyways. Grab chelas, eat tacos, dodge the checkpoints, outrun La Migra.">
+<meta name="description" content="An endless run through Los Angeles alleyways. Grab chelas, eat tacos, dodge the checkpoints, outrun ICE.">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1a1024">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -19,7 +19,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Primos: Barrio Run">
 <meta property="og:title" content="Primos: Barrio Run">
-<meta property="og:description" content="An endless run through Los Angeles alleyways. Grab chelas, eat tacos, dodge the checkpoints, outrun La Migra.">
+<meta property="og:description" content="An endless run through Los Angeles alleyways. Grab chelas, eat tacos, dodge the checkpoints, outrun ICE.">
 <meta property="og:url" content="https://corruptfun.github.io/primos-run/">
 <meta property="og:image" content="https://corruptfun.github.io/primos-run/icon-512.png">
 <meta property="og:image:width" content="512">
@@ -27,7 +27,7 @@
 <meta property="og:image:alt" content="The Primos mark — a face in shades and a bandana.">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Primos: Barrio Run">
-<meta name="twitter:description" content="An endless run through Los Angeles alleyways. Grab chelas, eat tacos, dodge the checkpoints, outrun La Migra.">
+<meta name="twitter:description" content="An endless run through Los Angeles alleyways. Grab chelas, eat tacos, dodge the checkpoints, outrun ICE.">
 <meta name="twitter:image" content="https://corruptfun.github.io/primos-run/icon-512.png">
 <link rel="canonical" href="https://corruptfun.github.io/primos-run/">
 
@@ -48,7 +48,7 @@
         <span class="logo-top">PRIMOS</span>
         <span class="logo-bot">BARRIO RUN</span>
       </h1>
-      <p class="tagline" data-i18n="menu.tagline">Los Ángeles · 3 carriles · sin frenos</p>
+      <p class="tagline" data-i18n="menu.tagline">Los Angeles · 3 lanes · no brakes</p>
 
       <!-- Self-labelling on purpose: ENGLISH / ESPAÑOL read the same whichever
            language is live, so the switch never needs translating and a player
@@ -62,29 +62,35 @@
       <p class="crew-name" id="crew-name">CHUY</p>
       <p class="crew-tag" id="crew-tag">Pendleton azul · Blues doradas</p>
 
-      <button class="btn btn-primary" id="btn-play" data-i18n="menu.play">CORRE</button>
+      <button class="btn btn-primary" id="btn-play" data-i18n="menu.play">RUN</button>
+
+      <!-- The chip is the SPENDABLE wallet, which is deliberately NOT the
+           lifetime CHELAS stat below it — see js/wallet.js. -->
+      <button class="btn btn-ghost" id="btn-shop">
+        <span data-i18n="shop.open">CORNER STORE</span><b class="wallet-chip" data-wallet>0</b>
+      </button>
 
       <div class="stats">
-        <div><b id="stat-best">0</b><span data-i18n="stat.best">RÉCORD</span></div>
-        <div><b id="stat-beers">0</b><span data-i18n="stat.chelas">CHELAS</span></div>
-        <div><b id="stat-runs">0</b><span data-i18n="stat.runs">CORRIDAS</span></div>
+        <div><b id="stat-best">0</b><span data-i18n="stat.best">BEST</span></div>
+        <div><b id="stat-beers">0</b><span data-i18n="stat.chelas">BEERS</span></div>
+        <div><b id="stat-runs">0</b><span data-i18n="stat.runs">RUNS</span></div>
       </div>
 
       <details class="how">
-        <summary data-i18n="how.title">Cómo se corre</summary>
+        <summary data-i18n="how.title">How to run</summary>
         <!-- Split into <b> + <span> so the refresh only ever writes
              textContent — no innerHTML anywhere in the language swap. -->
         <ul>
-          <li><b data-i18n="how.lane.k">Desliza ← →</b> <span data-i18n="how.lane.v">/ arrows — cambia de carril</span></li>
-          <li><b data-i18n="how.jump.k">Desliza ↑</b> <span data-i18n="how.jump.v">/ space — brinca los botes</span></li>
-          <li><b data-i18n="how.slide.k">Desliza ↓</b> <span data-i18n="how.slide.v">/ down — agáchate bajo la ropa de la vecina</span></li>
-          <li><b data-i18n="how.wall.k">Retenes y el muro</b> <span data-i18n="how.wall.v">no se saltan. Never have. Dales la vuelta.</span></li>
-          <li><b data-i18n="how.taco.k">Los tacos</b> <span data-i18n="how.taco.v">son gasolina. Run out and la patrulla eats you.</span></li>
+          <li><b data-i18n="how.lane.k">Swipe ← →</b> <span data-i18n="how.lane.v">/ arrows — change lanes</span></li>
+          <li><b data-i18n="how.jump.k">Swipe ↑</b> <span data-i18n="how.jump.v">/ space — jump the trash</span></li>
+          <li><b data-i18n="how.slide.k">Swipe ↓</b> <span data-i18n="how.slide.v">/ down — duck under the neighbour's laundry</span></li>
+          <li><b data-i18n="how.wall.k">Checkpoints and the wall</b> <span data-i18n="how.wall.v">can't be jumped. Never could. Go around.</span></li>
+          <li><b data-i18n="how.taco.k">Tacos</b> <span data-i18n="how.taco.v">are fuel. Run out and ICE takes you.</span></li>
         </ul>
       </details>
 
       <details class="how" id="primo-panel">
-        <summary data-i18n="primo.title">Corre como un Primo de verdad</summary>
+        <summary data-i18n="primo.title">Run as a real Primo</summary>
         <p class="hint" data-i18n="primo.hintFind">¿Eres holder? Busca tu número.</p>
         <div class="url-row">
           <!-- 0..3068 — the collection is 3,069 tokens numbered from zero. -->
@@ -103,24 +109,22 @@
           </div>
         </div>
 
-        <button class="btn btn-ghost btn-small wide" id="btn-random" data-i18n="primo.random">SORPRÉNDEME</button>
+        <button class="btn btn-ghost btn-small wide" id="btn-random" data-i18n="primo.random">SURPRISE ME</button>
 
-        <p class="hint sep" data-i18n="primo.hintUrl">¿Eres holder? Use your own — right-click your Primo on Magic Eden,
-          copy the image address, paste it here.</p>
+        <p class="hint sep" data-i18n="primo.hintUrl">Holder? Use your own — right-click your Primo on Magic Eden, copy the image address, paste it here.</p>
         <div class="url-row">
           <input type="url" id="primo-url" data-i18n-ph="primo.urlPh" placeholder="Paste an image URL" spellcheck="false">
-          <button class="btn btn-small" id="btn-url" data-i18n="primo.load">CARGAR</button>
+          <button class="btn btn-small" id="btn-url" data-i18n="primo.load">LOAD</button>
         </div>
         <label class="file-btn">
           <span data-i18n="primo.file">Or choose a file</span>
           <input type="file" id="primo-file" accept="image/*" hidden>
         </label>
-        <button class="btn btn-ghost btn-small wide" id="btn-clear-primo" data-i18n="primo.clear">BORRAR</button>
+        <button class="btn btn-ghost btn-small wide" id="btn-clear-primo" data-i18n="primo.clear">CLEAR</button>
         <p class="hint" id="primo-status"></p>
       </details>
 
-      <p class="fine" data-i18n="menu.fine">Unofficial fan project, not affiliated with the Primos collection.
-        No collection artwork is stored here — images load from public IPFS at your request.</p>
+      <p class="fine" data-i18n="menu.fine">An official Primos project. No collection artwork is stored here — images load from public IPFS at your request.</p>
     </div>
   </section>
 
@@ -128,10 +132,10 @@
   <section id="screen-pause" class="screen hidden">
     <div class="sheet sheet-small">
       <span class="logo-mark mark-sm" aria-hidden="true"></span>
-      <h2 data-i18n="pause.title">EN PAUSA</h2>
-      <button class="btn btn-primary" id="btn-resume" data-i18n="pause.resume">SIGUE</button>
+      <h2 data-i18n="pause.title">PAUSED</h2>
+      <button class="btn btn-primary" id="btn-resume" data-i18n="pause.resume">KEEP GOING</button>
       <button class="btn btn-ghost" id="btn-mute">SONIDO: SÍ</button>
-      <button class="btn btn-ghost" id="btn-quit" data-i18n="pause.quit">SALIR AL MENÚ</button>
+      <button class="btn btn-ghost" id="btn-quit" data-i18n="pause.quit">QUIT TO MENU</button>
 
       <div class="lang" role="group" aria-label="Language · Idioma">
         <button type="button" data-lang="en" lang="en" aria-pressed="true">ENGLISH</button>
@@ -145,17 +149,54 @@
     <div class="sheet sheet-small">
       <!-- Replaced by fillGameOver() before this screen is ever shown; here so
            the markup is not empty. Driven through tRaw(), not data-i18n. -->
-      <p class="bust" id="over-reason">CLARO. LA MIGRA.</p>
-      <p class="final-label" data-i18n="over.scoreLabel">PUNTOS</p>
+      <p class="bust" id="over-reason">OF COURSE. ICE.</p>
+      <p class="final-label" data-i18n="over.scoreLabel">SCORE</p>
       <p class="final" id="over-score">0</p>
-      <p class="pb hidden" id="over-pb" data-i18n="over.pb">¡ÓRALE, RÉCORD!</p>
+      <p class="pb hidden" id="over-pb" data-i18n="over.pb">NICE! NEW BEST!</p>
       <div class="stats">
-        <div><b id="over-beers">0</b><span data-i18n="over.chelas">CHELAS</span></div>
+        <div><b id="over-beers">0</b><span data-i18n="over.chelas">BEERS</span></div>
         <div><b id="over-tacos">0</b><span data-i18n="over.tacos">TACOS</span></div>
-        <div><b id="over-dist">0</b><span data-i18n="over.meters">METROS</span></div>
+        <div><b id="over-dist">0</b><span data-i18n="over.meters">METERS</span></div>
       </div>
-      <button class="btn btn-primary" id="btn-again" data-i18n="over.again">OTRA VEZ</button>
-      <button class="btn btn-ghost" id="btn-menu" data-i18n="over.menu">MENÚ</button>
+      <button class="btn btn-primary" id="btn-again" data-i18n="over.again">RUN AGAIN</button>
+      <button class="btn btn-ghost" id="btn-shop-over">
+        <span data-i18n="shop.open">CORNER STORE</span><b class="wallet-chip" data-wallet>0</b>
+      </button>
+      <button class="btn btn-ghost" id="btn-menu" data-i18n="over.menu">MENU</button>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- continue -->
+  <!-- Shown INSTEAD of game over when La Migra catches you. Everything with
+       an id is filled by js/tiendita.js — the price moves with the run. -->
+  <section id="screen-continue" class="screen hidden">
+    <div class="sheet sheet-small">
+      <p class="cont-kicker" data-i18n="cont.kicker">ICE HAS YOU</p>
+      <h2 data-i18n="cont.title">KEEP RUNNING</h2>
+      <p class="cont-body" data-i18n="cont.body">Corrupt pulls up in the lowrider and leaves the door open. He is not doing it for free, and he is not doing it twice for the same price.</p>
+      <p class="cont-caption" data-i18n="cont.keeps">YOU KEEP ALL OF IT</p>
+      <div class="stats cont-keep" id="cont-keep"></div>
+      <div class="stats cont-price" id="cont-price"></div>
+      <button class="btn btn-primary" id="btn-continue">PÁGALE</button>
+      <p class="cont-short hidden" id="cont-short"></p>
+      <button class="btn btn-ghost hidden" id="btn-cont-shop" data-i18n="shop.open">CORNER STORE</button>
+      <button class="btn btn-ghost" id="btn-cont-no" data-i18n="cont.no">NAH — I'M DONE</button>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------- la tiendita -->
+  <section id="screen-shop" class="screen hidden">
+    <div class="sheet">
+      <span class="logo-mark mark-sm" aria-hidden="true"></span>
+      <p class="shop-kicker" data-i18n="shop.kicker">CORRUPT RUNS THE COUNTER</p>
+      <h2 data-i18n="shop.open">CORNER STORE</h2>
+      <p class="shop-blurb" data-i18n="shop.blurb">Corrupt keeps the good stuff behind the counter. Beers only — he does not take cards.</p>
+      <div class="shop-wallet">
+        <span data-i18n="shop.wallet">YOUR BEERS</span><b data-wallet>0</b>
+      </div>
+      <div class="shop-list" id="shop-list"></div>
+      <p class="shop-note" id="shop-note"></p>
+      <button class="btn btn-primary" id="btn-shop-back" data-i18n="shop.back">BACK TO IT</button>
     </div>
   </section>
 

@@ -1,33 +1,57 @@
 // Every word the game says, in one table.
 //
-// VOICE. Two categories, and the line between them is the entire policy.
+// VOICE. `es` is Spanish, all of it, always. The whole policy is about `en`.
 //
-//   1. CULTURAL VOCABULARY — Spanish in BOTH languages, never glossed:
-//      CORRE · CHELA(S) · LA MIGRA · TACO(S) · PRIMO(S) · CHANCLA/CHANCLAZO ·
-//      PIÑATA · RETÉN(ES) · EL MURO · LA PATRULLA · BARRIO · ¡ÓRALE! ·
-//      ESCUELA DEL CALLEJÓN · la vecina · gasolina · lowrider. These ARE the
-//      voice and the joke. A parenthetical translation beside one kills it.
+// `en` IS FULL ENGLISH. Not Spanglish, not English with a seasoning of Spanish
+// — English sentences, all the way down. A player who picked ENGLISH and gets
+// Spanish back thinks the toggle is broken, and they are right.
 //
-//   2. STRUCTURAL COPY — ENGLISH in `en`, Spanish in `es`. Taglines, stat
-//      labels, section headers, button labels, instructions, status lines,
-//      tutorial bodies, error strings. A toggle marked ENGLISH that answers in
-//      Spanish reads as broken software, not as flavour. (It was written the
-//      other way round once. Players asked why English was showing Spanish.)
+// This rule has now been narrowed three times and it is settled. The old
+// "protected vocabulary" list — taco, barrio, ¡órale!, CORRE on the play
+// button — IS RETRACTED. Do not reinstate it, and do not read an older comment
+// or an older commit as policy: a previous edit documented a retracted rule as
+// if it were current and the next session put the Spanish straight back.
 //
-// So the English side is an English sentence with Spanish nouns dropped into
-// it — "Swipe ↓ / down — duck under la vecina's laundry" — and never a Spanish
-// sentence with one English word in it. That is the register.
+//   THE ONLY THINGS THAT STAY, and this is the whole list — PROPER NOUNS.
+//   Names of things, never vocabulary:
+//     · Primos — the collection and the brand
+//     · Primos: Barrio Run — the game's own title, where it IS the title
+//     · Corrupt — he is a person
+//     · any Primo's name or number — PRIMO #1701, CHUY, TÍO BETO
+//     · Pendleton, Rojo Base — a brand and the collection's own name for a
+//       colourway, sitting in the same slot as each other. Names, not words.
 //
-// The TONE is identical on both sides and does not move with the language: dry
-// and a little exasperated, because the callejón has seen all of this before.
-// The jokes are understatement, never exclamation marks, and the references
-// are played completely straight. If you know, you know, and that IS the joke.
+//   "taco" / "tacos" is an English word and stays ONLY where it names the food
+//   — the pickup, the shop, the tile, the tally. Where a Spanish word was
+//   doing flavour work inside a sentence, plain English wins.
+//
+//   ALREADY TRANSLATED, all of it, permanently: chela → beer · gasolina →
+//   fuel · el callejón → the alley · la vecina → the neighbour · retenes →
+//   checkpoints · el muro → the wall · la patrulla → the cruiser · la tiendita
+//   → the corner store · piñata / chancla → what the power-up DOES · bigote →
+//   moustache · paliacate → bandana · taquería → taco shop · CORRE → RUN ·
+//   ¡órale! → an English exclamation.
+//
+//   THE ANTAGONIST IS NAMED IN THE READER'S LANGUAGE. `en` says ICE, `es` says
+//   LA MIGRA — which is the Spanish name for the same agency, so nothing is
+//   lost either way. This is the one thing that must land plainly rather than
+//   as a term the reader might not parse, because it is what is being
+//   satirised. (The cruiser already wears ICE on its door — see intro.js.)
+//
+// FULL ENGLISH IS NOT NEUTRAL ENGLISH, and this is the half that gets lost.
+// The register is deadpan, sarcastic, politically pointed satire about
+// immigration enforcement, and it is identical on both sides. `over.reason
+// .migra` — "OF COURSE. ICE." — is the whole voice in three words: dry,
+// unsurprised, played completely straight, because the alley has seen all of
+// this before. Every other `en` line is measured against it. Translating the
+// vocabulary must not sand any of that off; an `en` row that reads corporate,
+// cheerful or softened is wrong in a different direction, and just as wrong.
 //
 // The sarcasm is aimed at the situation — the checkpoints, the chase, the
 // alley — and never at people.
 //
-// Rows that read the same on both sides are the category-1 vocabulary above,
-// not missing translations.
+// Rows that read the same on both sides are the proper nouns above, or words
+// English and Spanish genuinely share. They are not missing translations.
 //
 // Hot path: t() is called from drawHUD and drawTutorial on EVERY frame. It is
 // therefore one property read against a pre-flattened pack — no string
@@ -39,17 +63,29 @@ export const LANGS = ['en', 'es'];
 
 const STR = {
   // ----------------------------------------------------------------- menu
-  'menu.tagline':     { en: 'Los Ángeles · 3 lanes · no brakes',
+  // The city is a proper noun either way; the ACCENT is the Spanish spelling of
+  // it, so `en` uses the English one.
+  'menu.tagline':     { en: 'Los Angeles · 3 lanes · no brakes',
                         es: 'Los Ángeles · 3 carriles · sin frenos' },
-  'menu.play':        { en: 'CORRE', es: 'CORRE' },
-  'menu.fine':        { en: 'Unofficial fan project, not affiliated with the Primos collection. '
+  // The play button. It sits directly under the wordmark and used to be kept
+  // as CORRE on the grounds that it read as a brand word rather than a verb.
+  // It does not — it reads as Spanish on the single most-pressed control in
+  // the game, which is the worst possible place for it. It is a verb, so `en`
+  // says the verb.
+  'menu.play':        { en: 'RUN', es: 'CORRE' },
+  // The one line the game speaks as itself rather than in character, so it is
+  // played completely straight — no deadpan, no joke. Sentence two is a
+  // technical commitment the repo actually keeps (the index holds IPFS CIDs
+  // only; the pixels are fetched client-side at the player's request) and
+  // stands whatever the affiliation says.
+  'menu.fine':        { en: 'An official Primos project. '
                           + 'No collection artwork is stored here — images load from public IPFS at your request.',
-                        es: 'Proyecto de fans, no oficial ni afiliado a la colección Primos. '
+                        es: 'Un proyecto oficial de Primos. '
                           + 'Aquí no se guarda nada del arte — las imágenes se cargan desde IPFS público cuando tú lo pides.' },
 
-  'stat.best':        { en: 'BEST',   es: 'RÉCORD' },
-  'stat.chelas':      { en: 'CHELAS', es: 'CHELAS' },
-  'stat.runs':        { en: 'RUNS',   es: 'CORRIDAS' },
+  'stat.best':        { en: 'BEST',  es: 'RÉCORD' },
+  'stat.chelas':      { en: 'BEERS', es: 'CHELAS' },
+  'stat.runs':        { en: 'RUNS',  es: 'CORRIDAS' },
 
   // ---------------------------------------------------------- how to run
   // Each row is drawn as `<b>k</b> <span>v</span>`, so k and v have to read as
@@ -60,13 +96,13 @@ const STR = {
   'how.jump.k':       { en: 'Swipe ↑', es: 'Desliza ↑' },
   'how.jump.v':       { en: '/ space — jump the trash', es: '/ espacio — brinca los botes' },
   'how.slide.k':      { en: 'Swipe ↓', es: 'Desliza ↓' },
-  'how.slide.v':      { en: "/ down — duck under la vecina's laundry",
+  'how.slide.v':      { en: "/ down — duck under the neighbour's laundry",
                         es: '/ abajo — agáchate bajo la ropa de la vecina' },
-  'how.wall.k':       { en: 'Retenes and el muro', es: 'Retenes y el muro' },
+  'how.wall.k':       { en: 'Checkpoints and the wall', es: 'Retenes y el muro' },
   'how.wall.v':       { en: "can't be jumped. Never could. Go around.",
                         es: 'no se saltan. Nunca. Dales la vuelta.' },
   'how.taco.k':       { en: 'Tacos', es: 'Los tacos' },
-  'how.taco.v':       { en: 'are gasolina. Run out and la patrulla eats you.',
+  'how.taco.v':       { en: 'are fuel. Run out and ICE takes you.',
                         es: 'son gasolina. Sin gas, te alcanza la patrulla.' },
 
   // -------------------------------------------------------- primo loader
@@ -108,15 +144,18 @@ const STR = {
   'crew.customName':  { en: 'MY PRIMO', es: 'MI PRIMO' },
   'crew.tag.load':    { en: 'Load one from the collection below',
                         es: 'Carga uno de la colección aquí abajo' },
-  'crew.tag.barrio':  { en: 'Straight out of el barrio', es: 'Directo del barrio' },
+  'crew.tag.barrio':  { en: 'Straight off the block', es: 'Directo del barrio' },
   'crew.tag.collection': { en: 'Straight from the collection', es: 'Directo de la colección' },
-  // Outfits. The garments are named in whichever language is up; the ones that
-  // have no English name — Pendleton, bigote, the Rojo Base colourway — keep
-  // the name they already have. These match runner.js's own English originals.
+  // Outfits, named in whichever language is up. Pendleton and Rojo Base stay
+  // as they are in both: one is a brand, the other is the collection's own
+  // name for a colourway, and neither is a Spanish word being kept for
+  // flavour — they are the proper nouns the full-English rule exempts. The
+  // words around them are not: `bigote` and `rosa` are vocabulary and are
+  // translated here even though runner.js's own taglines keep them.
   'crew.tag.chuy':    { en: 'Blue Pendleton · Gold blues', es: 'Pendleton azul · Blues doradas' },
-  'crew.tag.lupe':    { en: 'Rojo Base · Black paliacate', es: 'Rojo Base · Paliacate negro' },
+  'crew.tag.lupe':    { en: 'Rojo Base · Black bandana', es: 'Rojo Base · Paliacate negro' },
   'crew.tag.rosa':    { en: 'Ponytail · Hoops · Pink flannel', es: 'Colita · Arracadas · Franela rosa' },
-  'crew.tag.beto':    { en: 'Bigote · Beanie · Grey plaid', es: 'Bigote · Gorro · Cuadros grises' },
+  'crew.tag.beto':    { en: 'Moustache · Beanie · Grey plaid', es: 'Bigote · Gorro · Cuadros grises' },
 
   // ---------------------------------------------------------------- pause
   'pause.title':      { en: 'PAUSED', es: 'EN PAUSA' },
@@ -126,41 +165,49 @@ const STR = {
   'pause.quit':       { en: 'QUIT TO MENU', es: 'SALIR AL MENÚ' },
 
   // ------------------------------------------------------------ game over
-  // The one line the whole run ends on. Deadpan is the entire point: nobody in
-  // this alley is surprised about who it was. Spanish on both sides because
-  // the Spanish is the joke — and because .bust animates its letter-spacing in
-  // from 0.36em, and a longer line reflows off two lines onto one mid-entrance
-  // at 320px. Sixteen characters clears that at full tracking.
-  'over.reason.migra':{ en: 'CLARO. LA MIGRA.', es: 'CLARO. LA MIGRA.' },
+  // The one line the whole run ends on, and the best joke in the game. Deadpan
+  // is the entire point: nobody in this alley is surprised about who it was.
+  // Named in the reader's own language so the resignation lands on the first
+  // read rather than the second. LENGTH IS CAPPED: .bust animates its
+  // letter-spacing in from 0.36em, and a longer line reflows off two lines
+  // onto one mid-entrance at 320px. Sixteen characters clears that at full
+  // tracking, and both of these are inside it.
+  'over.reason.migra':{ en: 'OF COURSE. ICE.', es: 'CLARO. LA MIGRA.' },
   'over.scoreLabel':  { en: 'SCORE', es: 'PUNTOS' },
-  'over.pb':          { en: '¡ÓRALE, NEW BEST!', es: '¡ÓRALE, RÉCORD!' },
-  'over.chelas':      { en: 'CHELAS', es: 'CHELAS' },
+  // Same shape as the Spanish — one bark, then the news. Under sixteen
+  // characters for the same reason `.bust` above is.
+  'over.pb':          { en: 'NICE! NEW BEST!', es: '¡ÓRALE, RÉCORD!' },
+  'over.chelas':      { en: 'BEERS', es: 'CHELAS' },
   'over.tacos':       { en: 'TACOS', es: 'TACOS' },
   'over.meters':      { en: 'METERS', es: 'METROS' },
   'over.again':       { en: 'RUN AGAIN', es: 'OTRA VEZ' },
   'over.menu':        { en: 'MENU', es: 'MENÚ' },
 
   // ------------------------------------------------------------------ HUD
-  'hud.migra':        { en: 'LA MIGRA', es: 'LA MIGRA' },
+  'hud.migra':        { en: 'ICE', es: 'LA MIGRA' },
   'hud.sinGas':       { en: 'NO GAS', es: 'SIN GAS' },
   // Power pills. Short on purpose — the pill shrinks a long label rather than
-  // wrap it, and a shrunk label is an unreadable one. PIÑATA is the pickup's
-  // name, so it leads on both sides and only the noun after it translates.
-  'power.magnet':     { en: 'PIÑATA PULL', es: 'IMÁN PIÑATA' },
-  'power.chancla':    { en: 'CHANCLAZO', es: 'CHANCLAZO' },
+  // wrap it, and a shrunk label is an unreadable one.
+  //
+  // The magnet's art is a soft pouch and the chancla's is a pistol (see the
+  // block comment above drawPowerup in art/props.js), so neither `en` name can
+  // be the object without contradicting the picture. Both are therefore named
+  // for what they DO, which is true whichever way the art lands.
+  'power.magnet':     { en: 'BEER MAGNET', es: 'IMÁN PIÑATA' },
+  'power.chancla':    { en: 'RAMPAGE', es: 'CHANCLAZO' },
   'power.lowrider':   { en: 'LOWRIDER', es: 'LOWRIDER' },
-  'toast.taco':       { en: '¡TACO! +GASOLINA', es: '¡TACO! +GASOLINA' },
-  'toast.lowriderDown': { en: 'ADIÓS, LOWRIDER', es: 'ADIÓS, LOWRIDER' },
+  'toast.taco':       { en: 'TACO! +FUEL', es: '¡TACO! +GASOLINA' },
+  'toast.lowriderDown': { en: 'LOWRIDER TOTALED', es: 'ADIÓS, LOWRIDER' },
 
   // ---------------------------------------------------------------- intro
-  'intro.tail':       { en: 'LA MIGRA. WHAT A SURPRISE.', es: 'LA MIGRA. QUÉ SORPRESA.' },
+  'intro.tail':       { en: 'ICE. WHAT A SURPRISE.', es: 'LA MIGRA. QUÉ SORPRESA.' },
   'intro.primo':      { en: 'PRIMO', es: 'PRIMO' },
 
   // ------------------------------------------------- tutorial: the course
   'tut.welcome.tag':  { en: 'CORRUPT SHOWS YOU HOW', es: 'CORRUPT TE ENSEÑA' },
-  'tut.welcome.title':{ en: 'ESCUELA DEL CALLEJÓN', es: 'ESCUELA DEL CALLEJÓN' },
-  'tut.welcome.body': { en: "I'm Corrupt. Three lanes, no brakes, and La Migra behind you. Shocking, I know. "
-                          + 'Give me thirty seconds and the callejón stops killing you for free.',
+  'tut.welcome.title':{ en: 'ALLEY SCHOOL', es: 'ESCUELA DEL CALLEJÓN' },
+  'tut.welcome.body': { en: "I'm Corrupt. Three lanes, no brakes, and ICE behind you. Shocking, I know. "
+                          + 'Give me thirty seconds and the alley stops killing you for free.',
                         es: 'Soy Corrupt. Tres carriles, cero frenos, y atrás La Migra. Sorpresa. '
                           + 'Dame treinta segundos y el callejón deja de matarte de gratis.' },
   'tut.welcome.cue':  { en: 'TAP TO START', es: 'TAP PARA EMPEZAR' },
@@ -168,7 +215,7 @@ const STR = {
   'tut.lane.tag':     { en: 'STEP 1', es: 'PASO 1' },
   'tut.lane.title':   { en: 'CHANGE LANES', es: 'CAMBIA DE CARRIL' },
   'tut.lane.body':    { en: 'Left, middle, right. Swipe sideways. This one move answers most of '
-                          + 'what the callejón throws at you, so learn it now.',
+                          + 'what the alley throws at you, so learn it now.',
                         es: 'Izquierda, centro, derecha. Deslízate de lado. Este movimiento resuelve casi '
                           + 'todo lo que te avienta el callejón, así que apréndetelo ya.' },
   'tut.lane.keys':    { en: 'ARROWS  ·  A  D', es: 'FLECHAS  ·  A  D' },
@@ -183,35 +230,38 @@ const STR = {
 
   'tut.slide.tag':    { en: 'STEP 3', es: 'PASO 3' },
   'tut.slide.title':  { en: 'DUCK', es: 'AGÁCHATE' },
-  'tut.slide.body':   { en: 'Clotheslines and taquería awnings hang right at head height. Swipe down. '
-                          + 'And no, la vecina is not taking her laundry in for you.',
+  'tut.slide.body':   { en: 'Clotheslines and taco-shop awnings hang right at head height. Swipe down. '
+                          + 'And no, the neighbour is not taking her laundry in for you.',
                         es: 'Los tendederos y los toldos de la taquería cuelgan justo a la altura de tu cabeza. '
                           + 'Deslízate hacia abajo. Y no, la vecina no va a meter su ropa por ti.' },
   'tut.slide.keys':   { en: 'DOWN  ·  S', es: 'ABAJO  ·  S' },
 
   'tut.wall.tag':     { en: 'HEADS UP', es: '¡AGUAS!' },
   'tut.wall.title':   { en: 'NO JUMPING THESE', es: 'ESTO NO SE SALTA' },
-  'tut.wall.body':    { en: 'Retenes, el muro, la patrulla. Taller than your jump. Always have been. '
+  'tut.wall.body':    { en: 'Checkpoints, the wall, the cruiser. Taller than your jump. Always have been. '
                           + 'Jumping one is a hit, every single time — go around.',
                         es: 'Retenes, el muro, la patrulla. Más altos que tu salto. Siempre lo han sido. '
                           + 'Saltarlos es golpe seguro, cada vez — dales la vuelta.' },
 
   'tut.loot.tag':     { en: 'STEP 4', es: 'PASO 4' },
   'tut.loot.title':   { en: 'THE STREET PROVIDES', es: 'LA CALLE PROVEE' },
-  'tut.loot.body':    { en: 'Chelas are points and they build your combo. Tacos are gasolina. '
+  'tut.loot.body':    { en: 'Beers are points and they build your combo. Tacos are fuel. '
                           + 'The rest are power-ups. Take everything — you are not coming back for it.',
                         es: 'Las chelas son puntos y te suben el combo. Los tacos son gasolina. '
                           + 'Lo demás son poderes. Agárrate todo — no vas a regresar por ello.' },
 
   'tut.migra.tag':    { en: 'STEP 5', es: 'PASO 5' },
   'tut.migra.title':  { en: "DON'T GET CAUGHT", es: 'NO TE DEJES AGARRAR' },
-  'tut.migra.body':   { en: 'Every hit feeds LA MIGRA. Your gasolina drains the whole run, and on empty '
+  'tut.migra.body':   { en: 'Every hit feeds ICE. Your fuel drains the whole run, and on empty '
                           + 'the meter fills itself — how convenient. Only tacos refill it.',
                         es: 'Cada golpe le sube a LA MIGRA. La gasolina se te va toda la corrida, y en ceros '
                           + 'el medidor se llena solito — qué conveniente. Solo los tacos la recargan.' },
 
-  'tut.go.title':     { en: '¡ÓRALE!', es: '¡ÓRALE!' },
-  'tut.go.body':      { en: 'NOW YOU KNOW. CORRE.', es: 'YA SABES. CORRE.' },
+  // The last card. `es` keeps its bark; `en` needs one that carries the same
+  // energy without being the Spanish one — Corrupt is faintly, briefly
+  // impressed, and then immediately over it in the line below.
+  'tut.go.title':     { en: 'THERE IT IS!', es: '¡ÓRALE!' },
+  'tut.go.body':      { en: 'NOW YOU KNOW. RUN.', es: 'YA SABES. CORRE.' },
 
   'tut.cue.next':     { en: 'TAP TO CONTINUE', es: 'TAP PARA SEGUIR' },
   'tut.cue.up':       { en: 'SWIPE  ↑', es: 'DESLIZA  ↑' },
@@ -227,21 +277,21 @@ const STR = {
   'tut.guide.stand':  { en: 'STANDING', es: 'DE PIE' },
   'tut.guide.crouch': { en: 'DUCKING', es: 'AGACHADO' },
 
-  'tut.meter.migra':  { en: 'LA MIGRA', es: 'LA MIGRA' },
+  'tut.meter.migra':  { en: 'ICE', es: 'LA MIGRA' },
   'tut.meter.hit':    { en: 'EVERY HIT RAISES IT.', es: 'CADA GOLPE LA SUBE.' },
   'tut.meter.full':   { en: 'FULL = THEY GOT YOU', es: 'LLENA = TE AGARRARON' },
   'tut.meter.gas':    { en: 'GAS', es: 'GAS' },
 
-  // Tile names and their verdict chips. The pickups are named for what they
-  // ARE — chela, taco, piñata, chancla, retén — so those rows read the same on
-  // both sides; the verdict under each one is an instruction, so it translates.
-  'tut.tile.beer':        { en: 'CHELA', es: 'CHELA' },
+  // Tile names and their verdict chips. Every name shrinks to fit its tile
+  // rather than wrapping, so length is free here — but three to a row at
+  // 320px means a shrunk name is a small one, and short still wins.
+  'tut.tile.beer':        { en: 'BEER', es: 'CHELA' },
   'tut.tile.beer.n':      { en: '+10 · COMBO', es: '+10 · COMBO' },
   'tut.tile.taco':        { en: 'TACO', es: 'TACO' },
-  'tut.tile.taco.n':      { en: '+GASOLINA', es: '+GASOLINA' },
-  'tut.tile.magnet':      { en: 'PIÑATA', es: 'PIÑATA' },
-  'tut.tile.magnet.n':    { en: 'MAGNET', es: 'IMÁN' },
-  'tut.tile.chancla':     { en: 'CHANCLA', es: 'CHANCLA' },
+  'tut.tile.taco.n':      { en: '+FUEL', es: '+GASOLINA' },
+  'tut.tile.magnet':      { en: 'MAGNET', es: 'PIÑATA' },
+  'tut.tile.magnet.n':    { en: 'PULLS BEERS', es: 'IMÁN' },
+  'tut.tile.chancla':     { en: 'RAMPAGE', es: 'CHANCLA' },
   'tut.tile.chancla.n':   { en: 'BREAKS ALL', es: 'ROMPE TODO' },
   'tut.tile.lowrider':    { en: 'LOWRIDER', es: 'LOWRIDER' },
   'tut.tile.lowrider.n':  { en: 'TAKES 1 HIT', es: 'AGUANTA 1' },
@@ -252,10 +302,65 @@ const STR = {
   'tut.tile.clothesline': { en: 'CLOTHESLINE', es: 'TENDEDERO' },
   'tut.tile.awning':      { en: 'AWNING', es: 'TOLDO' },
   'tut.tile.duck.n':      { en: 'DUCK', es: 'AGÁCHATE' },
-  'tut.tile.checkpoint':  { en: 'RETÉN', es: 'RETÉN' },
-  'tut.tile.border':      { en: 'EL MURO', es: 'EL MURO' },
-  'tut.tile.copcar':      { en: 'LA PATRULLA', es: 'LA PATRULLA' },
+  'tut.tile.checkpoint':  { en: 'CHECKPOINT', es: 'RETÉN' },
+  'tut.tile.border':      { en: 'THE WALL', es: 'EL MURO' },
+  'tut.tile.copcar':      { en: 'ICE CRUISER', es: 'LA PATRULLA' },
   'tut.tile.no.n':        { en: 'GO AROUND', es: 'NO SE SALTA' },
+
+  // ----------------------------------------------- the shop / la tiendita
+  // `en` calls it the corner store, `es` calls it la tiendita. Corrupt is
+  // doing you a favour and would like you to know it.
+  'shop.open':        { en: 'CORNER STORE', es: 'LA TIENDITA' },
+  'shop.kicker':      { en: 'CORRUPT RUNS THE COUNTER', es: 'LA TIENDA DE CORRUPT' },
+  'shop.blurb':       { en: 'Corrupt keeps the good stuff behind the counter. Beers only — he does not take cards.',
+                        es: 'Corrupt guarda lo bueno detrás del mostrador. Solo chelas — no acepta tarjeta.' },
+  'shop.wallet':      { en: 'YOUR BEERS', es: 'TUS CHELAS' },
+  'shop.short':       { en: 'SHORT %n', es: 'FALTAN %n' },
+  'shop.have':        { en: 'On the shelf with your name on it: %n',
+                        es: 'En el estante con tu nombre: %n' },
+  'shop.bought':      { en: 'Done. %s is waiting for your next run.',
+                        es: 'Hecho. %s te espera en la próxima corrida.' },
+  'shop.denied':      { en: 'Not enough beers. Corrupt counted twice, out loud.',
+                        es: 'No te alcanza. Corrupt contó dos veces, en voz alta.' },
+  'shop.broke':       { en: 'Nothing here you can afford yet. The alley is full of beer — go get some.',
+                        es: 'Todavía nada te alcanza. El callejón está lleno de chelas — ve por ellas.' },
+  'shop.back':        { en: 'BACK TO IT', es: 'A DARLE' },
+
+  // Shelf items. The names are the alley's own words where the alley has one.
+  // Blurbs are one short line each. They sit in a ~110px column at 320px, and
+  // a second sentence turns every row into a paragraph.
+  'item.gasolina':    { en: 'FULL TANK', es: 'TANQUE LLENO' },
+  'item.gasolina.b':  { en: 'Start with the fuel bar full.', es: 'Arrancas con la gasolina llena.' },
+  'item.magnet':      { en: 'BEER MAGNET', es: 'IMÁN PIÑATA' },
+  'item.magnet.b':    { en: 'Beers come to you for ten seconds.',
+                        es: 'Las chelas se te vienen solas diez segundos.' },
+  'item.chancla':     { en: 'RAMPAGE', es: 'CHANCLAZO' },
+  'item.chancla.b':   { en: 'Open the run swinging. It all breaks.',
+                        es: 'Arrancas con todo. Todo se rompe.' },
+  'item.vida':        { en: 'ONE MORE LIFE', es: 'UNA VIDA MÁS' },
+  'item.vida.b':      { en: 'He looks away the first time they catch you.',
+                        es: 'Mira para otro lado la primera vez que te agarran.' },
+  'item.lowrider':    { en: 'LOWRIDER', es: 'LOWRIDER' },
+  'item.lowrider.b':  { en: 'Roll out on the lowrider. It takes one crash.',
+                        es: 'Sales en el lowrider. Te aguanta un golpe.' },
+
+  // ----------------------------------------------------------- the continue
+  'cont.kicker':      { en: 'ICE HAS YOU', es: 'LA MIGRA TE TIENE' },
+  'cont.title':       { en: 'KEEP RUNNING', es: 'SIGUE CORRIENDO' },
+  'cont.body':        { en: 'Corrupt pulls up in the lowrider and leaves the door open. He is not doing it for free, '
+                          + 'and he is not doing it twice for the same price.',
+                        es: 'Corrupt llega en el lowrider y deja la puerta abierta. No lo hace gratis, '
+                          + 'y no lo hace dos veces al mismo precio.' },
+  'cont.keeps':       { en: 'YOU KEEP ALL OF IT', es: 'TE QUEDAS CON TODO' },
+  'cont.cost':        { en: 'HE WANTS', es: 'ÉL QUIERE' },
+  'cont.have':        { en: 'YOU HAVE', es: 'TÚ TIENES' },
+  'cont.pay':         { en: 'PAY THE MAN', es: 'PÁGALE' },
+  'cont.no':          { en: "NAH — I'M DONE", es: 'NEL, YA ESTUVO' },
+  'cont.short':       { en: 'You are %n beers short. Corrupt shrugs and closes the door.',
+                        es: 'Te faltan %n chelas. Corrupt se encoge de hombros y cierra la puerta.' },
+  // Toast, when a vida bought earlier pays for itself. Short on purpose — it
+  // is a pill on the canvas, not a sentence.
+  'toast.vida':       { en: 'CORRUPT LOOKED AWAY', es: 'CORRUPT SE HIZO EL LOCO' },
 };
 
 /**
@@ -270,6 +375,7 @@ const FROM_GAME = {
   'PIÑATA MAGNET': 'power.magnet',
   'CHANCLA RUSH': 'power.chancla',
   LOWRIDER: 'power.lowrider',
+  'CORRUPT LOOKED AWAY': 'toast.vida',
 };
 
 // --------------------------------------------------------------- the packs

@@ -2,7 +2,7 @@
 
 import {
   LANE_W, RUN, STAMINA, CHASE, POWER, SCORE, HITBOX,
-  MAGNET_RADIUS, CHANCLA_SPEED, JUICE,
+  MAGNET_RADIUS, CHANCLA_SPEED, JUICE, REPRIEVE,
 } from './config.js';
 import { World } from './world.js';
 import { CREW } from './art/runner.js';
@@ -67,6 +67,11 @@ export class Game {
     this.hitFlash = 0;
     this.stumble = 0;
     this.gameOverReason = '';
+    // Economy state for THIS run. `freeLives` are vidas bought at la tiendita
+    // before the run; `continues` counts the ones paid for during it, and is
+    // what the price ladder in tiendita.js escalates against.
+    this.freeLives = 0;
+    this.continues = 0;
 
     this.power = { magnet: 0, chancla: 0, lowrider: 0 };
 
@@ -111,8 +116,25 @@ export class Game {
       (this.speed - RUN.startSpeed) / (RUN.maxSpeed - RUN.startSpeed)));
   }
 
-  start() {
+  /**
+   * @param {{powers?: string[], fullTank?: boolean, lives?: number}} [loadout]
+   *   What the player bought at la tiendita. Already paid for and already
+   *   taken off the shelf by the caller — this class knows the rules of the
+   *   alley and nothing whatsoever about money.
+   */
+  start(loadout) {
     this.reset();
+    if (loadout) {
+      if (loadout.fullTank) this.stamina = STAMINA.max;
+      if (loadout.lives) this.freeLives = loadout.lives;
+      const powers = loadout.powers;
+      if (powers) {
+        for (let i = 0; i < powers.length; i++) {
+          const def = POWER[powers[i]];
+          if (def) this.power[powers[i]] = def.time;
+        }
+      }
+    }
     this.state = STATE.INTRO;
     startIntro(this);
     sfx.startMusic();
@@ -450,6 +472,19 @@ export class Game {
 
   end(reason) {
     if (this.state === STATE.OVER) return;
+
+    // Corrupt was paid in advance, so he looks the other way — once per vida,
+    // and without the bust, the music stopping or the run ending. Checked here
+    // rather than at the two call sites so no future way of getting caught can
+    // forget about it.
+    if (this.freeLives > 0) {
+      this.freeLives--;
+      this.reprieve();
+      sfx.powerUp();
+      this.hooks.onToast?.('CORRUPT LOOKED AWAY', '#ff6b6b');
+      return;
+    }
+
     this.state = STATE.OVER;
     this.gameOverReason = reason;
     this.score = Math.floor(this.score);
@@ -457,5 +492,64 @@ export class Game {
     sfx.bust();
     addShake(1.1);
     this.hooks.onStateChange?.(this.state);
+  }
+
+  // -------------------------------------------------------------- continues
+
+  /**
+   * Back on your feet, mid-alley. Shared by the free vida and the paid
+   * continue so the two can never drift apart.
+   *
+   * Note what is NOT touched: score, distance, combo, multiplier, tacos,
+   * chelas and the clock. Keeping the run is the entire product being sold —
+   * a reprieve that resets the score is just a restart with extra steps.
+   */
+  reprieve() {
+    const p = this.player;
+    this.chase = 0;
+    this.chaseGrace = REPRIEVE.grace;
+    this.stumble = 0;
+    this.hitFlash = 0;
+    this.invuln = REPRIEVE.invuln;
+    // A fresh tank. Being caught because the gasolina ran out and then waking
+    // up with an empty one is not a second chance, it is a second bust.
+    this.stamina = Math.max(this.stamina, STAMINA.start);
+    // The speed target is a function of time survived, and time did not stop.
+    // Coming back at what the clock implies would be a wall, so drop to the
+    // opening jog and let the existing spring climb back over about a second.
+    this.speed = RUN.startSpeed;
+    p.y = 0;
+    p.vy = 0;
+    p.airborne = false;
+    p.sliding = false;
+    p.slideT = 0;
+
+    // Sweep the stretch of alley you are standing in. Pickups stay — those are
+    // a gift, not a hazard — but anything that can hit you is cleared, or the
+    // reprieve hands you straight back to the dumpster that took you down.
+    for (const o of this.world.objects) {
+      if (o.dead || o.kind === 'pickup' || o.kind === 'power') continue;
+      if (o.z > p.z - 3 && o.z < p.z + REPRIEVE.clear) o.dead = true;
+    }
+
+    // Push the cruiser back out to the horizon so the pressure reads as gone.
+    this.chaser.z = p.z - 30;
+    this.chaser.x = 0;
+  }
+
+  /**
+   * Paid for at the moment of the bust. The wallet is drawn down by the
+   * caller — by the time this runs the chelas are already gone.
+   * @returns {boolean} false if there was nothing to continue from
+   */
+  continueRun() {
+    if (this.state !== STATE.OVER) return false;
+    this.continues++;
+    this.reprieve();
+    this.gameOverReason = '';
+    this.state = STATE.PLAYING;
+    sfx.startMusic();
+    this.hooks.onStateChange?.(this.state);
+    return true;
   }
 }

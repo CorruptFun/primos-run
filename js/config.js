@@ -66,6 +66,19 @@ export const POWER = {
 export const MAGNET_RADIUS = 3.6;
 export const CHANCLA_SPEED = 1.55;
 
+// Getting back up after La Migra had you. Shared by the vida bought ahead of
+// time at la tiendita and the continue paid for at the moment of the bust, so
+// the two can never feel different.
+//
+// The PRICES are not here — they sit with the catalog in js/tiendita.js,
+// because a price and the thing it buys are one row of one table.
+export const REPRIEVE = {
+  invuln: 2.4,        // seconds where nothing can touch you
+  clear: 16,          // units of alley swept ahead, so you do not get back up
+                      // inside the dumpster that just put you down
+  grace: 2.0,         // seconds before La Migra starts building again
+};
+
 export const SCORE = {
   beer: 10,
   perUnit: 1.0,                      // score per world unit travelled

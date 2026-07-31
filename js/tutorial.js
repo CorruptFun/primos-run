@@ -24,7 +24,7 @@ import * as store from './store.js';
 // draw helper takes it as a parameter. Importing the translator under that
 // name would shadow it inside exactly the functions that need to translate.
 import { t as tr, onLangChange } from './i18n.js';
-import { drawTrainer } from './art/trainer.js';
+import { drawTrainer, TRAINER_NAME } from './art/trainer.js';
 
 // Feet clearance at the top of a standing jump: v²/2g. Computed rather than
 // typed so the diagram cannot drift away from the physics it is teaching.
@@ -96,6 +96,11 @@ const ICON = {
   border:      { lo: 0.00, hi: 2.70, halfW: 0.54, seed: 13 },
   copcar:      { lo: 0.00, hi: 1.80, halfW: 0.53, seed: 14 },
 };
+
+// La tiendita puts the same props on its shelf and must not measure them a
+// second time by hand — two tables of hand-measured extents would drift the
+// first time a prop was redrawn. See js/tiendita.js.
+export { ICON as PROP_EXTENT };
 
 /**
  * The course. `drill` steps do not advance until the player performs the verb;
@@ -580,8 +585,17 @@ export function drawTutorial(ctx, W, H, s, safeTop = 0, safeBottom = 0) {
   const badgeD = 62 * s;
   const badgeX = px + pw - badgeD * 0.42;
   const badgeY = py + badgeD * 0.08;
-  // No name caption under him: it landed on top of the title, and the kicker
-  // already carries his name on every card.
+  // His name goes on a plate hung off the badge along the panel's TOP edge,
+  // drawn before him so he sits over its end and the two read as one object.
+  //
+  // Not under him. A caption there lands on the title, which is fitted to the
+  // full content width and will happily use every pixel of it — that was
+  // tried. Up here nothing can reach it: the plate stops 9*s below the panel
+  // top and the kicker's cap height does not start until 15*s.
+  // 0.45 of the diameter left of his centre: the plate's end finishes a few
+  // pixels under the circle's rim, so the two touch without him standing on
+  // the last letter of his own name.
+  namePlate(ctx, badgeX - badgeD * 0.45, py + 2 * s, s);
   drawTrainer(ctx, badgeX, badgeY, badgeD);
 
   let y = py + 15 * s + tagS;
@@ -642,6 +656,55 @@ export function drawTutorial(ctx, W, H, s, safeTop = 0, safeBottom = 0) {
 }
 
 // ------------------------------------------------------------- panel pieces
+
+/**
+ * The trainer's name plate — a shop sign hung under his badge.
+ *
+ * Right-anchored so it grows leftwards into empty scrim and its right end
+ * always finishes underneath the badge, whatever the name is or how wide the
+ * card ends up. It is a name, so it is not translated.
+ *
+ * @param {number} right x where the plate ends, tucked under the badge
+ * @param {number} cy    y of the plate's middle, on the panel's top edge
+ */
+function namePlate(ctx, right, cy, s) {
+  const size = 9 * s;
+  const sp = 1.5 * s;
+  ctx.font = `900 ${Math.max(7, Math.round(size))}px ${FONT}`;
+  ctx.letterSpacing = `${sp}px`;
+  // Chrome bills the gap AFTER the last letter too, so it comes back off the
+  // width or the name sits visibly left of centre in its own plate.
+  const tw = ctx.measureText(TRAINER_NAME).width - sp;
+  ctx.letterSpacing = '0px';
+
+  const h = 14 * s;
+  const w = tw + 17 * s;
+  const x = right - w;
+  const y = cy - h / 2;
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(5,2,10,0.6)';
+  ctx.shadowBlur = 8 * s;
+  ctx.shadowOffsetY = 2 * s;
+  const body = ctx.createLinearGradient(0, y, 0, y + h);
+  body.addColorStop(0, 'rgba(52,32,72,0.97)');
+  body.addColorStop(1, 'rgba(15,8,24,0.97)');
+  ctx.fillStyle = body;
+  roundRect(ctx, x, y, w, h, h / 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,201,60,0.5)';
+  ctx.lineWidth = Math.max(1, 1.1 * s);
+  roundRect(ctx, x + 0.6 * s, y + 0.6 * s, w - 1.2 * s, h - 1.2 * s, h / 2);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.textAlign = 'left';
+  label(ctx, TRAINER_NAME, x + 8.5 * s, cy + size * 0.35, size, PAL.gold,
+    { weight: 900, spacing: sp, halo: 2.2 * s });
+}
 
 /** Dots for the course, so the player can see this ends. */
 function drawProgress(ctx, right, cy, s) {
@@ -1126,6 +1189,9 @@ function drawGo(ctx, step, W, H, s) {
     { weight: 900, halo: 7 * s, glow: PAL.gold, glowSize: 26 * s });
   label(ctx, tr(step.body), 0, 34 * s, 14 * s, PAL.gold,
     { weight: 900, spacing: 2.4 * s, halo: 3.4 * s });
+  // Signed. The lesson was his, and this is the last frame of it.
+  label(ctx, `— ${TRAINER_NAME}`, 0, 58 * s, 10 * s, 'rgba(253,246,230,0.62)',
+    { weight: 900, spacing: 2 * s, halo: 2.6 * s });
   ctx.restore();
   ctx.textBaseline = 'alphabetic';
 }

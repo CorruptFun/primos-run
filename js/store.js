@@ -6,11 +6,26 @@ const KEY = 'primos-run.v1';
 // counts as trained, and distinguishable from a real timestamp if we ever care.
 const LEGACY = -1;
 
+// Fields the wallet owns. They are read/modified/written straight against
+// storage by js/wallet.js, never through a caller's in-memory blob — see
+// readEcon/writeEcon at the bottom of this file and the guard in save().
+const ECON_KEYS = ['chelas', 'shelf', 'walletSeeded'];
+
 const DEFAULTS = {
   best: 0,
   bestBeers: 0,
   runs: 0,
   totalBeers: 0,
+  // Spendable, and NOT the same number as totalBeers: that one is a lifetime
+  // stat the menu shows and it must never go down. `chelas` is a wallet — it
+  // banks at the end of a run and la tiendita draws it back down.
+  chelas: 0,
+  // Bought and not yet used: { itemId: count }. One of each is consumed at the
+  // start of the next run.
+  shelf: null,
+  // Set once, the first time js/wallet.js looks at this save, so the one-time
+  // seed from totalBeers can never run twice.
+  walletSeeded: false,
   character: 'chuy',
   customImage: null,   // URL or data URL for the player's own Primo
   primoNumber: null,   // token number, when it came from the index
@@ -47,20 +62,63 @@ export function load() {
 
 export function save(data) {
   try {
+    const prev = read();
     // `trainedAt` is written out of band by markTrained(), because the tutorial
     // finishes long after main.js took its copy of the save. Without this
     // guard the next ordinary save() — game over, mute toggle, crew pick —
     // would carry that stale `trainedAt: 0` back to disk and the training
-    // would replay forever. Only the untrained path pays for the extra read.
+    // would replay forever.
     let out = data;
-    if (!data.trainedAt) {
-      const prev = read();
-      if (prev && prev.trainedAt) out = { ...data, trainedAt: prev.trainedAt };
+    if (!data.trainedAt && prev && prev.trainedAt) out = { ...data, trainedAt: prev.trainedAt };
+    // Same hazard, same fix, for the money: main.js holds ONE copy of the save
+    // taken at boot, and a purchase made three screens later moves the balance
+    // on disk without touching that copy. Whatever is on disk wins for these
+    // keys, always — otherwise the next mute toggle refunds the shop.
+    if (prev) {
+      for (let i = 0; i < ECON_KEYS.length; i++) {
+        const k = ECON_KEYS[i];
+        if (prev[k] !== undefined) {
+          if (out === data) out = { ...data };
+          out[k] = prev[k];
+        }
+      }
     }
     localStorage.setItem(KEY, JSON.stringify(out));
   } catch {
     /* out of quota or blocked — the run still plays, it just won't persist */
   }
+}
+
+// ------------------------------------------------------------------- economy
+// The seam js/wallet.js sits on. Everything money-shaped goes through these
+// two, so a cloud save can later wrap wallet.js without any screen learning
+// that storage moved.
+
+/** The raw economy fields, exactly as they sit on disk. May be junk. */
+export function readEcon() {
+  const blob = read() || {};
+  return {
+    chelas: blob.chelas,
+    shelf: blob.shelf,
+    walletSeeded: blob.walletSeeded,
+    totalBeers: blob.totalBeers,
+  };
+}
+
+/**
+ * Read/modify/write against storage in one go, so a spend and the thing it
+ * bought can never tear apart.
+ * @param {(blob: object) => void} fn mutates the blob in place
+ */
+export function writeEcon(fn) {
+  const blob = read() || {};
+  fn(blob);
+  try {
+    localStorage.setItem(KEY, JSON.stringify(blob));
+  } catch {
+    /* blocked — the purchase still applies to this session, it just won't persist */
+  }
+  return blob;
 }
 
 // ------------------------------------------------------------------ training

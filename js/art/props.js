@@ -81,10 +81,22 @@ export function shadow(ctx, sx, sy, u, w) {
 // A player has to read what a prop DEMANDS of them before they can read what it
 // IS, so every gameplay prop obeys one lighting rule keyed off `kind`:
 //
-//   'jump'   THE LIGHT IS ON TOP. The highest plane of the prop is the
-//            brightest thing on it (`litTop`) and the body ramps down to
-//            near-black where it meets the asphalt. The silhouette ends in a
-//            wide flat lit plane. Reads: the bright edge is the edge you clear.
+//   'jump'   THE LIGHT IS ON TOP AND THE ROAD UNDER IT IS PAINTED. The highest
+//            plane of the prop is the brightest thing on it (`litTop`) and the
+//            body ramps down to near-black where it meets the asphalt. The
+//            silhouette ends in a wide flat lit plane. Under it, `hazardBase`
+//            lays a worn patch of pale road paint that is wider than the prop
+//            and finishes in a hard bright bar on the near side. Reads: the
+//            bright edge is the edge you clear, and the bar on the road is the
+//            lane you have to get out of.
+//
+//            The ground half is not decoration, it is the half that arrives
+//            first. These three are the shortest things in the alley, so their
+//            own silhouettes are the LAST part of them to resolve — by the time
+//            you can see that a dark lump is a dumpster the lane change is
+//            already late. A flat pale patch loses far less area to distance
+//            than the object standing on it, and it answers the only question
+//            actually being asked out there, which is WHICH LANE.
 //
 //   'slide'  THE LIGHT IS ON THE BOTTOM. The same sentence inverted — a dark
 //            band with a lit hem under it (`litHem`), sitting exactly on the
@@ -131,6 +143,71 @@ export function litTop(ctx, x, y, w, th) {
   ctx.fillRect(x, y, w, th);
   ctx.fillStyle = WARM_LIP;
   ctx.fillRect(x, y + th, w, th * 0.8);
+  // A dark band under the lip, so the cap is always bright-over-dark rather
+  // than merely bright. The alley behind a prop is dark asphalt near the
+  // camera and pale warm haze up by the horizon, and a lone bright bar wins
+  // the first of those and loses the second — a pair does not care which.
+  ctx.fillStyle = 'rgba(12,5,18,0.55)';
+  ctx.fillRect(x, y + th * 1.8, w, th * 0.7);
+}
+
+// Road paint, for the ground half of the jump rule. Pale and warm, because it
+// belongs to the low sun the runner is heading into rather than to a flasher —
+// which is what keeps it on the right side of the warm/cold split even once
+// fog has taken the hue out of it and left only the value.
+const PAINT_GLOW = 'rgba(255,192,112,0.12)';
+const PAINT_BODY = 'rgba(233,214,160,0.21)';
+const PAINT_EDGE = 'rgba(255,240,198,0.64)';
+
+/**
+ * Jump rule, ground half. A worn patch of pale road paint under the prop,
+ * wider than the prop, finishing in one hard bright bar on the near side.
+ *
+ * Screen space, so call it BEFORE shadow() — the contact shadow belongs on top
+ * of the paint, not under it.
+ *
+ * Every choice here is about surviving being four pixels tall. The patch is
+ * flat, so it loses far less of its area to distance than the prop standing on
+ * it does; it is pale rather than saturated, so haze takes its colour and
+ * leaves its value; and it is kept just inside one lane width, which is the
+ * whole point — wider than the prop so it is the first thing to resolve,
+ * narrower than the gap between lanes so it can still say which one.
+ *
+ * @param {number} u   pixels per world unit at this depth
+ * @param {number} wpx the prop's drawn width in PIXELS, not world units
+ */
+export function hazardBase(ctx, sx, sy, u, wpx) {
+  const back = sy - u * 0.09;
+  const front = sy + u * 0.15;
+  const hb = wpx * 0.5, hf = wpx * 0.62;
+
+  // Bounce off the paint. Soft and wide, so the patch has an outside edge that
+  // is not a hard line — a hard-edged pale shape on the road is a decal.
+  ctx.fillStyle = PAINT_GLOW;
+  ctx.beginPath();
+  ctx.ellipse(sx, sy + u * 0.07, wpx * 0.9, u * 0.3, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = PAINT_BODY;
+  ctx.beginPath();
+  ctx.moveTo(sx - hb, back);
+  ctx.lineTo(sx + hb, back);
+  ctx.lineTo(sx + hf, front);
+  ctx.lineTo(sx - hf, front);
+  ctx.closePath();
+  ctx.fill();
+
+  // The one hard horizontal, and the brightest thing at ground level in the
+  // lane. Deliberately not one clean rule: an unbroken bar of the same width
+  // under every jumpable starts reading as an overlay the game has drawn for
+  // you. Two unequal dashes, set in from the ends of the patch so nothing
+  // lines up with anything, is what worn paint actually looks like.
+  const th = Math.max(1.4, u * 0.038);
+  ctx.fillStyle = PAINT_EDGE;
+  ctx.beginPath();
+  ctx.rect(sx - hf * 0.94, front - th, hf * 1.0, th);
+  ctx.rect(sx + hf * 0.22, front - th, hf * 0.7, th);
+  ctx.fill();
 }
 
 /**
@@ -337,6 +414,330 @@ export function drawTaco(ctx, sx, sy, u, t, seed = 0) {
 }
 
 // ------------------------------------------------------------------ powerups
+//
+// Three of them, and at the distance where a lane still gets chosen the disc
+// behind the icon is most of what you see. So the three are separated by
+// ORIENTATION and VALUE inside that disc rather than by detail:
+//
+//   lowrider  a long HORIZONTAL plank with two bright wheels slung under it.
+//             The kicked nose and tail are load bearing — a plain rounded
+//             rectangle on wheels is a chocolate bar on wheels.
+//   chancla   an L. Barrel across the top, grip falling away behind it, and an
+//             empty quadrant under the barrel that neither of the others has.
+//   magnet    a soft round LUMP with a pinched top, and the brightest value of
+//             the three. Round where the other two are straight.
+//
+// They are also drawn nearly out to the ring. The old icons covered about 60%
+// of the disc, which at fourteen pixels meant the disc WAS the read and all
+// three powerups were the same coloured coin.
+
+const DECK_KEY = '#0d0718';
+const DECK_BODY = '#e04a2b';
+const DECK_SUN = '#ffe9c0';
+const DECK_GRIP = 'rgba(14,7,24,0.5)';
+const TRUCK = '#9ba3b6';
+const WHEEL = '#ffd24d';
+
+const GUN_KEY = '#190d05';
+const GUN_BODY = '#efe2c3';
+const GUN_SHADE = '#a8875e';
+const GUN_GRIP = '#c9773c';
+const GUN_GRIP_HI = '#e79a54';
+
+const BAG_KEY = '#1c0716';
+const BAG_LIT = '#f8f4ec';
+const BAG_SHADE = '#c7bcd1';
+const BAG_EAR = '#ded5e3';
+
+/**
+ * Skateboard deck: a FLAT middle with a kick at each end. The flat run is not a
+ * simplification, it is the shape — curving the whole plank turns it into a
+ * banana, and the straight middle is also what gives the sunlit band a hard
+ * horizontal to sit on, which is the last thing left of this prop at distance.
+ *
+ * Traces only. The caller owns beginPath/fill so the deck, the trucks and the
+ * wheels can share a single keyline pass instead of three.
+ */
+function deckPath(ctx, kx, y0, y1, tip) {
+  const fx = kx * 0.66;     // where the kicks start
+  const cx = kx * 0.86;     // control, so the kick leaves the flat tangentially
+  ctx.moveTo(-kx, y0 - tip);
+  ctx.quadraticCurveTo(-cx, y0, -fx, y0);
+  ctx.lineTo(fx, y0);
+  ctx.quadraticCurveTo(cx, y0, kx, y0 - tip);
+  ctx.lineTo(kx, y1 - tip);
+  ctx.quadraticCurveTo(cx, y1, fx, y1);
+  ctx.lineTo(-fx, y1);
+  ctx.quadraticCurveTo(-cx, y1, -kx, y1 - tip);
+  ctx.closePath();
+}
+
+/**
+ * A soft pouch: plump, slumped heavier to one side, pinched at the neck. Every
+ * edge is a curve on purpose — a straight side turns it into a brick of soap,
+ * and the slump is most of what says the thing is full of loose powder.
+ */
+function bagPath(ctx, ox, bx, yT, yB) {
+  const sp = yB - yT;
+  ctx.moveTo(ox - bx * 0.46, yT);
+  ctx.quadraticCurveTo(ox - bx * 1.06, yT + sp * 0.4, ox - bx * 0.88, yB - sp * 0.16);
+  ctx.quadraticCurveTo(ox - bx * 0.8, yB, ox - bx * 0.12, yB);
+  ctx.quadraticCurveTo(ox + bx * 0.66, yB + sp * 0.05, ox + bx * 0.92, yB - sp * 0.26);
+  ctx.quadraticCurveTo(ox + bx * 1.08, yT + sp * 0.3, ox + bx * 0.48, yT);
+  ctx.closePath();
+}
+
+/**
+ * The gun: slide, deeper rear frame, hammer nub and grip, all in one path so
+ * the whole L can be keylined with a single inflated fill. `k` is how far every
+ * edge gets pushed outward, which is the only reason one pass is enough.
+ *
+ * There is deliberately nothing under the front of the barrel. A revolver's
+ * cylinder was tried there and it fills the one empty quadrant that makes this
+ * an L instead of a lump — and a round bump slung under a horizontal bar is
+ * already what the skateboard's wheels say, which is the read this prop most
+ * has to avoid.
+ */
+function gunPath(ctx, gx, v, k) {
+  // Barrel, then the taller receiver behind it, then the frame dropping deeper
+  // still. Three steps down the length is what separates a gun from a drill —
+  // one unbroken bar was the first attempt and it read as a power tool.
+  ctx.rect(-gx - k, -v * 0.56 - k, gx * 0.7 + k * 2, v * 0.3 + k * 2);
+  ctx.rect(-gx * 0.4 - k, -v * 0.62 - k, gx * 0.72 + k * 2, v * 0.38 + k * 2);
+  ctx.rect(-gx * 0.34 - k, -v * 0.3 - k, gx * 0.66 + k * 2, v * 0.3 + k * 2);
+  // hammer nub, so the top does not end in a flat plane
+  ctx.rect(gx * 0.14 - k, -v * 0.82 - k, gx * 0.18 + k * 2, v * 0.24 + k * 2);
+  // grip
+  ctx.moveTo(-gx * 0.02 - k, -v * 0.06);
+  ctx.lineTo(gx * 0.36 + k, -v * 0.06);
+  ctx.lineTo(gx * 0.66 + k, v * 0.86 + k);
+  ctx.lineTo(gx * 0.18 - k, v * 0.88 + k);
+  ctx.closePath();
+}
+
+/**
+ * Gathered plastic above the tie, as one pinched fan. `f` scales it about the
+ * neck, which is how the keyline copy gets made without inflating three
+ * triangles by hand — the first attempt keylined a bounding quad instead and
+ * painted a black slab over the top third of the bag.
+ */
+function earsPath(ctx, bx, yT, r, f) {
+  ctx.moveTo(-bx * 0.34, yT);
+  ctx.lineTo(-bx * 0.68 * f, yT + r * f);
+  ctx.lineTo(-bx * 0.06, yT + r * 0.36 * f);
+  ctx.lineTo(bx * 0.6 * f, yT + r * 0.86 * f);
+  ctx.lineTo(bx * 0.32, yT);
+  ctx.closePath();
+}
+
+/**
+ * The board you ride. `h` on this spec is only 0.40u, so the vertical features
+ * are scaled off their own unit rather than off `h` — at the raw height the
+ * trucks land under a pixel and the plank loses the two bumps that make it a
+ * skateboard.
+ */
+function drawSkateboard(ctx, w, h, u) {
+  const kx = w * 0.94;
+  const v = h;
+  // Laid out so the drawn extent straddles the disc centre: the kicks push the
+  // top up and the wheels push the bottom down by roughly the same amount.
+  const y0 = -v * 0.42, y1 = -v * 0.03, tip = v * 0.3;
+  const tx = kx * 0.5;
+  const wy = v * 0.43, wr = v * 0.29;
+  const k = Math.max(1, v * 0.11);
+
+  // One keyline pass over deck, trucks and wheels together.
+  ctx.fillStyle = DECK_KEY;
+  ctx.beginPath();
+  deckPath(ctx, kx + k, y0 - k, y1 + k, tip);
+  ctx.rect(-tx - v * 0.15 - k, y1, v * 0.3 + k * 2, v * 0.3);
+  ctx.rect(tx - v * 0.15 - k, y1, v * 0.3 + k * 2, v * 0.3);
+  ctx.moveTo(-tx + wr + k, wy);
+  ctx.arc(-tx, wy, wr + k, 0, TAU);
+  ctx.moveTo(tx + wr + k, wy);
+  ctx.arc(tx, wy, wr + k, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = TRUCK;
+  ctx.beginPath();
+  ctx.rect(-tx - v * 0.15, y1, v * 0.3, v * 0.28);
+  ctx.rect(tx - v * 0.15, y1, v * 0.3, v * 0.28);
+  ctx.fill();
+
+  // Wheels: two bright dots with a gap between them. The gap is the second half
+  // of the skateboard read — one bar underneath would be a shoe and one dot
+  // would be a scooter. Flat, with no hub: a dark centre in a gold disc turns
+  // the pair into a face the moment they get small.
+  ctx.fillStyle = WHEEL;
+  ctx.beginPath();
+  ctx.moveTo(-tx + wr, wy);
+  ctx.arc(-tx, wy, wr, 0, TAU);
+  ctx.moveTo(tx + wr, wy);
+  ctx.arc(tx, wy, wr, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = DECK_BODY;
+  ctx.beginPath();
+  deckPath(ctx, kx, y0, y1, tip);
+  ctx.fill();
+  // griptape along the underside of the plank, then the sun laid on the top
+  ctx.fillStyle = DECK_GRIP;
+  ctx.beginPath();
+  deckPath(ctx, kx * 0.99, y1 - v * 0.08, y1, tip * 0.99);
+  ctx.fill();
+  ctx.fillStyle = DECK_SUN;
+  ctx.beginPath();
+  deckPath(ctx, kx * 0.99, y0, y0 + v * 0.13, tip * 0.99);
+  ctx.fill();
+}
+
+/**
+ * The gun. Cartoon, not hardware: a fat stubby slide, a fat raked grip and a
+ * hammer nub so the top of the silhouette does not end in a flat plane. It
+ * shares a screen with a beer and a taco and has to look like it belongs there.
+ */
+function drawGun(ctx, w, h, u) {
+  const gx = w * 0.82;
+  const v = h * 1.06;
+  const k = Math.max(1, v * 0.09);
+  // The L is lopsided by construction — barrel one way, grip the other — so the
+  // whole thing gets nudged back over the middle of the disc. Safe here: the
+  // caller's save/restore closes right after this returns.
+  ctx.translate(gx * 0.17, -v * 0.03);
+
+  ctx.fillStyle = GUN_KEY;
+  ctx.beginPath();
+  gunPath(ctx, gx, v, k);
+  ctx.fill();
+
+  ctx.fillStyle = GUN_BODY;
+  ctx.beginPath();
+  gunPath(ctx, gx, v, 0);
+  ctx.fill();
+
+  // Grip repainted over the body. Both arms of the L stay light — a dark grip
+  // reads as a shadow rather than as the other half of the shape — so the two
+  // materials are separated by hue, not by value.
+  ctx.fillStyle = GUN_GRIP;
+  ctx.beginPath();
+  ctx.moveTo(-gx * 0.02, -v * 0.06);
+  ctx.lineTo(gx * 0.36, -v * 0.06);
+  ctx.lineTo(gx * 0.66, v * 0.86);
+  ctx.lineTo(gx * 0.18, v * 0.88);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = GUN_GRIP_HI;
+  ctx.beginPath();
+  ctx.moveTo(-gx * 0.02, -v * 0.06);
+  ctx.lineTo(gx * 0.12, -v * 0.06);
+  ctx.lineTo(gx * 0.42, v * 0.87);
+  ctx.lineTo(gx * 0.18, v * 0.88);
+  ctx.closePath();
+  ctx.fill();
+
+  // Sun laid flat along the top of the barrel and again along the top of the
+  // receiver. Stepped but unbroken from muzzle to hammer, because at fourteen
+  // pixels that bright horizontal IS the barrel — banding only the taller half
+  // leaves the muzzle end as a stub and the whole thing reads as a wedge.
+  ctx.fillStyle = GUN_SHADE;
+  ctx.fillRect(-gx, -v * 0.34, gx * 0.7, v * 0.08);
+  ctx.fillRect(-gx * 0.4, -v * 0.32, gx * 0.72, v * 0.08);
+  ctx.fillStyle = WARM_CAP;
+  ctx.fillRect(-gx, -v * 0.56, gx * 0.7, v * 0.08);
+  ctx.fillRect(-gx * 0.4, -v * 0.62, gx * 0.72, v * 0.08);
+
+  // Muzzle: a dark mouth on the barrel end, the one mark that says which end of
+  // the L is the dangerous one.
+  ctx.fillStyle = GUN_KEY;
+  ctx.fillRect(-gx, -v * 0.52, gx * 0.07, v * 0.22);
+
+  if (u > 26) {
+    // trigger and its guard, hung under the step in the frame
+    ctx.fillStyle = GUN_KEY;
+    ctx.fillRect(-gx * 0.3, 0, gx * 0.34, v * 0.09);
+    ctx.fillStyle = PAL.gold;
+    ctx.fillRect(-gx * 0.12, -v * 0.06, gx * 0.1, v * 0.14);
+    // ejection port
+    ctx.fillStyle = GUN_SHADE;
+    ctx.fillRect(-gx * 0.28, -v * 0.55, gx * 0.4, v * 0.1);
+  }
+}
+
+/**
+ * The bag. Reads as a pouch and not a brick because of three things: no
+ * straight edges, a pinched gold-tied neck with gathered ears above it, and a
+ * bottom that slumps to one side. The body is the brightest value of the three
+ * powerups, which is what separates it from the gun's cream frame at distance.
+ */
+function drawPowder(ctx, w, h, u) {
+  const bx = w * 0.64;
+  const yT = -h * 0.31, yB = h * 0.66;
+  const sp = yB - yT;
+  const k = Math.max(1, sp * 0.075);
+  const r = -h * 0.34;      // how far the gathered top rises above the tie
+
+  // keyline over bag and ears in one pass
+  ctx.fillStyle = BAG_KEY;
+  ctx.beginPath();
+  bagPath(ctx, 0, bx + k, yT - k, yB + k);
+  earsPath(ctx, bx, yT, r, 1.16);
+  ctx.fill();
+
+  // gathered plastic above the tie — loose flaps, not a flat lid
+  ctx.fillStyle = BAG_EAR;
+  ctx.beginPath();
+  earsPath(ctx, bx, yT, r, 1);
+  ctx.fill();
+
+  // Body twice: the full shape in the shadow tone, then an inset copy pushed
+  // up-left in the lit tone. One extra fill buys the whole volume, and no
+  // clipping or gradient is involved.
+  ctx.fillStyle = BAG_SHADE;
+  ctx.beginPath();
+  bagPath(ctx, 0, bx, yT, yB);
+  ctx.fill();
+  ctx.fillStyle = BAG_LIT;
+  ctx.beginPath();
+  bagPath(ctx, -bx * 0.12, bx * 0.84, yT + sp * 0.03, yB - sp * 0.13);
+  ctx.fill();
+
+  // sun on the shoulder the low sun would actually catch
+  ctx.fillStyle = WARM_CAP;
+  ctx.beginPath();
+  ctx.moveTo(-bx * 0.44, yT + sp * 0.09);
+  ctx.quadraticCurveTo(-bx * 0.86, yT + sp * 0.24, -bx * 0.78, yT + sp * 0.5);
+  ctx.quadraticCurveTo(-bx * 0.66, yT + sp * 0.24, -bx * 0.36, yT + sp * 0.16);
+  ctx.closePath();
+  ctx.fill();
+
+  // the tie: dark collar, gold band on it
+  ctx.fillStyle = BAG_KEY;
+  roundRect(ctx, -bx * 0.52, yT - sp * 0.04, bx * 1.04, sp * 0.19, sp * 0.05);
+  ctx.fill();
+  ctx.fillStyle = PAL.gold;
+  roundRect(ctx, -bx * 0.46, yT - sp * 0.01, bx * 0.92, sp * 0.11, sp * 0.04);
+  ctx.fill();
+
+  if (u > 26) {
+    // Three streaks tearing past it and a few grains already loose. This is the
+    // only part of the prop that says "go fast" rather than "carry me", and it
+    // is gated to close range on purpose: at distance it is four extra marks
+    // beside the pouch, and the pouch is the whole silhouette.
+    ctx.fillStyle = 'rgba(255,238,248,0.55)';
+    ctx.beginPath();
+    ctx.rect(-bx * 1.5, yT + sp * 0.26, bx * 0.52, sp * 0.07);
+    ctx.rect(-bx * 1.32, yT + sp * 0.5, bx * 0.36, sp * 0.07);
+    ctx.rect(-bx * 1.44, yT + sp * 0.74, bx * 0.44, sp * 0.07);
+    ctx.fill();
+    ctx.fillStyle = BAG_LIT;
+    ctx.beginPath();
+    ctx.moveTo(-bx * 1.0 + sp * 0.06, yB - sp * 0.04);
+    ctx.arc(-bx * 1.0, yB - sp * 0.04, sp * 0.06, 0, TAU);
+    ctx.moveTo(-bx * 1.2 + sp * 0.045, yB - sp * 0.2);
+    ctx.arc(-bx * 1.2, yB - sp * 0.2, sp * 0.045, 0, TAU);
+    ctx.fill();
+  }
+}
 
 export function drawPowerup(ctx, sx, sy, u, type, t, seed = 0) {
   const s = PROP_SPEC[type] || PROP_SPEC.magnet;
@@ -346,6 +747,10 @@ export function drawPowerup(ctx, sx, sy, u, type, t, seed = 0) {
   const tint = type === 'magnet' ? PAL.hotPink : type === 'chancla' ? PAL.gold : '#4dd8ff';
   const spill = type === 'magnet' ? 'rgba(255,77,157,0.20)'
     : type === 'chancla' ? 'rgba(255,201,60,0.20)' : 'rgba(77,216,255,0.20)';
+  // Fog arrives as globalAlpha from render.js, so the pulses multiply into it
+  // rather than resetting it — a powerup that stayed opaque out at the draw
+  // distance would be the one thing in the alley the smog never touched.
+  const a0 = ctx.globalAlpha;
 
   pool(ctx, sx, sy, w * 0.95, spill);
 
@@ -362,80 +767,28 @@ export function drawPowerup(ctx, sx, sy, u, type, t, seed = 0) {
 
   // Flat disc of colour behind the icon. A ring alone leaves the shape fighting
   // the alley for contrast; a solid plate wins that fight at any distance.
-  ctx.globalAlpha = 0.3 + Math.sin(t * 6 + seed) * 0.08;
+  ctx.globalAlpha = a0 * (0.3 + Math.sin(t * 6 + seed) * 0.08);
   ctx.fillStyle = tint;
   ctx.beginPath();
   ctx.arc(0, 0, w * 1.02, 0, TAU);
   ctx.fill();
-  ctx.globalAlpha = 0.8 + Math.sin(t * 6 + seed) * 0.2;
+  ctx.globalAlpha = a0 * (0.8 + Math.sin(t * 6 + seed) * 0.2);
   ctx.strokeStyle = tint;
   ctx.lineWidth = Math.max(1.8, u * 0.055);
   ctx.beginPath();
   ctx.arc(0, 0, w * 0.9, 0, TAU);
   ctx.stroke();
-  ctx.globalAlpha = 1;
-  ctx.rotate(Math.sin(t * 2 + seed) * 0.22);
+  ctx.globalAlpha = a0;
 
-  if (type === 'magnet') {
-    // piñata star: dark keyline, then two frills. Three was mush at small sizes.
-    const r = w * 0.54;
-    const star = (rr, ri) => {
-      ctx.beginPath();
-      for (let k = 0; k < 10; k++) {
-        const a = (k / 10) * Math.PI * 2 - Math.PI / 2;
-        const q = k % 2 ? ri : rr;
-        ctx.lineTo(Math.cos(a) * q, Math.sin(a) * q);
-      }
-      ctx.closePath();
-      ctx.fill();
-    };
-    ctx.fillStyle = '#2a0f22';
-    star(r * 1.1, r * 0.62);
-    ctx.fillStyle = '#ff4d9d';
-    star(r, r * 0.55);
-    ctx.fillStyle = '#ffc93c';
-    star(r * 0.62, r * 0.3);
-    ctx.fillStyle = '#28c3b8';
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.2, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (type === 'chancla') {
-    // la chancla, keylined so the sole reads against the asphalt
-    ctx.fillStyle = '#1a1024';
-    roundRect(ctx, -w * 0.55, -h * 0.28, w * 1.1, h * 0.66, h * 0.26);
-    ctx.fill();
-    ctx.fillStyle = '#6a4bf0';
-    roundRect(ctx, -w * 0.5, -h * 0.22, w, h * 0.44, h * 0.2);
-    ctx.fill();
-    ctx.fillStyle = '#3a2894';
-    roundRect(ctx, -w * 0.5, h * 0.1, w, h * 0.2, h * 0.09);
-    ctx.fill();
-    ctx.fillStyle = '#ffd94d';
-    ctx.beginPath();
-    ctx.moveTo(-w * 0.3, -h * 0.12);
-    ctx.quadraticCurveTo(0, -h * 0.44, w * 0.28, -h * 0.12);
-    ctx.quadraticCurveTo(0, -h * 0.28, -w * 0.3, -h * 0.12);
-    ctx.closePath();
-    ctx.fill();
-  } else {
-    // lowrider board, hopping on its hydraulics
-    ctx.fillStyle = '#12081c';
-    roundRect(ctx, -w * 0.54, -h * 0.24, w * 1.08, h * 0.56, h * 0.2);
-    ctx.fill();
-    ctx.fillStyle = '#a82547';
-    roundRect(ctx, -w * 0.5, -h * 0.2, w, h * 0.46, h * 0.18);
-    ctx.fill();
-    ctx.fillStyle = '#f4e6c8';
-    ctx.fillRect(-w * 0.5, -h * 0.06, w, h * 0.08);
-    ctx.fillStyle = PAL.gold;
-    for (const wx of [-w * 0.28, w * 0.28]) {
-      ctx.beginPath();
-      ctx.arc(wx, h * 0.3, h * 0.15, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.fillStyle = 'rgba(77,216,255,0.55)';
-    ctx.fillRect(-w * 0.44, h * 0.42, w * 0.88, h * 0.09);
-  }
+  // A board rocks, a gun swings a little, a bag of powder barely moves. Keyed
+  // per type so the motion is one more thing telling the three apart.
+  ctx.rotate(Math.sin(t * 2 + seed)
+    * (type === 'lowrider' ? 0.26 : type === 'chancla' ? 0.16 : 0.08));
+
+  if (type === 'magnet') drawPowder(ctx, w, h, u);
+  else if (type === 'chancla') drawGun(ctx, w, h, u);
+  else drawSkateboard(ctx, w, h, u);
+
   ctx.restore();
 }
 
@@ -692,32 +1045,55 @@ export function drawCopCar(ctx, sx, sy, u, t, seed = 0) {
 export function drawDumpster(ctx, sx, sy, u, t, seed = 0) {
   const s = PROP_SPEC.dumpster;
   const w = s.w * u, h = s.h * u;
+  hazardBase(ctx, sx, sy, u, w);
   shadow(ctx, sx, sy, u, s.w);
   ctx.save();
   ctx.translate(sx, sy);
-  ctx.fillStyle = '#1c4530';
+  ctx.fillStyle = '#12301f';
   roundRect(ctx, -w * 0.5, -h, w, h, w * 0.05);
   ctx.fill();
-  ctx.fillStyle = '#2f6b46';
+  // Value ramp, and steeper than it was. The bottom of a dumpster shares a
+  // value with the asphalt it is standing on no matter what you do to it, so
+  // the top has to climb far enough that the object still spans a range.
+  ctx.fillStyle = '#356f4a';
   ctx.fillRect(-w * 0.5, -h, w, h * 0.62);
-  ctx.fillStyle = '#3d8558';
-  ctx.fillRect(-w * 0.5, -h, w, h * 0.22);
+  ctx.fillStyle = '#4d9a67';
+  ctx.fillRect(-w * 0.5, -h, w, h * 0.26);
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.fillRect(-w * 0.5, -h * 0.5, w, h * 0.04);
 
-  // Lid, barely cracked, running the full width. Its top edge is dead level so
-  // the lit cap can sit flat on it — a sloped top edge leaves the bright bar
-  // floating off the art at one end.
-  ctx.fillStyle = '#245038';
+  // Lid, barely cracked. Its top edge is dead level and now runs almost the
+  // full width — a sloped top edge leaves the bright bar floating off the art
+  // at one end, and a short one wastes the widest horizontal the prop owns.
+  ctx.fillStyle = '#1d4630';
   ctx.beginPath();
   ctx.moveTo(-w * 0.54, -h);
-  ctx.lineTo(-w * 0.3, -h * 1.09);
+  ctx.lineTo(-w * 0.46, -h * 1.09);
   ctx.lineTo(w * 0.54, -h * 1.09);
   ctx.lineTo(w * 0.54, -h);
   ctx.closePath();
   ctx.fill();
+
+  // A bag shoved in and never pushed down. It is here because it is the one
+  // pale thing a dumpster can honestly carry: green-on-green cannot be lit
+  // hard enough to read at fifty metres without the whole prop turning into a
+  // lamp, and a torn white sack can. Kept low and soft so the flat lit lid is
+  // still what tops the silhouette.
+  ctx.fillStyle = '#0e0b16';
+  ctx.beginPath();
+  ctx.ellipse(-w * 0.18, -h * 1.11, w * 0.19, h * 0.1, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = '#cfc7bd';
+  ctx.beginPath();
+  ctx.ellipse(-w * 0.18, -h * 1.11, w * 0.16, h * 0.08, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = '#f4eee2';
+  ctx.beginPath();
+  ctx.ellipse(-w * 0.2, -h * 1.13, w * 0.11, h * 0.05, 0, 0, TAU);
+  ctx.fill();
+
   // the plane you clear
-  litTop(ctx, -w * 0.3, -h * 1.09, w * 0.84, Math.max(1.5, h * 0.045));
+  litTop(ctx, -w * 0.46, -h * 1.09, w, Math.max(2, h * 0.07));
 
   ctx.fillStyle = '#4a4550';
   ctx.beginPath();
@@ -740,6 +1116,7 @@ export function drawDumpster(ctx, sx, sy, u, t, seed = 0) {
 export function drawCrates(ctx, sx, sy, u, t, seed = 0) {
   const s = PROP_SPEC.crates;
   const w = s.w * u, h = s.h * u;
+  hazardBase(ctx, sx, sy, u, w);
   shadow(ctx, sx, sy, u, s.w);
   ctx.save();
   ctx.translate(sx, sy);
@@ -747,8 +1124,8 @@ export function drawCrates(ctx, sx, sy, u, t, seed = 0) {
   // pallet the whole stack sits on — kills any hint of floating
   ctx.fillStyle = '#4a3320';
   ctx.fillRect(-w * 0.5, -h * 0.16, w, h * 0.16);
-  ctx.fillStyle = '#7a5330';
-  ctx.fillRect(-w * 0.5, -h * 0.16, w, h * 0.05);
+  ctx.fillStyle = '#a5764a';
+  ctx.fillRect(-w * 0.5, -h * 0.16, w, Math.max(1, h * 0.055));
 
   const crate = (cx, cy, cw, ch, hue) => {
     ctx.fillStyle = hue;
@@ -774,19 +1151,54 @@ export function drawCrates(ctx, sx, sy, u, t, seed = 0) {
   crate(-w * 0.24 + jitter, -h * 0.14, w * 0.5, lo, '#8a4520');
   crate(w * 0.25 + jitter, -h * 0.14, w * 0.48, lo * 0.86, '#a1682a');
   crate(jitter * 0.4, -h * 0.14 - lo, w * 0.46, lo * 0.9, '#c9762f');
+
+  // Stencilled produce labels — the same trick the beer's label plays, and for
+  // the same reason. Crates are warm mid-browns on a warm mid-grey road, which
+  // is a hue difference and nothing else, and hue is exactly what the smog
+  // takes first. A pale full-width horizontal is a value difference, and at
+  // the size this prop is drawn while the lane can still be changed that dash
+  // IS the crate.
+  // Floored in screen pixels for the same reason as everything else here: at
+  // the distance the label has to work it is a third of a pixel tall.
+  ctx.fillStyle = '#f1e6ca';
+  ctx.fillRect(jitter * 0.4 - w * 0.21, -h * 0.76, w * 0.42, Math.max(1.4, h * 0.16));
+  ctx.fillStyle = '#c1272d';
+  ctx.fillRect(jitter * 0.4 - w * 0.21, -h * 0.715, w * 0.42, Math.max(1, h * 0.05));
+  ctx.fillStyle = 'rgba(242,232,208,0.8)';
+  ctx.fillRect(w * 0.06 + jitter, -h * 0.34, w * 0.36, Math.max(1, h * 0.1));
+
+  // A board laid across the stack. Two jobs: it hands the lit cap a flat run
+  // nearly as wide as the whole prop instead of the top crate's 0.46w, and a
+  // wide flat lit plane is the strongest thing in this vocabulary for "clear
+  // this". Its top edge lands on the hitbox height exactly, so the brightest
+  // line on the prop is also the true one.
+  ctx.fillStyle = '#2a1b10';
+  ctx.fillRect(-w * 0.48, -h, w * 0.96, h * 0.14);
+  ctx.fillStyle = '#946a37';
+  ctx.fillRect(-w * 0.46, -h, w * 0.92, Math.max(1.2, h * 0.1));
+
+  // A slat pulled loose and left standing. Thin on purpose: mass is what tells
+  // you how tall a thing is, so a stick above a flat lit plane buys height in
+  // pixels without moving the plane you are being asked to clear.
+  ctx.fillStyle = '#2a1b10';
+  ctx.fillRect(w * 0.2 + jitter, -h * 1.24, w * 0.1, h * 0.27);
+  ctx.fillStyle = '#a67a3f';
+  ctx.fillRect(w * 0.215 + jitter, -h * 1.23, w * 0.07, h * 0.26);
+  ctx.fillStyle = WARM_CAP;
+  ctx.fillRect(w * 0.215 + jitter, -h * 1.23, w * 0.07, h * 0.06);
+
   // The plane you clear, spanning the whole top of the silhouette.
-  litTop(ctx, jitter * 0.4 - w * 0.23, -h * 0.14 - lo * 1.9, w * 0.46,
-    Math.max(1.5, h * 0.05));
+  litTop(ctx, -w * 0.46, -h, w * 0.92, Math.max(2, h * 0.075));
 
   // a couple of chiles spilling over the lip, at close range only
   if (u > 34) {
     ctx.fillStyle = '#d8402f';
     ctx.beginPath();
-    ctx.ellipse(jitter * 0.4 - w * 0.1, -h * 0.14 - lo * 1.9, w * 0.07, h * 0.05, 0, 0, Math.PI * 2);
+    ctx.ellipse(jitter * 0.4 - w * 0.1, -h * 1.01, w * 0.07, h * 0.05, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#e2a52f';
     ctx.beginPath();
-    ctx.ellipse(jitter * 0.4 + w * 0.09, -h * 0.14 - lo * 1.88, w * 0.06, h * 0.045, 0, 0, Math.PI * 2);
+    ctx.ellipse(jitter * 0.4 + w * 0.02, -h * 0.99, w * 0.06, h * 0.045, 0, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();
@@ -795,6 +1207,7 @@ export function drawCrates(ctx, sx, sy, u, t, seed = 0) {
 export function drawCones(ctx, sx, sy, u, t, seed = 0) {
   const s = PROP_SPEC.cones;
   const w = s.w * u, h = s.h * u;
+  hazardBase(ctx, sx, sy, u, w);
   shadow(ctx, sx, sy, u, s.w);
   ctx.save();
   ctx.translate(sx, sy);
@@ -807,9 +1220,9 @@ export function drawCones(ctx, sx, sy, u, t, seed = 0) {
   // horizontal in the shape. Lighting it gives the run the flat bright edge
   // that every other jumpable gets from its own lid.
   ctx.fillStyle = '#221c28';
-  ctx.fillRect(-w * 0.48, -h * 0.5, w * 0.96, h * 0.11);
+  ctx.fillRect(-w * 0.51, -h * 0.58, w * 1.02, h * 0.24);
   ctx.fillStyle = '#f2c53a';
-  ctx.fillRect(-w * 0.48, -h * 0.47, w * 0.96, h * 0.06);
+  ctx.fillRect(-w * 0.51, -h * 0.55, w * 1.02, Math.max(1.2, h * 0.12));
 
   // Batched by colour: one path per layer of the three cones rather than five
   // fills each. Same picture, a third of the paint calls, and this prop is
@@ -828,6 +1241,17 @@ export function drawCones(ctx, sx, sy, u, t, seed = 0) {
   ctx.beginPath();
   for (const cx of [cx0, cx1, cx2]) ctx.rect(cx - w * 0.2, -h * 0.13, w * 0.4, h * 0.05);
   ctx.fill();
+  // Lit lip along the top of every slab. Three short bright horizontals down at
+  // road level, so the run still has a footprint after the cones themselves
+  // have shrunk to three specks. Floored in SCREEN pixels, like every other
+  // highlight in this file — a highlight specified only as a fraction of the
+  // prop is drawn a third of a pixel thick at exactly the distance it was put
+  // there for, and averages itself back into the asphalt.
+  const lip = Math.max(1, h * 0.022);
+  ctx.fillStyle = 'rgba(255,228,182,0.72)';
+  ctx.beginPath();
+  for (const cx of [cx0, cx1, cx2]) ctx.rect(cx - w * 0.2, -h * 0.13, w * 0.4, lip);
+  ctx.fill();
 
   // baseLeft, apexRight, baseRight — apexLeft is always -0.03.
   const body = (cx, ch, xa, xb, xc) => {
@@ -844,25 +1268,59 @@ export function drawCones(ctx, sx, sy, u, t, seed = 0) {
   body(cx2, h2, -0.16, 0.03, 0.16);
   ctx.fill();
   // sun-side edge
-  ctx.fillStyle = 'rgba(255,214,150,0.5)';
+  ctx.fillStyle = 'rgba(255,220,160,0.62)';
   ctx.beginPath();
-  body(cx0, h0, -0.16, 0.005, -0.1);
-  body(cx1, h1, -0.16, 0.005, -0.1);
-  body(cx2, h2, -0.16, 0.005, -0.1);
+  body(cx0, h0, -0.16, 0.01, -0.09);
+  body(cx1, h1, -0.16, 0.01, -0.09);
+  body(cx2, h2, -0.16, 0.01, -0.09);
   ctx.fill();
-  // reflective collars
+  // Reflective collars, two per cone and wider than the cone's own taper. Real
+  // cones carry two bands and the pair is worth more than one wide one: two
+  // bright rungs with orange between them is a repeating light-dark-light
+  // pattern, and a pattern holds together at sizes where a single band has
+  // already blurred into the body around it.
+  const cA = Math.max(1.3, h * 0.2), cB = Math.max(1, h * 0.11);
   ctx.fillStyle = '#fbf7ec';
   ctx.beginPath();
-  ctx.rect(cx0 - w * 0.11, -h0 * 0.66, w * 0.22, h0 * 0.17);
-  ctx.rect(cx1 - w * 0.11, -h1 * 0.66, w * 0.22, h1 * 0.17);
-  ctx.rect(cx2 - w * 0.11, -h2 * 0.66, w * 0.22, h2 * 0.17);
+  ctx.rect(cx0 - w * 0.125, -h0 * 0.7, w * 0.25, cA);
+  ctx.rect(cx1 - w * 0.125, -h1 * 0.7, w * 0.25, cA);
+  ctx.rect(cx2 - w * 0.125, -h2 * 0.7, w * 0.25, cA);
+  ctx.rect(cx0 - w * 0.165, -h0 * 0.38, w * 0.33, cB);
+  ctx.rect(cx1 - w * 0.165, -h1 * 0.38, w * 0.33, cB);
+  ctx.rect(cx2 - w * 0.165, -h2 * 0.38, w * 0.33, cB);
+  ctx.fill();
+
+  // A marker flag on the middle cone. Height is the only currency that buys a
+  // low prop pixels at distance, and this is the honest way to spend it: a whip
+  // and a scrap of tape carry no mass, so the run still reads as something you
+  // hop rather than something you go around, and the flag tops out at half the
+  // jump apex so it can never be mistaken for a wall. It also MOVES, which is
+  // the one cue that works in peripheral vision — you catch it before you have
+  // looked at it.
+  const flagY = -h * 1.36;
+  const flick = Math.sin(t * 3.4 + seed * 6) * w * 0.05;
+  ctx.fillStyle = '#1b1620';
+  ctx.fillRect(cx1 - w * 0.018, flagY, w * 0.036, h * 1.36 - h1 + h * 0.02);
+  ctx.fillStyle = '#0f0b16';
+  ctx.beginPath();
+  ctx.moveTo(cx1, flagY - h * 0.02);
+  ctx.lineTo(cx1 + w * 0.24 + flick, flagY + h * 0.07);
+  ctx.lineTo(cx1, flagY + h * 0.19);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#ffe9a8';
+  ctx.beginPath();
+  ctx.moveTo(cx1 + w * 0.01, flagY + h * 0.005);
+  ctx.lineTo(cx1 + w * 0.2 + flick, flagY + h * 0.07);
+  ctx.lineTo(cx1 + w * 0.01, flagY + h * 0.155);
+  ctx.closePath();
   ctx.fill();
 
   // Tape strung across the FRONT of the run, drawn last. This is where the jump
   // rule lands on this prop: a cone ends in a point, so there is no top plane to
   // catch the sun, and the tape is the only horizontal in the shape. Lighting it
   // gives the run the one flat bright edge every other jumpable gets from a lid.
-  litTop(ctx, -w * 0.48, -h * 0.5, w * 0.96, Math.max(1.4, h * 0.05));
+  litTop(ctx, -w * 0.51, -h * 0.55, w * 1.02, Math.max(2.2, h * 0.075));
   ctx.restore();
 }
 

@@ -19,6 +19,10 @@ import {
   tutorialNeeded, startTutorial, updateTutorial, drawTutorial,
   tutorialActive, tutorialInput, tutorialTap, finishTutorial,
 } from './tutorial.js';
+import * as wallet from './wallet.js';
+import {
+  openShop, offerContinue, closeContinue, continueCost, loadoutFor, paintWallet,
+} from './tiendita.js';
 
 /**
  * i18n for this module, with the picker's strings layered over the shared
@@ -39,6 +43,10 @@ const screens = {
   menu: $('screen-menu'),
   pause: $('screen-pause'),
   over: $('screen-over'),
+  // Owned by js/tiendita.js, listed here so a state change can never leave one
+  // of them up over the alley — continuing a run has to clear the offer.
+  continue: $('screen-continue'),
+  shop: $('screen-shop'),
 };
 
 let saved = store.load();
@@ -117,7 +125,7 @@ function step(dt) {
       drawTutorial(ctx, W, H, Math.min(W, H) / 420, safe.top, safe.bottom);
     } else {
       finishTutorial();
-      game.start();
+      startRun();
     }
     return;
   }
@@ -203,8 +211,10 @@ function showScreen(state) {
   } else if (state === STATE.PAUSED) {
     screens.pause.classList.remove('hidden');
   } else if (state === STATE.OVER) {
-    fillGameOver();
-    screens.over.classList.remove('hidden');
+    // Corrupt gets to make his offer BEFORE the run is written down. That
+    // ordering is the whole trick: a run you paid to continue is one run, not
+    // two, and its chelas are banked once — see declineContinue().
+    offerContinue(game, { onTake: takeContinue, onDecline: declineContinue });
   }
 }
 
@@ -212,6 +222,33 @@ function refreshStats() {
   $('stat-best').textContent = saved.best.toLocaleString();
   $('stat-beers').textContent = saved.totalBeers.toLocaleString();
   $('stat-runs').textContent = saved.runs.toLocaleString();
+  paintWallet();
+}
+
+// ------------------------------------------------------------------ continue
+
+function takeContinue() {
+  const cost = continueCost(game.continues);
+  if (wallet.spend(cost) === null) {
+    // The balance moved under us — a purchase in another tab, or a shelf
+    // bought between the offer being drawn and the button being pressed.
+    // Re-price and ask again rather than hand out a free continue.
+    offerContinue(game, { onTake: takeContinue, onDecline: declineContinue });
+    return;
+  }
+  paintWallet();
+  closeContinue();
+  clearToasts();
+  sfx.resume();
+  // Same run: score, distance and combo all stand. continueRun() puts the
+  // screen back to PLAYING through onStateChange.
+  game.continueRun();
+}
+
+function declineContinue() {
+  closeContinue();
+  fillGameOver();
+  screens.over.classList.remove('hidden');
 }
 
 function fillGameOver() {
@@ -220,7 +257,11 @@ function fillGameOver() {
   saved.bestBeers = Math.max(saved.bestBeers, game.beers);
   saved.runs += 1;
   saved.totalBeers += game.beers;
+  // Bank the takings BEFORE store.save(), which restores the wallet fields
+  // from disk over whatever `saved` is holding — see ECON_KEYS in store.js.
+  wallet.deposit(game.beers);
   store.save(saved);
+  paintWallet();
 
   $('over-reason').textContent = tRaw(game.gameOverReason);
   $('over-score').textContent = Math.floor(game.score).toLocaleString();
@@ -709,18 +750,42 @@ async function restoreClaim() {
 
 // ----------------------------------------------------------------- buttons
 
+/**
+ * Every road into a run comes through here, so the shelf is always cashed in
+ * exactly once: whatever was bought at la tiendita is taken off the shelf and
+ * handed to the run as a loadout.
+ */
+function startRun() {
+  clearToasts();
+  game.start(loadoutFor(wallet.takeStock()));
+}
+
 $('btn-play').addEventListener('click', () => {
   sfx.resume();
   sfx.uiClick();
   clearToasts();
   // First run: teach before the first round. The game stays in MENU so the
-  // alley scrolls behind the course; step() calls game.start() when it ends.
+  // alley scrolls behind the course; step() calls startRun() when it ends.
   if (tutorialNeeded()) {
     for (const el of Object.values(screens)) el.classList.add('hidden');
     startTutorial();
     return;
   }
-  game.start();
+  startRun();
+});
+
+$('btn-shop').addEventListener('click', () => {
+  sfx.resume();
+  sfx.uiClick();
+  openShop(() => showScreen(STATE.MENU));
+});
+
+// Straight back to the sheet it came from, NOT through showScreen(OVER) —
+// that would re-open the continue offer and bank the run a second time.
+$('btn-shop-over').addEventListener('click', () => {
+  sfx.resume();
+  sfx.uiClick();
+  openShop(() => screens.over.classList.remove('hidden'));
 });
 
 $('btn-resume').addEventListener('click', () => { sfx.uiClick(); game.resume(); });
@@ -731,7 +796,7 @@ $('btn-quit').addEventListener('click', () => {
   game.reset();
   showScreen(STATE.MENU);
 });
-$('btn-again').addEventListener('click', () => { sfx.uiClick(); clearToasts(); game.start(); });
+$('btn-again').addEventListener('click', () => { sfx.uiClick(); startRun(); });
 $('btn-menu').addEventListener('click', () => {
   sfx.uiClick();
   game.state = STATE.MENU;

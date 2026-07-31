@@ -243,13 +243,17 @@ export async function claimStatus(token) {
 
 // -------------------------------------------------------------------- i18n
 //
-// These belong in js/i18n.js next to the other 131 keys and should be folded
-// in once the concurrent language work settles — they live here only so this
+// These belong in js/i18n.js next to the other keys and should be folded in
+// once the concurrent language work settles — they live here only so this
 // feature does not collide with another session inside that one shared table.
-// Same contract as i18n, INCLUDING its voice rule: the cultural vocabulary
-// (PRIMO, BARRIO, CORRE …) is Spanish on both sides, and everything structural
-// — buttons, status lines, verdicts — is English in `en` and Spanish in `es`.
-// An English toggle that answers in Spanish reads as a broken toggle.
+//
+// SAME CONTRACT AS i18n.js, INCLUDING ITS VOICE RULE — go read the block at the
+// top of that file before touching a value here. The short version: `es` is
+// entirely Spanish, `en` is entirely ENGLISH, and the only Spanish left in `en`
+// is a proper noun (Primos, Corrupt, a Primo's name or number). There is no
+// protected-vocabulary list any more; an older comment here claimed there was
+// one and it was wrong. The tone stays deadpan and sarcastic on both sides —
+// full English does not mean neutral English.
 
 const EXTRA = {
   'primo.hintFind':   { en: 'Holder? Look up your number. The art loads live from IPFS — nothing is kept here.',
@@ -272,13 +276,16 @@ const EXTRA = {
   // The claim verdict, under the found card.
   'claim.checking':   { en: 'Asking around…', es: 'Preguntando por ahí…' },
   'claim.free':       { en: 'Free. Nobody has asked for it.', es: 'Libre. Nadie lo ha pedido.' },
-  'claim.assigned':   { en: 'That primo already has an owner. Pick another.',
+  // Capital P: in `en` this is the collection's name, not the Spanish noun.
+  'claim.assigned':   { en: 'That Primo already has an owner. Pick another.',
                         es: 'Ese primo ya tiene dueño. Escoge otro.' },
-  'claim.assignedTo': { en: 'That primo already has an owner: %h. Pick another.',
+  'claim.assignedTo': { en: 'That Primo already has an owner: %h. Pick another.',
                         es: 'Ese primo ya tiene dueño: %h. Escoge otro.' },
-  'claim.blocked':    { en: "That one is not up for claiming. Barrio business.",
+  // "Barrio business" was the last of the protected vocabulary. The alley is
+  // the thing the whole game is set in, so it carries the same shrug.
+  'claim.blocked':    { en: 'That one is not up for claiming. Alley business.',
                         es: 'Ese no se reclama. Cosas del barrio.' },
-  'claim.mine':       { en: 'Already yours. Corre.', es: 'Ya es tuyo. Corre.' },
+  'claim.mine':       { en: 'Already yours. Go run.', es: 'Ya es tuyo. Corre.' },
 
   // The owner reassigned a Primo out from under whoever was wearing it.
   'status.reassigned':{ en: '#%n already had an owner. We gave it back. Find another.',
