@@ -33,6 +33,13 @@ import { captureRefFromUrl } from './referrals.js';
 // drawing helper — and this module imports from both, so if that one is ever
 // needed here it must come in aliased. See the header of js/analytics.js.
 import { EVENTS, initAnalytics, track } from './analytics.js';
+import {
+  MAX_MESSAGE, isFeedbackConfigured, normalizeKind, sanitizeMessage, sendFeedback,
+  validateFeedback,
+} from './feedback.js';
+// Corrupt's badge, already baked for the tutorial. The suggestion box borrows
+// the same canvas rather than shipping a second crop of the same JPEG.
+import { drawTrainer, loadTrainer } from './art/trainer.js';
 import { pruneDays, recordDay } from './raceday.js';
 import { initBoards, refreshBoards, relangBoards, showRunStanding } from './boards.js';
 import { initAccount, refreshAccount, relangAccount, releaseAccount } from './account.js';
@@ -75,6 +82,9 @@ const screens = {
   // Same reason: help is opened OVER pause or game over, so a state change
   // arriving while it is up has to take it down with everything else.
   help: $('screen-help'),
+  // And feedback is opened over HELP, which is one level deeper again — so it
+  // needs to be listed here for exactly the same reason help does.
+  feedback: $('screen-feedback'),
 };
 
 let saved = store.load();
@@ -488,6 +498,10 @@ function applyLang() {
   // it beats leaving a stale sentence in the wrong one; the styling hides an
   // empty status line entirely.
   status('');
+  // Same rule for the suggestion box's own line, and its counter is composed
+  // from live state ("%n left") so no data-i18n attribute can reach it.
+  fbStatus('');
+  paintFbCount();
   // A run that ended in the other language must not keep its old headline.
   if (game.gameOverReason) $('over-reason').textContent = tRaw(game.gameOverReason);
   // Both overlays compose their text from live state — names, ranks, the board
@@ -1078,6 +1092,175 @@ $('btn-help-pause').addEventListener('click', () => openHelp(screens.pause));
 $('btn-help-over').addEventListener('click', () => openHelp(screens.over));
 $('btn-help-back').addEventListener('click', closeHelp);
 
+// ---------------------------------------------------------------- feedback
+//
+// Corrupt's face on the HELP sheet, and the sheet it opens. Same open-over /
+// close-back-to-where-you-were shape as help itself, one level deeper: help is
+// reached from pause or game over, and this is reached from help, so closing it
+// returns to help and closing THAT returns to the sheet the player started on.
+// No game state is touched at any point — a bug report cannot cost the run that
+// produced it, which matters most for the reports that are worth having.
+
+/**
+ * Paint Corrupt into one of the badge canvases.
+ *
+ * The badge is baked once by js/art/trainer.js from a JPEG that may not have
+ * landed yet, so this is called again when it does. Backing store is CSS size ×
+ * dpr — the same rule the rest of the game's canvases follow — because a 72px
+ * bitmap stretched over a 3× phone is exactly the soft, cheap look this face is
+ * meant to avoid.
+ */
+function paintCorruptFace(id) {
+  const c = $(id);
+  if (!c) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const css = c.getBoundingClientRect().width || c.clientWidth || 72;
+  const px = Math.round(css * dpr);
+  if (px <= 0) return;
+  if (c.width !== px) { c.width = px; c.height = px; }
+  const x = c.getContext('2d');
+  x.clearRect(0, 0, px, px);
+  // Inset by a hair so the gold ring's own stroke is not clipped by the edge.
+  drawTrainer(x, px / 2, px / 2, px * 0.96);
+}
+
+function paintCorruptFaces() {
+  paintCorruptFace('corrupt-face-help');
+  paintCorruptFace('corrupt-face-fb');
+}
+
+let fbKind = 'bug';
+let fbSending = false;
+
+function fbStatus(msg, bad = false) {
+  const el = $('fb-status');
+  el.textContent = msg;
+  el.classList.toggle('bad', bad);
+}
+
+/**
+ * What was happening when they hit send.
+ *
+ * This is the difference between "the slide doesn't work" and a report someone
+ * can act on, and the player will not type any of it. Deliberately small and
+ * deliberately not personal: where they were, how the run was going, and which
+ * Primo is on screen — the last one because half the art bugs in this game are
+ * a specific token's traits.
+ */
+function feedbackContext() {
+  try {
+    return {
+      screen: game.state,
+      score: Math.round(game.score),
+      best: saved.best,
+      runs: saved.runs,
+      beers: wallet.balance(),
+      primo: saved.character === CUSTOM_ID ? (saved.primoNumber ?? 'custom') : saved.character,
+      trained: !!saved.trainedAt,
+      // Which build is already on the row; this is the shape of the DEVICE,
+      // which is the other half of most "it only happens on my phone" reports.
+      view: `${Math.round(window.innerWidth)}x${Math.round(window.innerHeight)}`,
+      dpr: Math.round((window.devicePixelRatio || 1) * 100) / 100,
+      standalone: !!(window.matchMedia?.('(display-mode: standalone)').matches
+        || window.navigator.standalone),
+    };
+  } catch {
+    // Context is a nice-to-have on a message that is not. Losing it must never
+    // lose the report.
+    return {};
+  }
+}
+
+function paintFbCount() {
+  const left = MAX_MESSAGE - $('fb-message').value.length;
+  const el = $('fb-count');
+  // Only once it is worth knowing. A 1000-character budget shown against an
+  // empty box reads as a demand for an essay, and this box wants one sentence.
+  const show = left <= 200;
+  el.textContent = show ? t('fb.count').replace('%n', String(left)) : '';
+  el.classList.toggle('near', left <= 50);
+}
+
+function openFeedback() {
+  sfx.uiClick();
+  screens.help.classList.add('hidden');
+  screens.feedback.classList.remove('hidden');
+  fbStatus('');
+  paintFbCount();
+  // Painted on open as well as at boot: on the very first open the sheet was
+  // display:none when boot ran, so the canvas measured 0 wide and nothing could
+  // be drawn into it.
+  paintCorruptFaces();
+  track(EVENTS.FEEDBACK_OPEN, { kind: fbKind, screen: game.state });
+}
+
+function closeFeedback() {
+  sfx.uiClick();
+  screens.feedback.classList.add('hidden');
+  screens.help.classList.remove('hidden');
+}
+
+function selectKind(kind) {
+  fbKind = normalizeKind(kind);
+  for (const b of document.querySelectorAll('#fb-kinds [data-kind]')) {
+    b.classList.toggle('on', b.dataset.kind === fbKind);
+    b.setAttribute('aria-pressed', String(b.dataset.kind === fbKind));
+  }
+}
+
+function sendIt() {
+  if (fbSending) return;
+  const message = $('fb-message').value;
+  const pre = validateFeedback({ message });
+  if (!pre.ok) { fbStatus(t(`fb.${pre.reason}`), true); return; }
+
+  fbSending = true;
+  const btn = $('btn-feedback-send');
+  btn.disabled = true;
+  btn.textContent = t('fb.sending');
+  fbStatus('');
+
+  void sendFeedback({
+    kind: fbKind,
+    message,
+    contact: $('fb-contact').value,
+    context: feedbackContext(),
+  }).then((res) => {
+    fbSending = false;
+    btn.disabled = false;
+    btn.textContent = t('fb.send');
+    if (res.ok) {
+      // Cleared on success only. A failed send must keep what they wrote — they
+      // are about to press the button again, and a box that empties itself on a
+      // network blip loses the report AND the goodwill.
+      $('fb-message').value = '';
+      $('fb-contact').value = '';
+      paintFbCount();
+      fbStatus(t('fb.sent'));
+      // The length, never the text. What they wrote lives in primos_feedback,
+      // which has no select policy — copying it into the event log would
+      // undo that split. See the note on FEEDBACK_SEND in js/analytics.js.
+      track(EVENTS.FEEDBACK_SEND, { kind: fbKind, length: sanitizeMessage(message).length });
+    } else {
+      fbStatus(t(`fb.${res.reason}`), true);
+    }
+  });
+}
+
+$('btn-feedback-open').addEventListener('click', openFeedback);
+$('btn-feedback-back').addEventListener('click', closeFeedback);
+$('btn-feedback-send').addEventListener('click', sendIt);
+$('fb-message').addEventListener('input', () => {
+  paintFbCount();
+  // "Write something first." must not still be on screen while they are writing
+  // something. Only the refusals clear on typing — a "Sent." from the previous
+  // message is a fact, and it stays until the next send replaces it.
+  if ($('fb-status').classList.contains('bad')) fbStatus('');
+});
+for (const b of document.querySelectorAll('#fb-kinds [data-kind]')) {
+  b.addEventListener('click', () => { sfx.uiClick(); selectKind(b.dataset.kind); });
+}
+
 $('btn-again').addEventListener('click', () => { sfx.uiClick(); startRun(); });
 $('btn-menu').addEventListener('click', () => {
   sfx.uiClick();
@@ -1147,6 +1330,19 @@ function boot() {
 
   initBoards();
   initAccount();
+
+  // The suggestion box. The entry point appears only on a build that can
+  // actually deliver a message — on the dormant build there is nobody on the
+  // other end, and an unanswered form is worse than no form at all.
+  //
+  // The face is painted when the JPEG lands rather than now: loadTrainer()
+  // resolves false if the art is missing, in which case the CTA keeps its two
+  // lines of text and simply has no portrait. It stays tappable either way.
+  if (isFeedbackConfigured()) {
+    $('btn-feedback-open').classList.remove('hidden');
+    void loadTrainer().then((ok) => { if (ok) paintCorruptFaces(); });
+  }
+  selectKind(fbKind);
   // The browser hands the chosen Primo straight to wearPrimo(), which is the
   // same path the number search and the file picker already use — so the claim
   // is written down, the crew tile repaints and the cloud push happens without

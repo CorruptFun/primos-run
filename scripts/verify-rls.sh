@@ -348,6 +348,95 @@ else
   bad "anonymous callers can DELETE the event log" "HTTP $C"
 fi
 
+# --- the suggestion box -----------------------------------------------------
+# 20260731190000_primos_feedback.sql. Same exposure rules as the event log and
+# one more reason to hold them: this is the only table in the project where a
+# player can put a SENTENCE ABOUT THEMSELVES, and some of them will put an email
+# address in it. A readable feedback table is a worse day than a readable board.
+echo
+echo "primos_feedback — append-only to the world"
+R="$(anon "$REST/primos_feedback?select=message,contact,device_id")"
+[ "$R" = "[]" ] && ok "anonymous SELECT returns no rows (the control at the top proves that means RLS, not absence)" \
+                || bad "the suggestion box answered something other than an empty set" "$R"
+
+FB="$(uuidgen 2>/dev/null | tr 'A-Z' 'a-z')"
+: "${FB:=33333333-3333-4333-8333-333333333333}"
+
+# THE BOX ITSELF. The exact shape js/feedback.js sends. A refusal here means
+# every player who writes in is told "it did not go through" — and unlike
+# analytics, they will notice, because they are watching a status line.
+C="$(code -X POST "$REST/primos_feedback" -H 'Prefer: return=minimal' \
+     -d "{\"device_id\":\"$FAKE\",\"kind\":\"other\",\"message\":\"verify-rls probe, safe to delete\",\"context\":{},\"app_version\":\"verify\",\"lang\":\"en\",\"feedback_id\":\"$FB\"}")"
+{ [ "$C" = "201" ] || [ "$C" = "204" ]; } \
+  && ok "anonymous INSERT accepted (HTTP $C) — the box is alive" \
+  || bad "anonymous INSERT refused — nobody can report anything, and the send button says so" "HTTP $C"
+
+# Same feedback_id again: the guard must DROP it and answer success, so a player
+# who taps SEND twice on a stalled connection gets one row and one "sent".
+C="$(code -X POST "$REST/primos_feedback" -H 'Prefer: return=minimal' \
+     -d "{\"device_id\":\"$FAKE\",\"kind\":\"other\",\"message\":\"verify-rls probe, safe to delete\",\"feedback_id\":\"$FB\"}")"
+if [ "$C" = "201" ] || [ "$C" = "204" ]; then
+  meh "duplicate feedback_id accepted (HTTP $C) — INCONCLUSIVE" \
+      "accepted is only half of it; the dedupe is real only if the row count did not move, and this table refuses reads by design. Settle it with: select count(*) from public.primos_feedback where feedback_id = '$FB'; — it must be 1"
+else
+  bad "a re-sent report was rejected — the guard must DROP duplicates, not raise" "HTTP $C"
+fi
+
+# An empty message. The guard raises PT400 rather than storing a mis-tap, and
+# js/feedback.js refuses it before this point — this proves the backstop.
+C="$(code -X POST "$REST/primos_feedback" -H 'Prefer: return=minimal' \
+     -d "{\"device_id\":\"$FAKE\",\"kind\":\"bug\",\"message\":\"  \"}")"
+[ "$C" = "400" ] \
+  && ok "an empty message is refused by the guard (HTTP $C)" \
+  || bad "the guard stored an empty report — the box will fill with mis-taps" "HTTP $C"
+
+# THE RATE LIMIT, and it is the one probe here that is worth the noise it makes.
+# An open POST endpoint that takes free text is a spam magnet, and the client's
+# own limit is a courtesy that anyone can skip by not being the client. Six
+# distinct reports from one device inside an hour: the sixth must be refused.
+#
+# ⚠ This deliberately WRITES five probe rows. They land in the box marked 'new',
+# so clear them after a production run:
+#   delete from public.primos_feedback where app_version = 'verify';
+LIMITED=""
+for i in 1 2 3 4 5 6; do
+  RID="$(uuidgen 2>/dev/null | tr 'A-Z' 'a-z')"
+  : "${RID:=5555555$i-5555-4555-8555-555555555555}"
+  C="$(code -X POST "$REST/primos_feedback" -H 'Prefer: return=minimal' \
+       -d "{\"device_id\":\"$FAKE\",\"kind\":\"other\",\"message\":\"verify-rls rate probe $i, safe to delete\",\"app_version\":\"verify\",\"feedback_id\":\"$RID\"}")"
+  [ "$C" = "429" ] && { LIMITED="$i"; break; }
+done
+if [ -n "$LIMITED" ]; then
+  ok "the guard rate-limits one device (refused at attempt $LIMITED with HTTP 429)"
+else
+  bad "six reports from one device in an hour were all accepted — the box is unbounded" "no 429"
+fi
+
+echo
+echo "primos_feedback — the read path is admin-only"
+C="$(code -X POST "$REST/rpc/primos_admin_feedback" -d '{"p_days":7}')"
+CTRLFN2="$(code -X POST "$REST/rpc/primos_function_that_does_not_exist" -d '{}')"
+if [ "$C" = "$CTRLFN2" ]; then
+  meh "anonymous RPC refused (HTTP $C) — INCONCLUSIVE" \
+      "a nonexistent function answers HTTP $CTRLFN2 too — has 20260731190000_primos_feedback.sql been applied?"
+elif [ "$C" = "401" ] || [ "$C" = "403" ]; then
+  ok "anonymous EXECUTE of primos_admin_feedback denied (HTTP $C, vs HTTP $CTRLFN2 for a missing function)"
+else
+  bad "anonymous callers can READ every message players have written" "HTTP $C"
+fi
+
+# Marking somebody else's report as spam is a write, and it is the one that
+# would let a player bury their own abuse report.
+C="$(code -X POST "$REST/rpc/primos_admin_feedback_status" -d '{"p_id":1,"p_status":"spam"}')"
+if [ "$C" = "$CTRLFN2" ]; then
+  meh "anonymous triage refused (HTTP $C) — INCONCLUSIVE" \
+      "indistinguishable from the function being absent — has the feedback migration been applied?"
+elif [ "$C" = "401" ] || [ "$C" = "403" ]; then
+  ok "anonymous EXECUTE of primos_admin_feedback_status denied (HTTP $C)"
+else
+  bad "anonymous callers can re-file or bury reports" "HTTP $C"
+fi
+
 # --- cross-game collision ----------------------------------------------------
 # Viva Maya lives in this same project and owns UNPREFIXED events / app_admins /
 # admin_analytics / prune_events. If 0003 had shipped unprefixed it would have

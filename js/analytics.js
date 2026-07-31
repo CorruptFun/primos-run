@@ -85,6 +85,19 @@ export const EVENTS = {
   BOARD_OPEN: 'board_open',
   INVITE_SHARE: 'invite_share',
 
+  // The suggestion box (js/feedback.js). These two answer a question the
+  // reports themselves cannot: how many people opened it and then did NOT
+  // write. A box nobody finds and a box everybody abandons need opposite fixes
+  // and look identical from the pile of messages.
+  //
+  // ⚠ NEITHER CARRIES THE MESSAGE. What the player wrote goes to
+  // primos_feedback — which has no select policy — and not into the event log,
+  // which is a different table with a different retention and a different
+  // shape of exposure. A prop with their sentence in it would quietly copy the
+  // one thing this split exists to keep in one place.
+  FEEDBACK_OPEN: 'feedback_open',
+  FEEDBACK_SEND: 'feedback_send',
+
   CLIENT_ERROR: 'client_error',
 };
 
@@ -136,8 +149,19 @@ function uuid() {
  * NOT a fingerprint and NOT derived from anything about the device or the
  * person. That choice is what makes the privacy note in ACCOUNT honest, and an
  * honest disclosure is the only kind worth writing.
+ *
+ * Exported for js/feedback.js, which files reports under the SAME id so a bug
+ * report can be read next to what that device actually did. Minting a second id
+ * there would have cost that link for no privacy gain — it would be one more
+ * anonymous UUID for the same browser.
+ *
+ * ⚠ It is NOT gated on the opt-out, and js/feedback.js is the reason. Analytics
+ * respects the toggle by not calling track() at all; feedback is a message the
+ * player typed and pressed send on, and it needs an id to be rate-limited by
+ * and to group repeat reports under. An opted-out player has no event log for
+ * it to join to, so the id links their report to nothing. The UI says so.
  */
-function deviceId() {
+export function deviceId() {
   let id = readLocal(DEVICE_KEY);
   if (!id || id.length < 8) {
     id = uuid();

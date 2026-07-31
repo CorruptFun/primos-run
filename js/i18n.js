@@ -188,6 +188,57 @@ const STR = {
                           + 'cámbiate de carril.' },
   'help.back':        { en: 'GOT IT', es: 'ENTENDIDO' },
 
+  // ------------------------------------------------------------- feedback
+  // The suggestion box, fronted by Corrupt's face on the HELP sheet.
+  //
+  // VOICE, and it is doing real work here. He is the shopkeeper who charges you
+  // to keep running, so him taking complaints is the joke — and the joke is what
+  // makes a support form worth tapping. It must not tip into customer service:
+  // "we value your feedback" is the exact register this game is satirising, and
+  // a player who reads it stops believing anyone is on the other end.
+  //
+  // The deadpan is also what keeps the promise honest. He says he reads them,
+  // which is true — stats.html is where they land — and he does not say anyone
+  // will write back, which would not be.
+  'fb.cta.title':     { en: 'TELL CORRUPT', es: 'DILE A CORRUPT' },
+  'fb.cta.sub':       { en: 'Found a glitch? Want something in the game? He reads these.',
+                        es: '¿Encontraste una falla? ¿Quieres algo en el juego? Él los lee.' },
+  'fb.title':         { en: 'TELL CORRUPT', es: 'DILE A CORRUPT' },
+  'fb.blurb':         { en: 'He runs the store, the lowrider and, apparently, the complaints '
+                          + 'department. Broken, missing or just annoying — say which.',
+                        es: 'Él lleva la tienda, el lowrider y, al parecer, el buzón de quejas. '
+                          + 'Roto, faltante o nomás molesto — dile cuál.' },
+  // Three lanes, and they are the three the guard trigger knows. Short enough
+  // to sit in a row of tabs on a 320px screen in both languages.
+  'fb.kind.bug':      { en: 'GLITCH', es: 'FALLA' },
+  'fb.kind.idea':     { en: 'IDEA', es: 'IDEA' },
+  'fb.kind.other':    { en: 'OTHER', es: 'OTRO' },
+  // The placeholder is a worked example, not an invitation. "Tell us what you
+  // think" gets you "good game"; naming the lane, the phone and what happened
+  // gets you something that can actually be fixed.
+  'fb.ph':            { en: 'What happened? Which lane, which phone, what you were doing…',
+                        es: '¿Qué pasó? Qué carril, qué teléfono, qué estabas haciendo…' },
+  'fb.count':         { en: '%n left', es: 'quedan %n' },
+  'fb.contactTitle':  { en: 'If you want an answer', es: 'Si quieres respuesta' },
+  'fb.contactPh':     { en: 'Email or @handle — optional', es: 'Correo o @usuario — opcional' },
+  'fb.send':          { en: 'SEND IT', es: 'MÁNDALO' },
+  'fb.sending':       { en: 'SENDING…', es: 'MANDANDO…' },
+  'fb.back':          { en: 'BACK', es: 'ATRÁS' },
+  'fb.sent':          { en: 'Sent. Corrupt has it.', es: 'Mandado. Corrupt ya lo tiene.' },
+  'fb.empty':         { en: 'Write something first.', es: 'Escribe algo primero.' },
+  // Deliberately not an accusation. The player who hits this is usually someone
+  // filing their fifth genuine bug in an hour, not a spammer.
+  'fb.rate':          { en: 'That is plenty for now. Try again in a bit.',
+                        es: 'Ya es suficiente por ahora. Inténtalo en un rato.' },
+  'fb.net':           { en: 'It did not go through. Check your connection and try again.',
+                        es: 'No se envió. Revisa tu conexión e inténtalo otra vez.' },
+  'fb.off':           { en: 'Messages are off on this build.',
+                        es: 'Los mensajes están apagados en esta versión.' },
+  'fb.privacy':       { en: 'Your message, which build you are on, and an anonymous device ID go '
+                          + 'with it. Nothing else — not your email, unless you type it above.',
+                        es: 'Se manda tu mensaje, en qué versión estás y un ID anónimo del '
+                          + 'dispositivo. Nada más — ni tu correo, salvo que lo escribas arriba.' },
+
   // ------------------------------------------------------------ game over
   // The one line the whole run ends on, and the best joke in the game. Deadpan
   // is the entire point: nobody in this alley is surprised about who it was.

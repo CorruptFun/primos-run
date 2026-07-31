@@ -17,4 +17,4 @@
 // the dashboard reports — a drift means the dashboard is attributing events to
 // the wrong build, which is worse than it sounds, because that is exactly the
 // panel you reach for when something has just broken.
-export const APP_VERSION = 'v15-primo-browser';
+export const APP_VERSION = 'v16-feedback';

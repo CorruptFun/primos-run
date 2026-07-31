@@ -17,6 +17,7 @@ change rather than re-deriving it:
 | `docs/GAME_DESIGN.md` | every rule and number, with the reasoning behind each |
 | `docs/CLOUD_AND_LEADERBOARDS.md` | cloud save, sign-in, boards, invites, the merge, migrations |
 | `docs/ANALYTICS.md` | the event pipe, the dashboard, what is collected and what is not |
+| `docs/FEEDBACK.md` | the suggestion box: Corrupt on HELP, the guard, the triage queue |
 | `docs/GO_LIVE_CHECKLIST.md` | what must be true before and after a deploy |
 
 **Update them with the code.** A stale doc is worse than none — the last one to
@@ -103,6 +104,7 @@ covers the dev loop; a stale cache is a symptom of having tested on a deploy.
 | `js/merge.js`, `js/raceday.js` | pure: save reconciliation, day/week keys |
 | `js/account.js`, `js/boards.js` | the ACCOUNT and LEADERBOARD screens |
 | `js/analytics.js` | the event pipe — `track()`, crash telemetry, opt-out |
+| `js/feedback.js` | the suggestion box — what players write to Corrupt |
 | `js/version.js` | the build stamp. Bump WITH `sw.js`'s `CACHE_VERSION` |
 | `stats.html`, `js/stats/` | the admin analytics dashboard (never precached) |
 | `scripts/gen_art.py` | Gemini art generation + chroma key |
@@ -255,6 +257,55 @@ anything here. Full write-up in `docs/ANALYTICS.md`.
   `stats.html` does not cache-bust, so re-import with `?v=Date.now()` when
   iterating.
 
+## The suggestion box (`js/feedback.js`, migration `20260731190000`)
+
+Corrupt's face on the HELP sheet opens a form; the reports land in the FEEDBACK
+panel at the top of `stats.html`. Ships dormant with the rest of the cloud
+layer. Built to the **`player-feedback` skill** — read it before changing
+anything here. Full write-up in `docs/FEEDBACK.md`.
+
+Everything the analytics section says about the `primos_` prefix, `db push`, and
+"no SELECT policy, ever" applies here unchanged. What is *different*:
+
+- **This guard THROWS where the analytics guard degrades.** `primos_events_guard`
+  may never raise — its error lands in a fetch next to the game loop. This one is
+  behind a button the player pressed and is watching a status line for, so
+  silently dropping a report you told someone was sent is the worse failure. It
+  raises with PostgREST's `PTxyz` SQLSTATEs (`PT429`, `PT400`); the client reads
+  the STATUS CODE and never the body, so losing that mapping costs the wording
+  and not the box.
+- **It is rate limited IN THE DATABASE** — 5/device/hour, 20/day. Every other
+  write path here is bounded by what an honest client would send; a free-text
+  POST endpoint on a public origin is not. `HOUR_LIMIT`/`DAY_LIMIT` in
+  `js/feedback.js` are a PAIRED COPY and a courtesy. If they drift the client's
+  must be the SMALLER, or it promises a send the server will refuse.
+- **Dedupe runs BEFORE the rate limit.** A retry of a report that already landed
+  must not spend the retrier's allowance — otherwise a flaky connection burns the
+  hour on one message and refuses the one they actually wanted to send.
+- **The read RPC returns RAW ROWS**, unlike `primos_admin_analytics`. An
+  aggregate of a suggestion box says how many people wrote and nothing about
+  what. That is exactly why the table has no select policy — one door, and the
+  sentence is what is behind it.
+- **`status` is not decoration.** A box you cannot mark as read shows the same
+  thirty messages every visit, so you stop opening it. Hence
+  `primos_admin_feedback_status()`, hence the panel refetching after every change
+  (the tiles are counts over the same rows), and hence the panel reading a YEAR
+  instead of following the 7/14/30/90 buttons — a report unread for three weeks
+  must not fall out of the window along with the count pointing at it.
+  `primos_prune_feedback` never prunes a row still marked `new`, for the same
+  reason.
+- **The contact field is never prefilled from the account email** (the display
+  name rule again), and the dashboard renders it as TEXT, not a `mailto:` — an
+  `href` built from a player-typed string puts a `javascript:` URI one click away
+  in the owner's own session.
+- **The message never enters the event log.** `feedback_send` carries its
+  LENGTH. Two tables, two retentions, and only one of them is unreadable; a prop
+  with the sentence in it copies the thing that split exists to contain.
+- `window.__renderFeedback(payload)` is the panel's twin of `__renderStats`.
+- ⚠ `scripts/verify-rls.sh`'s rate-limit probe **writes five rows**, and they
+  arrive marked `new`. Clear them after a production run:
+  `delete from public.primos_feedback where app_version = 'verify';`
+
 ## Checks
 
 ES modules, so `node --check` needs an `.mjs` copy:
@@ -264,9 +315,10 @@ for f in js/*.js js/art/*.js js/stats/*.js; do cp "$f" /tmp/x.mjs; node --check 
 ```
 
 `dev/cloud-test.html` asserts every pure module in the browser — day/week keys,
-the merge, name sanitising, the analytics vocabulary pin and the dashboard's rate
-math. 164 assertions. Open it after touching `raceday.js`, `merge.js`,
-`store.js`, `leaderboard.js`, `referrals.js`, `analytics.js` or `js/stats/`.
+the merge, name sanitising, the analytics vocabulary pin, the feedback bounds and
+sanitisers, and the dashboard's rate math. 196 assertions. Open it after touching
+`raceday.js`, `merge.js`, `store.js`, `leaderboard.js`, `referrals.js`,
+`analytics.js`, `feedback.js` or `js/stats/`.
 
 **Bump `CACHE_VERSION` in `sw.js` on every deploy** or players keep stale JS —
 and bump `APP_VERSION` in `js/version.js` in the same commit. If they drift,

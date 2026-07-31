@@ -17,7 +17,7 @@
 */
 
 // 👉 CUSTOMIZE: rename to your app, and bump CACHE_VERSION per deploy (e.g. a build stamp).
-const CACHE_VERSION = "v15-primo-browser";
+const CACHE_VERSION = "v16-feedback";
 const CACHE_NAME    = `primos-run-${CACHE_VERSION}`;
 
 // 👉 CUSTOMIZE: the offline shell, precached at install. Relative paths (resolved against
@@ -75,6 +75,11 @@ const PRECACHE = [
   // stats.html and js/stats/ are the owner's tool and players must never
   // download it. Do not add them here.
   "./js/analytics.js",
+  // The suggestion box's client half. Imported by main.js, so an offline boot
+  // fetches it whether it is listed or not — leaving it out only guarantees that
+  // fetch fails. Its READ path (the FEEDBACK panel in js/stats/) is not here, for
+  // the same reason the dashboard is not: it is the owner's tool.
+  "./js/feedback.js",
   "./js/version.js",
   "./js/art/palette.js",
   "./js/art/runner.js",
