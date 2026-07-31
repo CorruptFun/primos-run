@@ -67,7 +67,7 @@ const TILE = {
   taco:        { name: 'tut.tile.taco',        note: 'tut.tile.taco.n',     color: PAL.lime },
   magnet:      { name: 'tut.tile.magnet',      note: 'tut.tile.magnet.n',   color: PAL.hotPink },
   chancla:     { name: 'tut.tile.chancla',     note: 'tut.tile.chancla.n',  color: PAL.gold },
-  lowrider:    { name: 'tut.tile.lowrider',    note: 'tut.tile.lowrider.n', color: '#4dd8ff' },
+  skateboard:    { name: 'tut.tile.skateboard',    note: 'tut.tile.skateboard.n', color: '#4dd8ff' },
   dumpster:    { name: 'tut.tile.dumpster',    note: 'tut.tile.jump.n',     color: PAL.gold },
   crates:      { name: 'tut.tile.crates',      note: 'tut.tile.jump.n',     color: PAL.gold },
   cones:       { name: 'tut.tile.cones',       note: 'tut.tile.jump.n',     color: PAL.gold },
@@ -89,7 +89,7 @@ const ICON = {
   taco:        { lo: 0.50, hi: 1.00, halfW: 0.31, seed: 5 },
   magnet:      { lo: 0.34, hi: 1.50, halfW: 0.58, seed: 1 },
   chancla:     { lo: 0.34, hi: 1.50, halfW: 0.58, seed: 4 },
-  lowrider:    { lo: 0.18, hi: 1.54, halfW: 0.69, seed: 7 },
+  skateboard:    { lo: 0.18, hi: 1.54, halfW: 0.69, seed: 7 },
   dumpster:    { lo: 0.00, hi: 1.02, halfW: 0.46, seed: 3 },
   crates:      { lo: 0.00, hi: 0.64, halfW: 0.42, seed: 6 },
   cones:       { lo: 0.00, hi: 0.58, halfW: 0.44, seed: 8 },
@@ -185,7 +185,7 @@ const STEPS = [
     tag: 'tut.loot.tag',
     title: 'tut.loot.title',
     body: 'tut.loot.body',
-    board: [['beer', 'taco'], ['magnet', 'chancla', 'lowrider']],
+    board: [['beer', 'taco'], ['magnet', 'chancla', 'skateboard']],
     accent: PAL.gold,
     cue: 'tut.cue.next',
   },
@@ -294,7 +294,14 @@ export function finishTutorial(reason = 'done') {
   store.markTrained();
 }
 
-/** Dev/testing: clear the persisted flag and arm the tutorial again. */
+/**
+ * Clear the persisted flag and arm the course again.
+ *
+ * Not just a testing hook any more: RUN THE TRAINING AGAIN on the HOW TO PLAY
+ * sheet calls this. `forced` is what makes tutorialNeeded() say yes on a save
+ * that has already been trained; finishTutorial() marks it trained again on the
+ * way out, so a repeat costs nothing at the next launch.
+ */
 export function resetTutorial() {
   store.clearTrained();
   forced = true;

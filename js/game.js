@@ -65,6 +65,15 @@ export class Game {
     this.tacos = 0;
     this.combo = 0;
     this.multiplier = 1;
+    // Run-shape counters. Cheap ints, counted where the action is accepted —
+    // js/jales.js prices the daily missions off this exact bundle, so a stat
+    // that stops being counted here silently makes its mission uncompletable
+    // (a permanently-stuck bar, which looks like a bug in the MISSION).
+    this.jumps = 0;
+    this.slides = 0;
+    this.smashes = 0;
+    this.powerups = 0;
+    this.bestMult = 1;
     this.stamina = STAMINA.start;
     this.chase = 0;
     this.chaseGrace = 0;
@@ -79,7 +88,7 @@ export class Game {
     this.freeLives = 0;
     this.continues = 0;
 
-    this.power = { magnet: 0, chancla: 0, lowrider: 0 };
+    this.power = { magnet: 0, chancla: 0, skateboard: 0 };
 
     this.player = {
       lane: 0,
@@ -191,10 +200,11 @@ export class Game {
     if (this.state !== STATE.PLAYING) return;
     const p = this.player;
     if (p.airborne) return;
-    p.vy = this.power.lowrider > 0 ? RUN.boardJumpV : RUN.jumpV;
+    p.vy = this.power.skateboard > 0 ? RUN.boardJumpV : RUN.jumpV;
     p.airborne = true;
     p.sliding = false;
     p.slideT = 0;
+    this.jumps++;
     sfx.jump();
     hap.jump();
   }
@@ -206,6 +216,9 @@ export class Game {
       // Slam back down so a swipe-down out of a jump feels responsive.
       p.vy = Math.min(p.vy, -18);
     }
+    // Counted only when a slide STARTS — retriggering mid-slide extends it and
+    // is not a second slide, or holding the input would farm the mission.
+    if (!p.sliding) this.slides++;
     p.sliding = true;
     p.slideT = RUN.slideTime;
     sfx.slide();
@@ -350,6 +363,7 @@ export class Game {
       this.speedK(), this.power.chancla > 0 ? 1 : 0, p.phase, !p.airborne);
 
     this.multiplier = Math.min(SCORE.comboMax, 1 + Math.floor(this.combo / SCORE.comboStep));
+    if (this.multiplier > this.bestMult) this.bestMult = this.multiplier;
   }
 
   // --------------------------------------------------------------- collision
@@ -439,6 +453,7 @@ export class Game {
         const def = POWER[o.type];
         if (!def) break;
         this.power[o.type] = def.time;
+        this.powerups++;
         burst(o.x, o.y, o.z, 18, def.color, { spread: 2.6, life: 0.7, size: 0.1 });
         sfx.powerUp();
         hap.power();
@@ -455,21 +470,22 @@ export class Game {
       addShake(0.35);
       sfx.smash();
       hap.smash();
+      this.smashes++;
       this.score += 25 * this.multiplier;
       return;
     }
     if (this.invuln > 0) return;
 
-    // The lowrider eats one crash for you.
-    if (this.power.lowrider > 0) {
-      this.power.lowrider = 0;
+    // The skateboard eats one crash for you.
+    if (this.power.skateboard > 0) {
+      this.power.skateboard = 0;
       o.dead = true;
       this.invuln = 0.9;
       burst(o.x, 0.7, o.z, 22, '#4dd8ff', { spread: 3.2, life: 0.7, size: 0.12 });
       addShake(0.5);
       sfx.crash();
       hap.hit();
-      this.hooks.onToast?.('LOWRIDER TOTALED', '#4dd8ff');
+      this.hooks.onToast?.('BOARD SNAPPED', '#4dd8ff');
       return;
     }
 

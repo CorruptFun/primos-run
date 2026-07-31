@@ -90,7 +90,10 @@ const STR = {
   // ---------------------------------------------------------- how to run
   // Each row is drawn as `<b>k</b> <span>v</span>`, so k and v have to read as
   // one sentence across the gap in whichever language is up.
-  'how.title':        { en: 'How to run', es: 'Cómo se corre' },
+  //
+  // These rows are shared with the HOW TO PLAY sheet under `help.*` below,
+  // which is now the only place any of them is rendered — the menu's collapsed
+  // `how` list is gone, replaced by the ? that opens that sheet.
   'how.lane.k':       { en: 'Swipe ← →', es: 'Desliza ← →' },
   'how.lane.v':       { en: '/ arrows — change lanes', es: '/ flechas — cambia de carril' },
   'how.jump.k':       { en: 'Swipe ↑', es: 'Desliza ↑' },
@@ -98,38 +101,26 @@ const STR = {
   'how.slide.k':      { en: 'Swipe ↓', es: 'Desliza ↓' },
   'how.slide.v':      { en: "/ down — duck under the neighbour's laundry",
                         es: '/ abajo — agáchate bajo la ropa de la vecina' },
-  'how.wall.k':       { en: 'Checkpoints and the wall', es: 'Retenes y el muro' },
-  'how.wall.v':       { en: "can't be jumped. Never could. Go around.",
-                        es: 'no se saltan. Nunca. Dales la vuelta.' },
   'how.taco.k':       { en: 'Tacos', es: 'Los tacos' },
   'how.taco.v':       { en: 'are fuel. Run out and ICE takes you.',
                         es: 'son gasolina. Sin gas, te alcanza la patrulla.' },
 
   // -------------------------------------------------------- primo loader
+  // Two ways in and no third: the number, or the browser. The pasted-URL and
+  // choose-a-file strings that used to live here went with the controls they
+  // labelled — see the note on #primo-panel in index.html.
   'primo.title':      { en: 'Run as a real Primo', es: 'Corre como un Primo de verdad' },
-  'primo.hintNum':    { en: 'Type a number from the collection — the art loads live from IPFS.',
-                        es: 'Escribe un número de la colección — el arte se carga en vivo desde IPFS.' },
   'primo.numPh':      { en: 'Primo #', es: 'Primo #' },
-  'primo.load':       { en: 'LOAD', es: 'CARGAR' },
+  'primo.browse':     { en: 'SEE ALL 3,069', es: 'VER LOS 3,069' },
   'primo.random':     { en: 'SURPRISE ME', es: 'SORPRÉNDEME' },
-  'primo.hintUrl':    { en: 'Holder? Use your own — right-click your Primo on Magic Eden, copy the image address, paste it here.',
-                        es: '¿Eres holder? Usa el tuyo — clic derecho en tu Primo en Magic Eden, copia la dirección de la imagen y pégala aquí.' },
-  'primo.urlPh':      { en: 'Paste an image URL', es: 'Pega un URL de imagen' },
-  'primo.file':       { en: 'Or choose a file', es: 'O escoge un archivo' },
   'primo.clear':      { en: 'CLEAR', es: 'BORRAR' },
 
   // Status line under the loader. %s / %n / %h are filled at the call site —
   // t() itself never builds a string.
-  'status.loading':   { en: 'Loading %s…', es: 'Cargando %s…' },
-  'status.ready':     { en: '%s is ready to run.', es: '%s ya está listo para correr.' },
-  'status.badImage':  { en: "Couldn't load that image. Use a direct .png/.jpg link, or pick a file.",
-                        es: 'No se pudo cargar esa imagen. Usa un enlace directo .png/.jpg, o escoge un archivo.' },
-  'status.badFile':   { en: "Couldn't read that file.", es: 'No se pudo leer ese archivo.' },
-  'status.notIndexed':{ en: "Primo #%n isn't in the offline index (%h of 3,069 are). Paste its image URL below and it will work.",
-                        es: 'El Primo #%n no está en el índice sin conexión (%h de 3,069 sí están). Pega el URL de su imagen aquí abajo y va a jalar.' },
+  'status.notIndexed':{ en: "Primo #%n isn't in the offline index (%h of 3,069 are). Try another number.",
+                        es: 'El Primo #%n no está en el índice sin conexión (%h de 3,069 sí están). Prueba otro número.' },
   'status.noIndex':   { en: 'Index unavailable.', es: 'Índice no disponible.' },
   'status.cleared':   { en: 'Primo cleared.', es: 'Primo borrado.' },
-  'label.yourPrimo':  { en: 'Your Primo', es: 'Tu Primo' },
   'label.primoNum':   { en: 'Primo #', es: 'Primo #' },
 
   // ----------------------------------------------------------- crew picker
@@ -165,17 +156,22 @@ const STR = {
   'pause.quit':       { en: 'QUIT TO MENU', es: 'SALIR AL MENÚ' },
 
   // ----------------------------------------------------------------- help
-  // The menu's `how` list is only reachable from the menu, which is no use to
-  // the player who is already dead and does not know why. This is the same
-  // material, reachable mid-run from pause and again from the game over sheet,
-  // with the rule that actually kills new players pulled out of the list and
-  // given its own box — buried in a bullet it was read as trivia.
+  // THE manual. It used to be two things — a collapsed `how` list on the menu
+  // and this sheet — and the menu copy was the one nobody read, because it sat
+  // under the stats behind a disclosure triangle. There is now one sheet, and
+  // it is reachable from all three places the question gets asked: the ? in the
+  // corner of the menu, pause, and game over. The rule that actually kills new
+  // players is pulled out of the list and given a red box, because buried in a
+  // bullet it was read as trivia.
   //
   // Rows are drawn `<b>k</b> <span>v</span>` and have to read as one sentence
   // across the gap, same contract as `how.*` above, which this reuses for the
   // three swipes and the tacos.
   'help.open':        { en: 'HOW TO PLAY', es: 'CÓMO SE JUEGA' },
   'help.title':       { en: 'HOW TO PLAY', es: 'CÓMO SE JUEGA' },
+  // The ? has no visible label, so this is the only name a screen reader gets.
+  'help.fab':         { en: 'How to play', es: 'Cómo se juega' },
+  'help.sec.controls':{ en: 'The controls', es: 'Los controles' },
   'help.tap.k':       { en: 'Tap anywhere', es: 'Toca donde sea' },
   'help.tap.v':       { en: '— jump. Same as swiping up.', es: '— brinca. Igual que deslizar hacia arriba.' },
   'help.rule.tag':    { en: 'THE ONE THAT GETS YOU', es: 'LO QUE TE AGARRA' },
@@ -186,6 +182,37 @@ const STR = {
                         es: 'Retenes, el muro, la patrulla. Todos son más altos que tu salto, y '
                           + 'siempre lo han sido. Saltarlos es golpe seguro, cada vez. Mejor '
                           + 'cámbiate de carril.' },
+
+  // The pickups, in the order the alley hands them to you. The three power-ups
+  // are named the way the HUD names them mid-run — PIÑATA, CHANCLA, SKATEBOARD
+  // — so the list and the run are speaking about the same objects. The first
+  // two stay put in `en`: they are what the thing is called, not flavour.
+  'help.sec.loot':    { en: "What's in the alley", es: 'Lo que hay en el callejón' },
+  'help.beer.k':      { en: 'Beers', es: 'Las chelas' },
+  'help.beer.v':      { en: 'are points, and a streak of them pays more.',
+                        es: 'son puntos, y una racha paga más.' },
+  'help.magnet.k':    { en: 'Piñata', es: 'La piñata' },
+  'help.magnet.v':    { en: 'pulls every beer in the alley to you.',
+                        es: 'te jala todas las chelas del callejón.' },
+  'help.chancla.k':   { en: 'Chancla', es: 'La chancla' },
+  'help.chancla.v':   { en: '— you go straight through whatever you hit.',
+                        es: '— te pasas de largo por todo lo que golpeas.' },
+  'help.skateboard.k': { en: 'Skateboard', es: 'La patineta' },
+  'help.skateboard.v': { en: 'takes one crash for you, and jumps higher.',
+                        es: 'te aguanta un golpe, y salta más alto.' },
+  'help.chase':       { en: 'Every hit you take brings ICE a step closer. Nothing gets them off '
+                          + 'you — you just stop feeding them.',
+                        es: 'Cada golpe que te dan acerca a la migra. Nada te los quita de encima '
+                          + '— nomás dejas de darles de comer.' },
+
+  // Corrupt's course, on demand. The line has to say it is a repeat and that it
+  // is short, because the player asking for it has already sat through it once.
+  'help.sec.train':   { en: 'Alley school', es: 'Escuela del callejón' },
+  'help.train.copy':  { en: 'Corrupt teaches the whole thing by doing, in about a minute. Take it '
+                          + 'as many times as you want.',
+                        es: 'Corrupt te enseña todo haciéndolo, en como un minuto. Tómala las '
+                          + 'veces que quieras.' },
+  'help.train.btn':   { en: 'RUN THE TRAINING AGAIN', es: 'REPETIR EL ENTRENAMIENTO' },
   'help.back':        { en: 'GOT IT', es: 'ENTENDIDO' },
 
   // ------------------------------------------------------------- feedback
@@ -270,9 +297,9 @@ const STR = {
   // for what they DO, which is true whichever way the art lands.
   'power.magnet':     { en: 'BEER MAGNET', es: 'IMÁN PIÑATA' },
   'power.chancla':    { en: 'RAMPAGE', es: 'CHANCLAZO' },
-  'power.lowrider':   { en: 'LOWRIDER', es: 'LOWRIDER' },
+  'power.skateboard': { en: 'SKATEBOARD', es: 'PATINETA' },
   'toast.taco':       { en: 'TACO! +FUEL', es: '¡TACO! +GASOLINA' },
-  'toast.lowriderDown': { en: 'LOWRIDER TOTALED', es: 'ADIÓS, LOWRIDER' },
+  'toast.boardSnapped': { en: 'BOARD SNAPPED', es: 'ADIÓS, PATINETA' },
 
   // ---------------------------------------------------------------- intro
   'intro.tail':       { en: 'ICE. WHAT A SURPRISE.', es: 'LA MIGRA. QUÉ SORPRESA.' },
@@ -368,8 +395,8 @@ const STR = {
   'tut.tile.magnet.n':    { en: 'PULLS BEERS', es: 'IMÁN' },
   'tut.tile.chancla':     { en: 'RAMPAGE', es: 'CHANCLA' },
   'tut.tile.chancla.n':   { en: 'BREAKS ALL', es: 'ROMPE TODO' },
-  'tut.tile.lowrider':    { en: 'LOWRIDER', es: 'LOWRIDER' },
-  'tut.tile.lowrider.n':  { en: 'TAKES 1 HIT', es: 'AGUANTA 1' },
+  'tut.tile.skateboard':  { en: 'SKATEBOARD', es: 'PATINETA' },
+  'tut.tile.skateboard.n': { en: 'TAKES 1 HIT', es: 'AGUANTA 1' },
   'tut.tile.dumpster':    { en: 'DUMPSTER', es: 'DUMPSTER' },
   'tut.tile.crates':      { en: 'CRATES', es: 'CAJAS' },
   'tut.tile.cones':       { en: 'CONES', es: 'CONOS' },
@@ -509,6 +536,14 @@ const STR = {
   'acct.needCode':    { en: 'Paste a code first.', es: 'Primero pega un código.' },
   'acct.badCode':     { en: 'That code did not work.', es: 'Ese código no jaló.' },
   'acct.badBackup':   { en: 'That file did not work.', es: 'Ese archivo no jaló.' },
+  'acct.loading':     { en: 'LOADING…', es: 'CARGANDO…' },
+
+  // What a button says about ITSELF for a moment after it worked — the
+  // confirmation the eye is already pointed at. The tick is deliberate: these
+  // are read in a glance, at 13px, mid-tap, and the word alone does not carry
+  // that far. See js/ui-feedback.js.
+  'ui.copied':        { en: 'COPIED ✓', es: 'COPIADO ✓' },
+  'ui.saved':         { en: 'SAVED ✓', es: 'GUARDADO ✓' },
 
   // ------------------------------------------------------------- invites
   // The currency is BEERS in `en` and CHELAS in `es`, like everywhere else.
@@ -532,6 +567,7 @@ const STR = {
                         es: '+%c chelas. Corrupt las contó en voz alta.' },
   'invite.claimFail': { en: 'Could not collect that. Try again.',
                         es: 'No se pudo cobrar. Inténtalo otra vez.' },
+  'invite.claiming':  { en: 'COLLECTING…', es: 'COBRANDO…' },
   'invite.copied':    { en: 'Link copied. Go send it.', es: 'Liga copiada. Ve a mandarla.' },
   // The game's own title, so it stays as-is in both — see the PROPER NOUNS list.
   'invite.shareTitle': { en: 'Primos: Barrio Run', es: 'Primos: Barrio Run' },
@@ -573,9 +609,9 @@ const STR = {
   'item.vida':        { en: 'ONE MORE LIFE', es: 'UNA VIDA MÁS' },
   'item.vida.b':      { en: 'He looks away the first time they catch you.',
                         es: 'Mira para otro lado la primera vez que te agarran.' },
-  'item.lowrider':    { en: 'LOWRIDER', es: 'LOWRIDER' },
-  'item.lowrider.b':  { en: 'Roll out on the lowrider. It takes one crash.',
-                        es: 'Sales en el lowrider. Te aguanta un golpe.' },
+  'item.skateboard':  { en: 'SKATEBOARD', es: 'PATINETA' },
+  'item.skateboard.b': { en: 'Roll out on the board. It takes one crash.',
+                        es: 'Sales en la patineta. Te aguanta un golpe.' },
 
   // ----------------------------------------------------------- the continue
   'cont.kicker':      { en: 'ICE HAS YOU', es: 'LA MIGRA TE TIENE' },
@@ -594,6 +630,53 @@ const STR = {
   // Toast, when a vida bought earlier pays for itself. Short on purpose — it
   // is a pill on the canvas, not a sentence.
   'toast.vida':       { en: 'CORRUPT LOOKED AWAY', es: 'CORRUPT SE HIZO EL LOCO' },
+
+  // ------------------------------------------------------------------ el fit
+  // The gear half of the counter. PASAMONTAÑAS and CADENA are the alley's own
+  // words and stay put; the sentences follow the toggle, per the house rule.
+  'gear.sect':        { en: 'EL FIT — YOURS FOREVER', es: 'EL FIT — TUYO PARA SIEMPRE' },
+  'gear.maskNegro':   { en: 'SKI MASK · BLACK', es: 'PASAMONTAÑAS NEGRO' },
+  'gear.maskNegro.b': { en: 'Nobody needs to know. Hair goes under.',
+                        es: 'Nadie tiene que saber. El pelo va abajo.' },
+  'gear.maskRosa':    { en: 'SKI MASK · ROSA', es: 'PASAMONTAÑAS ROSA' },
+  'gear.maskRosa.b':  { en: 'Anonymous, but make it loud.',
+                        es: 'Anónimo, pero que se note.' },
+  'gear.maskOro':     { en: 'SKI MASK · GOLD', es: 'PASAMONTAÑAS DE ORO' },
+  'gear.maskOro.b':   { en: 'For when not being seen should be seen.',
+                        es: 'Para que no verte sea un evento.' },
+  'gear.chainOro':    { en: 'GOLD CHAIN', es: 'CADENA DE ORO' },
+  'gear.chainOro.b':  { en: 'Catches the streetlight at your neck.',
+                        es: 'Atrapa la luz del poste en tu cuello.' },
+  'gear.chainCubana': { en: 'CUBAN LINK', es: 'CADENA CUBANA' },
+  'gear.chainCubana.b': { en: 'The heavy one. Everyone behind you knows.',
+                        es: 'La pesada. Todos atrás de ti lo saben.' },
+  'gear.wear':        { en: 'WEAR IT', es: 'PÓNTELO' },
+  'gear.takeOff':     { en: 'TAKE OFF', es: 'QUÍTATELO' },
+  'gear.wornNote':    { en: 'On you right now.', es: 'Lo traes puesto.' },
+
+  // --------------------------------------------------- coming back tomorrow
+  // LA RACHA and LOS JALES are vocabulary, same rule as CHELA. The mission
+  // lines carry their %n target and sit in a menu card — one short line each.
+  'racha.title':      { en: 'LA RACHA', es: 'LA RACHA' },
+  'racha.day':        { en: 'LA RACHA · DAY %n', es: 'LA RACHA · DÍA %n' },
+  'racha.safe':       { en: 'Counted today. Tomorrow it grows.',
+                        es: 'Hoy ya contó. Mañana crece.' },
+  'racha.risk':       { en: 'Run today and it pays +%n. Skip it and it dies.',
+                        es: 'Corre hoy y paga +%n. Fállale y se muere.' },
+  'jales.title':      { en: 'LOS JALES DEL DÍA', es: 'LOS JALES DEL DÍA' },
+  'jales.sweep':      { en: 'All three pay +%n on top', es: 'Los tres juntos pagan +%n extra' },
+  'jales.swept':      { en: 'Swept. Corrupt is almost impressed.',
+                        es: 'Barriste. Corrupt casi se impresiona.' },
+  'jales.propina':    { en: 'LA PROPINA', es: 'LA PROPINA' },
+  'jale.chelas':      { en: 'COLLECT %n BEERS', es: 'JÚNTATE %n CHELAS' },
+  'jale.tacos':       { en: 'EAT %n TACOS', es: 'CÓMETE %n TACOS' },
+  'jale.slides':      { en: 'SLIDE %n TIMES', es: 'BARRE %n VECES' },
+  'jale.jumps':       { en: 'JUMP %n TIMES', es: 'SALTA %n VECES' },
+  'jale.powers':      { en: 'GRAB %n POWER-UPS', es: 'AGARRA %n POWER-UPS' },
+  'jale.smash':       { en: 'BREAK %n THINGS', es: 'ROMPE %n COSAS' },
+  'jale.score':       { en: 'SCORE %n IN ONE RUN', es: 'HAZ %n EN UNA CORRIDA' },
+  'jale.dist':        { en: 'RUN %n METERS IN ONE GO', es: 'CORRE %n METROS DE UN JALÓN' },
+  'jale.combo':       { en: 'HIT A ×%n COMBO', es: 'PEGA UN COMBO ×%n' },
 };
 
 /**
@@ -604,10 +687,10 @@ const STR = {
 const FROM_GAME = {
   'CAUGHT BY LA MIGRA': 'over.reason.migra',
   '¡TACO! +STAMINA': 'toast.taco',
-  'LOWRIDER TOTALED': 'toast.lowriderDown',
+  'BOARD SNAPPED': 'toast.boardSnapped',
   'PIÑATA MAGNET': 'power.magnet',
   'CHANCLA RUSH': 'power.chancla',
-  LOWRIDER: 'power.lowrider',
+  SKATEBOARD: 'power.skateboard',
   'CORRUPT LOOKED AWAY': 'toast.vida',
 };
 

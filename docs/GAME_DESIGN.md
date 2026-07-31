@@ -52,7 +52,7 @@ sluggish.
 
 ### Jumping and sliding
 
-Apex is `v²/2g`: **1.43u standing, 2.16u on the lowrider**.
+Apex is `v²/2g`: **1.43u standing, 2.16u on the skateboard**.
 
 **Checkpoints, border walls and cruisers are taller than the apex on purpose.**
 They cannot be jumped, at all, by design (see `PROP_SPEC` in
@@ -113,12 +113,16 @@ chela**, which is what makes `QUALIFY_SCORE = 1500` (see
 |---|---|---|
 | **Piñata Magnet** | 10.0s | pulls chelas in from `MAGNET_RADIUS` 3.6u |
 | **Chancla Rush** | 6.5s | invincible, ×1.55 speed, flattens obstacles for +25 each |
-| **Lowrider** | 13.0s | hoverboard: eats one crash, higher jump (apex 2.16u) |
+| **Skateboard** | 13.0s | eats one crash, higher jump (apex 2.16u), and you ride it |
 
-The prop keys are still `magnet`, `chancla`, `lowrider`. **The art was swapped
-without renaming, deliberately** — `world.js`, `game.js` and the tutorial all key
-off those strings. Visually they are now guns, a bag of white powder (speed) and
-a skateboard, because of the roadmap below.
+The prop keys are `magnet`, `chancla` and `skateboard`. The first two are still
+named for what they were when the art was a piñata and a sandal, and the art is
+now a gun and a bag of white powder — the roadmap below is why. **The third was
+renamed**, because it was `lowrider` and the art had already been a skateboard
+for two versions: the HUD said LOWRIDER, a board appeared under the runner's
+feet, and the shop sold a car. `js/wallet.js`'s `RENAMED` carries the old id off
+players' shelves; nothing else validates a shelf id, so without it the rename
+would have quietly binned a 55-chela item.
 
 ## Pacing
 
@@ -172,7 +176,7 @@ player standing there with their first thirty chelas.
 | **Piñata Magnet** | 30 | start with the magnet running |
 | **Chancla Rush** | 35 | start with the rush running |
 | **Vida** | 45 | Corrupt looks the other way once — a free reprieve |
-| **Lowrider** | 55 | start on the board |
+| **Skateboard** | 55 | start on the board |
 
 A good run pays out **25–45 chelas**, so the shelf is priced against *one run*:
 the cheap end is a run's takings, the expensive end is a run and a bit. Nothing
@@ -181,6 +185,41 @@ here is a grind, and nothing here is pocket change.
 Purchases stack on a shelf (`MAX_STOCK` 9 per item) and one of each is consumed
 at the start of the next run. Buying three chanclas gets you a chancla on each of
 the next three runs, not one thirty-second chancla.
+
+### El Fit — gear you keep
+
+The second half of the counter. Consumables above are priced against one run;
+**gear is priced against several days**, because gear is what a wallet is *for*
+once the shelf stops being novel. Bought once, owned forever, worn on the
+runner — and worn where the game actually looks at you: **from behind**.
+
+| item | slot | price |
+|---|---|---|
+| **Pasamontañas Negro** | mask | 150 |
+| **Pasamontañas Rosa** | mask | 200 |
+| **Pasamontañas Oro** | mask | 400 |
+| **Cadena de Oro** | chain | 250 |
+| **Cadena Cubana** | chain | 500 |
+
+Why these prices: the retention systems below pay a fully-engaged player about
+**110 chelas a day** on top of run takings, so the cheap mask is a day or two of
+real play, the gold one most of a week. A cosmetic must be saved for or owning
+it says nothing.
+
+Rules that keep the economy honest:
+
+- **Buying gear you already own is refused, not double-charged** — ownership is
+  checked inside the same atomic write as the debit (`wallet.buyGear`).
+- **Owned gear is merged by UNION across devices** — the same reasoning as the
+  consumable shelf: it was paid for with chelas the player actually earned, and
+  a merge must never delete a purchase (see `mergeGear` in `js/merge.js`).
+- **What is *worn* merges by recency**, like the race name: `fit` carries its
+  own `fitSetAt` timestamp, because "which mask am I wearing" is a preference,
+  not progress, and the device you dressed yourself on last is the one telling
+  the truth (see `pickFit`).
+- A mask deliberately covers the Primo's hair and hat. That trade — identity
+  for anonymity — is the player's to make; outfit colours are still sampled
+  from their PFP, so the runner stays *theirs*.
 
 ### Continues
 
@@ -219,6 +258,88 @@ A weekly total is marked if **any** day inside it was bought (`bool_or` in the
 view). That is the honest reading: the number being ranked is partly made of a
 run that was paid for.
 
+## Coming back tomorrow
+
+Everything above makes a single run good. This chapter is what makes *tomorrow's*
+run exist. Design rule for the whole chapter: **every reward is paid by running,
+never by showing up** — there is no login bonus, no claim button, no payment
+sheet. The game only ever pays people for playing it, which is what keeps the
+streak from becoming an obligation to open an app.
+
+Both systems reset on the **same UTC clock as the boards** (`dayKey` in
+`js/raceday.js`) — one clock for everyone, for the boards' stated reason.
+
+### La Racha — the daily streak
+
+The first run you **bank** each UTC day pays a bonus that escalates with your
+streak:
+
+```
+day    1    2    3    4    5    6    7+
+bonus  5   10   15   20   25   30   40      (RACHA_TABLE in js/racha.js)
+```
+
+Skip a day and it resets to day 1. The table caps at 7 on purpose: an
+ever-growing bonus turns a habit into a hostage, and 40 is already a mid-shelf
+item every single day. The menu shows the streak — and shows it *at risk* when
+yesterday counted but today has not — because loss aversion only works on a
+number the player can see.
+
+Merge rule (`pickRacha` in `js/merge.js`): the side with the **later day** wins;
+same day, the longer streak. Never summed — a streak is a fact about days, not
+a counter.
+
+### Los Jales del día — daily missions
+
+Three jobs a day, **the same three for every player on earth** — they are
+picked deterministically from the day key (`js/jales.js`), so "did you get the
+taco one done" is a conversation, not a coincidence. Three slots, drawn from a
+pool of run-shaped goals: chelas collected today, tacos eaten, slides, jumps,
+power-ups grabbed, obstacles flattened, best combo, single-run score, single-run
+distance. Cumulative goals progress across every run of the day, so a bad run
+still moves something.
+
+| | pays |
+|---|---|
+| each jale | 15 chelas |
+| all three (la propina) | +25 |
+
+Ceiling per day: `40 (racha) + 70 (jales) = 110` on top of takings — about two
+to three good runs' worth, which funds the gear ladder above in days without
+inflating the continue ladder (a continue is still real money at 25·2ⁿ).
+
+Progress, completion and payout are settled at **run end, in one atomic
+economy write** together with the run's takings and the racha bonus
+(`settleRun` in `js/main.js` → `writeEcon`), so a payout and the latch that
+says it was paid can never tear apart — the exact lesson
+`referralWelcomeClaimed` already taught this codebase. Completed jales are
+celebrated on the game-over sheet, under the score, where the "one more run"
+decision is actually made.
+
+Merge rule (`pickJales`): later day wins outright; same day unions `done` and
+takes max progress per goal. Two devices played offline on the same day can
+each pay the same jale once — bounded at 70 chelas and partly self-cancelling,
+since the wallet merge keeps only one side's balance (`pickWallet`). Accepted,
+documented, same class as every other cross-device money tradeoff here.
+
+### Why this holds up long-term
+
+The dopamine architecture, named honestly:
+
+1. **Appointment** — la racha's visible at-risk state is the reason to come
+   back *today*, jales are the reason today is *different from yesterday*.
+2. **Savings goals** — el fit's 150–500 range means the wallet always has a
+   next thing it is *for*, several days out.
+3. **Competition** — the daily and weekly boards (already live) are where a
+   good run goes to matter; racha and jales exist to put players on them daily.
+4. **Identity** — your own Primo, wearing the fit you saved for. Status you
+   can see from behind.
+5. **In-run texture** — combo ladder, near-miss kicks, power-ups: the
+   second-to-second variable rewards were already built.
+
+What is deliberately absent: loot boxes, timers that punish absence beyond the
+streak reset, and anything bought with money. Chelas in, chelas out.
+
 ## Invites
 
 Every signed-in player mints one six-character code. The friend arrives on
@@ -253,6 +374,19 @@ The alley is fair but it is not obvious, and three of its obstacles cannot be
 jumped at all. A player who discovers that by dying learns it as *"the game
 cheated me"*. So the first time anyone presses RUN they get taught by doing
 (`js/tutorial.js`), and only then does the first real run start.
+
+It is also **replayable on demand**: RUN THE TRAINING AGAIN on the HOW TO PLAY
+sheet calls `resetTutorial()` and takes the course from the top. That path puts
+the game back to `MENU` and resets the world first, because the course is taught
+over a *live* alley and that is the only state it has ever run in. The button is
+hidden when the sheet was opened from PAUSE — there the run is still going, and
+starting the course would throw it away.
+
+Both endings lead into a run. The course running out is seen by `drawFrame()`,
+which calls `startRun()`; **SKIP ends it from outside the frame loop**, where
+that branch cannot see it — so the pill has to start the run itself. Without
+that it fell through every sheet the course had hidden and left the player on an
+empty scrolling alley with nothing to press.
 
 Rules the tutorial holds itself to:
 

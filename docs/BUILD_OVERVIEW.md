@@ -51,6 +51,7 @@ runner would otherwise give you.
 | `js/particles.js` | pooled bursts and footfall dust |
 | `js/audio.js` | WebAudio SFX + music, synthesised (no audio files) |
 | `js/haptics.js` | vibration patterns, gated by the sound toggle |
+| `js/ui-feedback.js` | what a DOM button does when pressed — see below |
 | `js/intro.js` | the opening camera move |
 | `js/tutorial.js` | first-run training — the escuela del callejón |
 | `js/i18n.js` | every word the game says, EN + ES |
@@ -84,6 +85,9 @@ runner would otherwise give you.
 | `js/cloud.js` | Google sign-in, cloud save pull/merge/push |
 | `js/merge.js` | pure: cross-device save reconciliation |
 | `js/raceday.js` | pure: day/week keys, per-day bests |
+| `js/racha.js` | pure: the daily streak — settle, at-risk, display rules |
+| `js/jales.js` | pure: daily missions — the day's draw, progress, payout |
+| `js/art/gear.js` | el fit's draw code — shop icons + the worn mask/chain |
 | `js/leaderboard.js` | board submit/read + the race-name rules |
 | `js/referrals.js` | invite codes, qualification, rewards |
 | `js/analytics.js` | the event pipe (see [ANALYTICS.md](ANALYTICS.md)) |
@@ -94,7 +98,8 @@ runner would otherwise give you.
 
 | path | role |
 |---|---|
-| `dev/rig-test.html` | character pose harness — **iterate here, not in-game** |
+| `dev/rig-test.html` | character POSE harness — **iterate here, not in-game** |
+| `dev/head-test.html` | every TRAIT side by side — hats, cuts, colours, combos |
 | `dev/cloud-test.html` | asserts the pure half of the cloud layer, in-browser |
 | `dev/items-test.html` | prop/shop icon harness |
 | `stats.html`, `js/stats/` | the analytics dashboard (admin-gated) |
@@ -199,11 +204,37 @@ still correct for menu tiles and the HUD badge, which *do* look at you.
 `primo-head.js` samples hair colour off the PFP crown so a custom Primo keeps its
 own look from behind.
 
-**Iterate in `dev/rig-test.html`, not in-game.** It renders the whole run cycle
-plus air/slide poses side by side, with a live oversized view and a real Primo
-loaded from IPFS. It cache-busts its imports on purpose — `python3 -m
-http.server` answers with `Last-Modified` and browsers happily reuse a stale ES
-module, which silently shows you the previous build.
+**Every hair cut and every hat is ONE PATH, filled once.** Anything painted on
+top of the hair as a separate shape stays flat under the cel light pass, and a
+few flat marks high on an egg become a face — which is the single failure this
+whole file exists to prevent. So a tuft, a spike, a bushy lobe and a cap's
+adjuster notch are all part of an outline, unioned by nonzero winding. The
+corollary is that **the traits separate by silhouette, not by surface detail**: a
+script mark on the cap read as a scribble, knit ribbing turned a do-rag into a
+barrel, and three ruled lines down a mullet made it a wooden keg. All three are
+gone. See the header of `head-back.js` for the full list.
+
+**Two harnesses, and they answer different questions.**
+
+- **`dev/rig-test.html` — the POSE.** The whole run cycle plus air, slide, lean
+  and the skateboard stance side by side, with a live oversized view and a real
+  Primo loaded from IPFS. One Primo at a time, moving.
+- **`dev/head-test.html` — the TRAITS.** Every hat, cut, hair colour, accessory
+  and the combinations that collide, all at once, at a size slider that covers
+  gameplay through 2×. A hat that reads as a lump is only obvious next to the
+  five hats that do not, and that is a comparison rig-test structurally cannot
+  make. Synthetic rigs through the real `applyTraits()`, so nothing is faked, and
+  a row of real tokens off IPFS as the check on that.
+
+Both cache-bust their imports, and `dev/head-test.html` also exposes
+`window.only('<section>')` because an automated browser screenshots the first
+viewport only and never follows a scroll.
+
+**Serve dev with `scripts/dev-server.py`, not `python3 -m http.server`.** The
+latter answers with `Last-Modified` and no `Cache-Control`, so the browser reuses
+the module it already has: you edit a file, reload, and are shown the PREVIOUS
+build with nothing in the console. If a harness edit does not appear, check what
+is actually listening on the port before you debug the code.
 
 ## The world generator
 
@@ -283,6 +314,40 @@ The antagonist is named in the reader's language: `en` says ICE, `es` says LA
 MIGRA. That is the one thing that must land plainly rather than as a term the
 reader might not parse, because it is what is being satirised.
 
+## Press feedback
+
+`js/ui-feedback.js`. A DOM button in this game has to answer for itself, and
+before this module three separate holes all reached the player as one
+complaint — *I press it and nothing happens*.
+
+**The press.** `-webkit-tap-highlight-color: transparent` is set on the body on
+purpose (the OS flash is a grey rectangle over a gold button), which leaves
+`.btn:active` as the only press state. iOS Safari withholds `:active` until it
+has decided the touch is not the start of a scroll, and every menu lives inside
+`.screen` — `overflow-y: auto`, `touch-action: pan-y`. For a quick tap the
+verdict routinely lands after the finger has lifted, so the button never moves.
+A delegated `pointerdown` adds `.pressed`, which shares one rule with `:active`
+so the two cannot drift.
+
+**The click and the buzz.** `sfx.uiClick()` was wired per button in
+`js/main.js`, so every control wired anywhere else was silent — the whole
+ACCOUNT screen. Both now come from the delegated listener. `uiClick()` drops a
+repeat inside 120ms so the buttons that still call it themselves do not double
+up.
+
+**The result.** `uiToast()` is fixed to the VIEWPORT. The ACCOUNT sheet is far
+taller than a phone and its `#acct-status` line sits at the bottom of it, so a
+confirmation for a button in the middle of the scroll was written several
+hundred pixels below the fold. The inline line stays as the record; the toast
+is the half that gets read.
+
+Plus the two states a button needs about itself: `flashLabel()` (COPY becomes
+COPIED, original remembered so hammering cannot latch it) and `busy()` (label +
+disabled + pulse, returns the function that ends it — call that in *both*
+branches). `.btn:disabled` did not exist at all before this, so `disabled = true`
+changed nothing on screen: `#btn-claim:disabled` predates it, keeps its own
+tuning, and opts out of the general rule's opacity.
+
 ## Art generation
 
 `art/*.png` is **generated, not hand-drawn**. `scripts/gen_art.py` calls Gemini
@@ -341,7 +406,7 @@ for f in js/*.js js/art/*.js js/stats/*.js; do cp "$f" /tmp/x.mjs; node --check 
 - `scripts/verify-rls.sh` audits the live RLS posture. Run it after **any**
   migration, against production, and read the effects rather than the status
   codes.
-- `dev/rig-test.html` for the character, `dev/items-test.html` for props and shop
-  icons.
+- `dev/rig-test.html` for the character's pose, `dev/head-test.html` for the
+  traits on its head, `dev/items-test.html` for props and shop icons.
 
-There is no CI test job. These three pages are the test suite.
+There is no CI test job. These four pages are the test suite.

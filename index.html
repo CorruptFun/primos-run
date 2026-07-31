@@ -81,19 +81,33 @@
         <div><b id="stat-runs">0</b><span data-i18n="stat.runs">RUNS</span></div>
       </div>
 
-      <details class="how">
-        <summary data-i18n="how.title">How to run</summary>
-        <!-- Split into <b> + <span> so the refresh only ever writes
-             textContent — no innerHTML anywhere in the language swap. -->
-        <ul>
-          <li><b data-i18n="how.lane.k">Swipe ← →</b> <span data-i18n="how.lane.v">/ arrows — change lanes</span></li>
-          <li><b data-i18n="how.jump.k">Swipe ↑</b> <span data-i18n="how.jump.v">/ space — jump the trash</span></li>
-          <li><b data-i18n="how.slide.k">Swipe ↓</b> <span data-i18n="how.slide.v">/ down — duck under the neighbour's laundry</span></li>
-          <li><b data-i18n="how.wall.k">Checkpoints and the wall</b> <span data-i18n="how.wall.v">can't be jumped. Never could. Go around.</span></li>
-          <li><b data-i18n="how.taco.k">Tacos</b> <span data-i18n="how.taco.v">are fuel. Run out and ICE takes you.</span></li>
-        </ul>
-      </details>
+      <!-- Coming back tomorrow: the streak and the day's three jales. Painted
+           by paintDaily() in main.js from disk — read-only here, the RUN is
+           what moves any of these numbers. The chip hides itself at streak 0
+           (a "0-day streak" is nagging, not information). -->
+      <div class="daily">
+        <div class="racha-chip hidden" id="racha-chip">
+          <span class="racha-flame" aria-hidden="true">🔥</span>
+          <b><span id="racha-len">0</span><span data-i18n="racha.title"> LA RACHA</span></b>
+          <span class="racha-note" id="racha-note"></span>
+        </div>
+        <div class="jales-card" id="jales-card">
+          <p class="jales-title" data-i18n="jales.title">LOS JALES DEL DÍA</p>
+          <div id="jales-rows"></div>
+          <p class="jales-sweep" id="jales-sweep"></p>
+        </div>
+      </div>
 
+      <!-- The rules used to live here, in a second collapsed list under this
+           one. They are now behind the ? pinned to the corner of the screen —
+           see #btn-help-fab at the bottom of this file. -->
+
+      <!-- Two ways in and nothing else: type the number if you know it, or go
+           and look at all 3,069 if you don't. The paste-a-URL box and the file
+           picker that used to sit under this are gone on purpose — they existed
+           when the collection could not be browsed, and every Primo they could
+           load can now be reached by its number, WITH its real traits and its
+           claim state, neither of which a pasted image has. -->
       <details class="how" id="primo-panel">
         <summary data-i18n="primo.title">Run as a real Primo</summary>
         <p class="hint" data-i18n="primo.hintFind">¿Eres holder? Busca tu número.</p>
@@ -114,18 +128,11 @@
           </div>
         </div>
 
+        <button class="btn btn-ghost btn-small wide" id="btn-primo-browse" data-i18n="primo.browse">SEE ALL 3,069</button>
         <button class="btn btn-ghost btn-small wide" id="btn-random" data-i18n="primo.random">SURPRISE ME</button>
-
-        <p class="hint sep" data-i18n="primo.hintUrl">Holder? Use your own — right-click your Primo on Magic Eden, copy the image address, paste it here.</p>
-        <div class="url-row">
-          <input type="url" id="primo-url" data-i18n-ph="primo.urlPh" placeholder="Paste an image URL" spellcheck="false">
-          <button class="btn btn-small" id="btn-url" data-i18n="primo.load">LOAD</button>
-        </div>
-        <label class="file-btn">
-          <span data-i18n="primo.file">Or choose a file</span>
-          <input type="file" id="primo-file" accept="image/*" hidden>
-        </label>
-        <button class="btn btn-ghost btn-small wide" id="btn-clear-primo" data-i18n="primo.clear">CLEAR</button>
+        <!-- Only shown when there is actually a Primo to take off — js/main.js
+             owns that. A CLEAR for something you never claimed is furniture. -->
+        <button class="btn btn-ghost btn-small wide hidden" id="btn-clear-primo" data-i18n="primo.clear">CLEAR</button>
         <p class="hint" id="primo-status"></p>
       </details>
 
@@ -168,6 +175,10 @@
         <div><b id="over-tacos">0</b><span data-i18n="over.tacos">TACOS</span></div>
         <div><b id="over-dist">0</b><span data-i18n="over.meters">METERS</span></div>
       </div>
+      <!-- The retention loop paying out, where the "one more run" decision is
+           made. Filled by paintOverBonos(); hidden whenever nothing landed, so
+           the sheet never says "+0". -->
+      <div class="over-bonos hidden" id="over-bonos"></div>
       <button class="btn btn-primary" id="btn-again" data-i18n="over.again">RUN AGAIN</button>
       <button class="btn btn-ghost" id="btn-shop-over">
         <span data-i18n="shop.open">CORNER STORE</span><b class="wallet-chip" data-wallet>0</b>
@@ -180,25 +191,53 @@
   </section>
 
   <!-- -------------------------------------------------------------- help -->
-  <!-- Opened over pause or over game over, and closed straight back to
-       whichever it came from — see openHelp() in js/main.js. -->
+  <!-- The whole manual, and the only copy of it. Reached three ways — the ?
+       pinned to the corner of the menu, the pause sheet, and the game over
+       sheet — which are the three places a player is standing when the
+       question comes up. It closes straight back to whichever one it came
+       from; see openHelp() in js/main.js.
+  -->
   <section id="screen-help" class="screen hidden">
     <div class="sheet sheet-small">
       <span class="logo-mark mark-sm" aria-hidden="true"></span>
       <h2 data-i18n="help.title">HOW TO PLAY</h2>
 
+      <!-- Split into <b> + <span> so the language swap only ever writes
+           textContent — no innerHTML anywhere in it. -->
+      <p class="sec" data-i18n="help.sec.controls">The controls</p>
       <ul class="help-list">
         <li><b data-i18n="how.lane.k">Swipe ← →</b> <span data-i18n="how.lane.v">/ arrows — change lanes</span></li>
         <li><b data-i18n="how.jump.k">Swipe ↑</b> <span data-i18n="how.jump.v">/ space — jump the trash</span></li>
         <li><b data-i18n="how.slide.k">Swipe ↓</b> <span data-i18n="how.slide.v">/ down — duck under the neighbour's laundry</span></li>
         <li><b data-i18n="help.tap.k">Tap anywhere</b> <span data-i18n="help.tap.v">— jump. Same as swiping up.</span></li>
-        <li><b data-i18n="how.taco.k">Tacos</b> <span data-i18n="how.taco.v">are fuel. Run out and ICE takes you.</span></li>
       </ul>
 
       <div class="help-rule">
         <p class="help-rule-tag" data-i18n="help.rule.tag">THE ONE THAT GETS YOU</p>
         <p class="help-rule-title" data-i18n="help.rule.title">THESE DO NOT GET JUMPED</p>
         <p class="help-rule-body" data-i18n="help.rule.body">Checkpoints, the wall, the ICE cruiser. Every one of them is taller than your jump, and always has been. Jumping one is a hit, every single time. Change lanes instead.</p>
+      </div>
+
+      <!-- What the alley hands you. The dot down the left of each row is the
+           colour that pickup actually is on screen, so the list reads as the
+           same vocabulary the run does. -->
+      <p class="sec sep" data-i18n="help.sec.loot">What's in the alley</p>
+      <ul class="help-loot">
+        <li class="loot-beer"><b data-i18n="help.beer.k">Beers</b> <span data-i18n="help.beer.v">are points, and a streak of them pays more.</span></li>
+        <li class="loot-taco"><b data-i18n="how.taco.k">Tacos</b> <span data-i18n="how.taco.v">are fuel. Run out and ICE takes you.</span></li>
+        <li class="loot-magnet"><b data-i18n="help.magnet.k">Piñata</b> <span data-i18n="help.magnet.v">pulls every beer in the alley to you.</span></li>
+        <li class="loot-chancla"><b data-i18n="help.chancla.k">Chancla</b> <span data-i18n="help.chancla.v">— you go straight through whatever you hit.</span></li>
+        <li class="loot-skateboard"><b data-i18n="help.skateboard.k">Skateboard</b> <span data-i18n="help.skateboard.v">takes one crash for you, and jumps higher.</span></li>
+      </ul>
+      <p class="hint" data-i18n="help.chase">Every hit you take brings ICE a step closer. Nothing gets it off you — you just stop feeding it.</p>
+
+      <!-- Corrupt's course, on demand. Hidden by js/main.js when this sheet was
+           opened from PAUSE: re-running it there would quietly throw away a run
+           that is still going. -->
+      <div id="help-train">
+        <p class="sec sep" data-i18n="help.sec.train">Alley school</p>
+        <p class="hint" data-i18n="help.train.copy">Corrupt teaches the whole thing by doing, in about a minute. Take it as many times as you want.</p>
+        <button class="btn btn-ghost btn-small wide" id="btn-help-train" data-i18n="help.train.btn">RUN THE TRAINING AGAIN</button>
       </div>
 
       <!-- Corrupt takes requests. He is here rather than in ACCOUNT because HELP
@@ -424,6 +463,21 @@
       <button class="btn btn-ghost" id="btn-account-back" data-i18n="acct.back">BACK</button>
     </div>
   </section>
+
+  <!-- ----------------------------------------------------------------- ? -->
+  <!-- The rules, one tap from the menu instead of collapsed at the bottom of
+       it under the stats — which is where they were, and is exactly where
+       nobody looks for them.
+
+       It sits OUT HERE, a sibling of the screens rather than a child of one,
+       for a reason that is not obvious: every `.screen` carries a
+       backdrop-filter, and that makes it the containing block for any fixed
+       descendant — so a `position: fixed` button inside the menu is not
+       actually fixed and scrolls away with the sheet. Out here it is pinned to
+       the viewport for real. Last in the DOM so it paints over the screens.
+       js/main.js shows it with the menu and hides it with everything else. -->
+  <button type="button" id="btn-help-fab" class="help-fab hidden"
+          data-i18n-aria="help.fab" aria-label="How to play">?</button>
 
 </div>
 

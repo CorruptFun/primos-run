@@ -64,10 +64,18 @@ export const EVENTS = {
   TUTORIAL_DONE: 'tutorial_done',
   TUTORIAL_SKIP: 'tutorial_skip',
 
-  // La tiendita.
+  // La tiendita. `shop_buy` covers gear too — the item id says which half of
+  // the counter it came from. `gear_equip` is separate because wearing is the
+  // moment a cosmetic proves it was worth buying, and it happens for free.
   SHOP_OPEN: 'shop_open',
   SHOP_BUY: 'shop_buy',
   SHOP_DENIED: 'shop_denied',
+  GEAR_EQUIP: 'gear_equip',
+
+  // Coming back tomorrow. One event per jale COMPLETED (id + day + reward);
+  // racha length rides run_end's props instead of its own event, because the
+  // streak only ever changes when a run ends.
+  MISSION_DONE: 'mission_done',
 
   // The offer at the bust. `n` on all three is how many continues were already
   // taken this run — which rung of the 25·2ⁿ ladder players actually pay at.

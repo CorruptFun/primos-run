@@ -145,7 +145,8 @@ const cycleCtx = [];
 for (let i = 0; i < FRAMES; i++) {
   cycleCtx.push(cell(document.getElementById('cycle'), (i / FRAMES).toFixed(2), CW, CH));
 }
-const poseCtx = ['jump up', 'apex', 'falling', 'slide', 'lean L', 'lean R']
+const poseCtx = ['jump up', 'apex', 'falling', 'slide', 'lean L', 'lean R',
+  'ride', 'ride lean', 'ride jump']
   .map((l) => cell(document.getElementById('poses'), l, CW, CH));
 
 function rig() { return rigs.get(who.value) || rigs.get('none'); }
@@ -191,6 +192,13 @@ function paintAll(t) {
   paint(poseCtx[3], { sliding: true, slideK: 0.8 });
   paint(poseCtx[4], { phase: 0.12, laneLean: -1 });
   paint(poseCtx[5], { phase: 0.62, laneLean: 1 });
+  // The skateboard. The board itself is drawn by render.js, not by drawRunner,
+  // so these show the STANCE only — what matters here is that both shoes sit on
+  // the ground line rather than one hanging in the air, because that line is
+  // where the deck will be.
+  paint(poseCtx[6], { riding: true, phase: ph });
+  paint(poseCtx[7], { riding: true, phase: ph, laneLean: 1 });
+  paint(poseCtx[8], { riding: true, airborne: true, vy: 8, phase: 0.3 });
 }
 
 // The agent harness runs this page HIDDEN, where requestAnimationFrame never

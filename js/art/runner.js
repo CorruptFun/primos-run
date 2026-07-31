@@ -135,6 +135,11 @@ export function poseRunner(o) {
 
   if (o.sliding) return poseSlide(o);
   if (o.airborne) return poseAir(o);
+  // Riding loses to both of those on purpose: you can still duck a clothesline
+  // and still jump on the board, and the board goes with you either way — it is
+  // drawn at the player's projected position, so it leaves the ground when you
+  // do. Only the GROUNDED cycle is replaced.
+  if (o.riding) return poseRide(o);
 
   // Hip rises twice per stride: lowest at each foot strike.
   const bob = 0.048 * (0.5 - 0.5 * Math.cos(4 * Math.PI * p));
@@ -157,6 +162,73 @@ export function poseRunner(o) {
       { side: 1, shoulder: track(SHOULDER, p + 0.5), elbow: track(ELBOW, p + 0.5) },
     ],
     airK: 0,
+  };
+}
+
+/**
+ * Riding the skateboard.
+ *
+ * The board has been under the runner's feet for two versions and the runner
+ * kept SPRINTING on top of it, which reads as a bug rather than a power-up —
+ * the one thing a board is for is that you stop running.
+ *
+ * FEET STAGGERED, NOT SIDEWAYS. A real skater stands across the deck, and
+ * turning this character ninety degrees is not an option: the whole rig solves
+ * for a camera behind them, the head is a back-of-the-skull drawing, and in
+ * profile there is no character left. So the read is carried the way every
+ * behind-camera runner carries it — one foot forward over the nose, one back
+ * over the tail, knees deeply bent, arms trailing. Nobody stands like that
+ * except on a board.
+ *
+ * The angles are SOLVED, not eyeballed. Both ankles have to land on the deck —
+ * y = 0.02, which is where drawBoard() in render.js puts the plate — and a foot
+ * hovering over it or sunk through it is the first thing anyone sees. So each
+ * leg is inverse-kinematics against a target: front ankle at z = +0.14, back at
+ * z = −0.12, both at y = 0.02, from a hip at 0.325. Changing hipY means
+ * re-solving all four angles; it is not a number to nudge.
+ *
+ * That 0.26 of depth between the feet is the whole stagger, and it has to be
+ * paid for in z rather than in x: the projection turns 0.26H of depth into only
+ * ~0.09H across the screen, so a stance that looks generous in the solver reads
+ * as a modest offset on the alley — and anything less than this read as two feet
+ * side by side, which is standing on a plank, not riding it.
+ */
+function poseRide(o) {
+  const p = o.phase || 0;
+  const speedK = o.speedK == null ? 0.5 : o.speedK;
+  const lean = o.laneLean || 0;
+  // Pumping, not striding: one slow weight shift per cycle, an order of
+  // magnitude smaller than the run's bob. Left out entirely the figure is a
+  // mannequin bolted to a plank.
+  const bob = 0.012 * Math.sin(2 * Math.PI * p);
+  const shift = 0.010 * Math.sin(2 * Math.PI * p + 1.1);
+
+  return {
+    hipY: 0.325 + bob,
+    hipX: shift + lean * 0.02,
+    // Crouched further forward than the run, and it stiffens with speed.
+    lean: 0.30 + speedK * 0.10,
+    twist: lean * 0.08,
+    headTilt: -lean * 0.12,
+    legs: [
+      // Front foot, out over the nose. Ankle solves to (z +0.140, y 0.020).
+      { side: -1, thigh: 0.78, knee: 0.71, ankle: 1.03 },
+      // Back foot, over the tail, and the deeper bend of the two. It also ends
+      // up NEARER the camera, so it draws over the front leg — which is the
+      // right occlusion and comes free from the ankZ sort in primo-runner.
+      { side: 1, thigh: 0.03, knee: 0.83, ankle: 1.90 },
+    ],
+    arms: [
+      // Trailing, near-straight, and they counter the lane lean — which is the
+      // only place the pose gets to say the rider is balancing rather than
+      // posing. The forward swing is all the rig has (the shoulder solves in
+      // the sagittal plane only), so "out to the sides" is not available and
+      // "back, at slightly different angles" is what stands in for it.
+      { side: -1, shoulder: -0.62 - lean * 0.26, elbow: 0.42 },
+      { side: 1, shoulder: -0.46 + lean * 0.26, elbow: 0.30 },
+    ],
+    airK: 0,
+    riding: true,
   };
 }
 

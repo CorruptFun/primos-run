@@ -556,7 +556,7 @@ const CHUNKS = [
 ];
 
 // Powerups get sprinkled between chunks rather than baked into them.
-const POWERUPS = ['magnet', 'chancla', 'lowrider'];
+const POWERUPS = ['magnet', 'chancla', 'skateboard'];
 
 // ------------------------------------------------------------- set dressing
 //

@@ -44,6 +44,10 @@ const { inviteLink } = await import(`../js/referrals.js${V}`);
 const { EVENTS } = await import(`../js/analytics.js${V}`);
 const { KINDS, MAX_CONTACT, MAX_MESSAGE, MIN_MESSAGE, normalizeKind, sanitizeContact,
         sanitizeMessage, validateFeedback } = await import(`../js/feedback.js${V}`);
+const { RACHA_TABLE, coerceRacha, settleRacha, rachaAtRisk, rachaShown } =
+  await import(`../js/racha.js${V}`);
+const { JALE_REWARD, JALE_SWEEP, JALE_POOL, jalesForDay, coerceJales, applyJalesRun,
+        jalesStatus } = await import(`../js/jales.js${V}`);
 const { buildFunnel, coerceFeedback, coerceStats, fillDays, fillScoreBuckets, niceScale, rate,
         ratePct, retentionRate, FEEDBACK_STATUSES, SCORE_BUCKET_LABELS } =
         await import(`../js/stats/model.js${V}`);
@@ -337,6 +341,183 @@ group('invites — a referral code has to survive a hand-edited save');
   eq(coerce({ referralWelcomeClaimed: 'yes' }).referralWelcomeClaimed, false,
      'only a real true counts as paid — a truthy string must not spend the latch');
   eq(coerce({ referralWelcomeClaimed: true }).referralWelcomeClaimed, true, 'and a real true does');
+}
+
+group('la racha — the streak pays for running, once a day');
+{
+  eq(settleRacha(null, '2026-07-29'),
+     { racha: { len: 1, day: '2026-07-29' }, bonus: RACHA_TABLE[1], counted: true },
+     'a first-ever run starts the streak at day 1');
+  const d1 = settleRacha(null, '2026-07-29').racha;
+  eq(settleRacha(d1, '2026-07-29'),
+     { racha: { len: 1, day: '2026-07-29' }, bonus: 0, counted: false },
+     'the second run of a day pays NOTHING — the day latch');
+  eq(settleRacha(d1, '2026-07-30').racha, { len: 2, day: '2026-07-30' },
+     'the next UTC day advances it');
+  eq(settleRacha(d1, '2026-07-30').bonus, RACHA_TABLE[2], 'and pays the day-2 bonus');
+  eq(settleRacha(d1, '2026-07-31').racha, { len: 1, day: '2026-07-31' },
+     'a skipped day resets to 1 — a streak is consecutive or it is nothing');
+  eq(settleRacha({ len: 1, day: '2026-12-31' }, '2027-01-01').racha.len, 2,
+     'consecutive across a year seam still counts');
+  const long = { len: 40, day: '2026-07-29' };
+  eq(settleRacha(long, '2026-07-30').bonus, RACHA_TABLE[RACHA_TABLE.length - 1],
+     'the bonus CAPS at the table tail — a habit, not a hostage');
+  eq(settleRacha(long, '2026-07-30').racha.len, 41, 'while the length itself keeps counting');
+  eq(settleRacha({ len: 3, day: '2026-07-29' }, 'garbage'),
+     { racha: { len: 3, day: '2026-07-29' }, bonus: 0, counted: false },
+     'a junk day key must not reset a real streak');
+  eq(coerceRacha({ len: 5 }), { len: 0, day: '' }, 'a length with no day is not a streak');
+  eq(coerceRacha({ len: -3, day: '2026-07-29' }), { len: 0, day: '' },
+     'a negative length degrades to nothing rather than a payout');
+
+  eq(rachaAtRisk({ len: 3, day: '2026-07-29' }, '2026-07-30', '2026-07-29'), true,
+     'yesterday counted, today has not — the menu should shout');
+  eq(rachaAtRisk({ len: 3, day: '2026-07-30' }, '2026-07-30', '2026-07-29'), false,
+     'already counted today — nothing to protect');
+  eq(rachaAtRisk({ len: 3, day: '2026-07-20' }, '2026-07-30', '2026-07-29'), false,
+     'a dead streak has nothing left to shout about');
+  eq(rachaShown({ len: 7, day: '2026-07-20' }, '2026-07-30', '2026-07-29'), 0,
+     'a lapsed streak SHOWS as 0 — the old number would read as stolen when it reset');
+  eq(rachaShown({ len: 7, day: '2026-07-29' }, '2026-07-30', '2026-07-29'), 7,
+     'a streak alive on yesterday still shows its true length');
+}
+
+group('los jales — the same three for everyone, deterministically');
+{
+  const a = jalesForDay('2026-07-29');
+  const b = jalesForDay('2026-07-29');
+  eq(a, b, 'the draw is a pure function of the day');
+  eq(a.length, 3, 'three jales, exactly');
+  eq(new Set(a.map((m) => m.id)).size, 3, 'all three distinct');
+  const poolIds = new Set(JALE_POOL.map((m) => m.id));
+  eq(a.every((m) => poolIds.has(m.id)), true, 'every jale comes from the pool');
+  eq(a.every((m) => JALE_POOL.find((p) => p.id === m.id).tiers.includes(m.target)), true,
+     'every target is one of its jale’s authored tiers');
+  // Different days draw differently, at least across a week — if this ever
+  // fails, the hash is broken, not unlucky: 7 identical draws of 3-of-9 by
+  // chance is astronomically unlikely.
+  const week = ['2026-07-27', '2026-07-28', '2026-07-29', '2026-07-30',
+                '2026-07-31', '2026-08-01', '2026-08-02']
+    .map((d) => jalesForDay(d).map((m) => `${m.id}:${m.target}`).join(','));
+  eq(new Set(week).size > 1, true, 'a week of draws is not one draw repeated');
+}
+
+group('los jales — progress, payout and the per-day latch');
+{
+  const day = '2026-07-29';
+  const ms = jalesForDay(day);
+  // A run that completes NOTHING but progresses the cumulative goals.
+  const idle = { beers: 1, tacos: 0, slides: 1, jumps: 1, powerups: 0, smashes: 0,
+                 score: 10, distance: 10, bestMult: 1 };
+  const r1 = applyJalesRun(null, day, idle);
+  eq(r1.payout, 0, 'nothing completed pays nothing');
+  eq(r1.state.day, day, 'the record binds to the day');
+
+  // A run that maxes every stat completes all three and the sweep.
+  const monster = { beers: 999, tacos: 99, slides: 99, jumps: 99, powerups: 99,
+                    smashes: 99, score: 99999, distance: 99999, bestMult: 8 };
+  const r2 = applyJalesRun(r1.state, day, monster);
+  eq(r2.completedNow.length, 3, 'a monster run completes all three');
+  eq(r2.sweepNow, true, 'and takes the sweep');
+  eq(r2.payout, 3 * JALE_REWARD + JALE_SWEEP, 'paying 3×15 + 25');
+  const r3 = applyJalesRun(r2.state, day, monster);
+  eq(r3.payout, 0, 'a second monster run pays NOTHING — done is the spent latch');
+  eq(r3.completedNow, [], 'and completes nothing again');
+
+  // Cumulative goals accumulate across runs; single-run goals do not.
+  const dayGoal = ms.find((m) => m.kind === 'day');
+  if (dayGoal) {
+    const half = { [dayGoal.stat]: Math.ceil(dayGoal.target / 2) };
+    const s1 = applyJalesRun(null, day, half);
+    eq(s1.state.done[dayGoal.id] || false, false, 'half the target does not complete a cumulative jale');
+    const s2 = applyJalesRun(s1.state, day, half);
+    eq(s2.state.done[dayGoal.id], true, 'two halves across two runs DO — progress accumulates');
+  }
+  const runGoal = ms.find((m) => m.kind === 'run');
+  if (runGoal) {
+    const half = { [runGoal.stat]: Math.ceil(runGoal.target / 2) };
+    const s1 = applyJalesRun(null, day, half);
+    const s2 = applyJalesRun(s1.state, day, half);
+    eq(s2.state.done[runGoal.id] || false, false,
+       'two half-target runs never complete a single-run jale — it wants ONE good run');
+  }
+
+  // Yesterday's record is discarded wholesale on a new day.
+  const rolled = applyJalesRun(r2.state, '2026-07-30', idle);
+  eq(rolled.state.day, '2026-07-30', 'a new day starts a new record');
+  eq(rolled.state.done, {}, 'with nothing done');
+  eq(rolled.state.sweepPaid, false, 'and the sweep owed again');
+
+  // jalesStatus is a read, never a write.
+  const st = jalesStatus(r1.state, day);
+  eq(st.list.length, 3, 'status lists the day’s three');
+  eq(st.list.every((m) => m.value <= m.target), true, 'progress is capped at the target for display');
+  eq(coerceJales({ day: 'nope', done: { x: true } }), { day: '', prog: {}, done: {}, sweepPaid: false },
+     'a junk day voids the record rather than paying it');
+  eq(coerceJales({ day: '2026-07-29', done: { a: 'yes' } }).done, {},
+     'only a real true counts as done — a truthy string must not spend the latch');
+}
+
+group('merge — el fit is BOUGHT GOODS and a preference');
+{
+  const winner = { best: 900, gear: { 'mask-negro': true }, days: {} };
+  const loser  = { best: 100, gear: { 'chain-oro': true }, days: {} };
+  eq(mergeSaves(winner, loser).gear, { 'mask-negro': true, 'chain-oro': true },
+     'gear UNIONS — the losing side’s mask was paid for');
+  eq(mergeSaves(loser, winner).gear, { 'chain-oro': true, 'mask-negro': true },
+     'in either order');
+  eq(mergeSaves({ best: 1, gear: { x: 'yes', y: 0 }, days: {} },
+                { best: 0, days: {} }).gear,
+     {}, 'junk ownership is dropped — only a real true owns');
+
+  const dressedNew = { best: 100, fit: { mask: 'mask-oro', chain: null }, fitSetAt: 200, days: {} };
+  const dressedOld = { best: 900, fit: { mask: 'mask-negro', chain: null }, fitSetAt: 100, days: {} };
+  eq(mergeSaves(dressedOld, dressedNew).fit, { mask: 'mask-oro', chain: null },
+     'the NEWER outfit wins even though the other side had the better run');
+  eq(mergeSaves(dressedNew, dressedOld).fitSetAt, 200, 'and carries its own timestamp');
+  eq(mergeSaves(dressedOld, dressedOld).fit, { mask: 'mask-negro', chain: null },
+     'a dead tie keeps local, as everywhere');
+}
+
+group('merge — la racha: the later day is the truth');
+{
+  const freshToday = { best: 100, racha: { len: 2, day: '2026-07-30' }, days: {} };
+  const staleLong  = { best: 900, racha: { len: 9, day: '2026-07-20' }, days: {} };
+  eq(mergeSaves(staleLong, freshToday).racha, { len: 2, day: '2026-07-30' },
+     'a LONG stale streak loses to a short live one — maxing would resurrect a broken streak');
+  eq(mergeSaves(freshToday, staleLong).racha, { len: 2, day: '2026-07-30' }, 'in either order');
+  eq(mergeSaves({ best: 1, racha: { len: 3, day: '2026-07-30' }, days: {} },
+                { best: 0, racha: { len: 5, day: '2026-07-30' }, days: {} }).racha,
+     { len: 5, day: '2026-07-30' },
+     'same day takes the longer streak — one side carries the history');
+  eq(mergeSaves({ best: 1, days: {} }, { best: 0, days: {} }).racha, null,
+     'no streak on either side is null, never undefined');
+  eq(mergeSaves({ best: 1, racha: { len: NaN, day: '2026-07-30' }, days: {} },
+                { best: 0, racha: { len: 2, day: '2026-07-29' }, days: {} }).racha,
+     { len: 2, day: '2026-07-29' }, 'a corrupt streak degrades rather than winning on its day');
+}
+
+group('merge — los jales: later day wins, same day never un-pays');
+{
+  const today = { best: 100, days: {},
+                  jales: { day: '2026-07-30', prog: { beers: 10 }, done: {}, sweepPaid: false } };
+  const yesterdayDone = { best: 900, days: {},
+                          jales: { day: '2026-07-29', prog: { beers: 999 },
+                                   done: { chelas: true }, sweepPaid: true } };
+  eq(mergeSaves(yesterdayDone, today).jales.day, '2026-07-30',
+     'yesterday’s finished record loses to today’s fresh one — the daily reset is the product');
+
+  const aSide = { best: 1, days: {},
+                  jales: { day: '2026-07-30', prog: { beers: 40, tacos: 2 },
+                           done: { chelas: true }, sweepPaid: false } };
+  const bSide = { best: 0, days: {},
+                  jales: { day: '2026-07-30', prog: { beers: 25, slides: 9 },
+                           done: { tacos: true }, sweepPaid: false } };
+  const m = mergeSaves(aSide, bSide);
+  eq(m.jales.done, { chelas: true, tacos: true }, 'same day UNIONS done — paid stays paid on both');
+  eq(m.jales.prog, { beers: 40, tacos: 2, slides: 9 }, 'and takes max progress per stat');
+  eq(mergeSaves({ best: 1, days: {} }, { best: 0, days: {} }).jales, null,
+     'no record on either side is null, never undefined');
 }
 
 group('formatting');

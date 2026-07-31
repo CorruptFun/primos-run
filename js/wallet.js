@@ -22,13 +22,32 @@ export const MAX_STOCK = 9;
 
 const int = (n) => (Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0);
 
-/** A shelf we can trust: plain object, integer counts, nothing at zero. */
+/**
+ * Shelf ids that have been renamed, old -> new.
+ *
+ * A shelf is `{ itemId: count }` in the player's save and NOTHING validates it
+ * against the catalog — cleanShelf keeps any key with a count, takeStock hands
+ * every key to loadoutFor(), and loadoutFor silently ignores an id it does not
+ * know. So a rename without this row does not error anywhere: it just deletes a
+ * 55-chela item off the shelf of everyone who bought one before the rename and
+ * gives them nothing for it.
+ */
+const RENAMED = { lowrider: 'skateboard' };
+
+/**
+ * A shelf we can trust: plain object, integer counts, nothing at zero, and
+ * renamed ids carried over onto their new name.
+ */
 function cleanShelf(raw) {
   const out = {};
   if (!raw || typeof raw !== 'object') return out;
   for (const k in raw) {
     const n = Math.min(MAX_STOCK, int(raw[k]));
-    if (n > 0) out[k] = n;
+    if (!n) continue;
+    const id = RENAMED[k] || k;
+    // Summed, not assigned: a save can hold both names at once if the player
+    // bought one on each side of the rename.
+    out[id] = Math.min(MAX_STOCK, (out[id] || 0) + n);
   }
   return out;
 }
@@ -172,6 +191,134 @@ export function buy(id, price) {
     b.chelas = have - cost;
     b.shelf = shelf;
     out = { left: have - cost, held };
+  });
+  return out;
+}
+
+// ---------------------------------------------------------------------- gear
+// El fit: bought once, owned forever, worn by slot. Same seam discipline as
+// the shelf — la tiendita calls these and never touches storage, and the
+// catalog (what exists, what it costs, which slot it fills) stays in
+// js/tiendita.js where a price and the thing it buys are one row of one table.
+
+const GEAR_SLOTS = ['mask', 'chain'];
+
+/** Gear we can trust: { itemId: true } and nothing else. */
+function cleanGear(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const k in raw) {
+    if (typeof k === 'string' && k && raw[k] === true) out[k] = true;
+  }
+  return out;
+}
+
+/** A fit we can trust: known slots only, string ids or null. */
+function cleanFit(raw) {
+  const out = {};
+  for (const s of GEAR_SLOTS) {
+    const v = raw && typeof raw === 'object' ? raw[s] : null;
+    out[s] = typeof v === 'string' && v ? v : null;
+  }
+  return out;
+}
+
+/** @returns {Record<string, true>} a copy — mutating it owns nothing. */
+export function gearOwned() {
+  return cleanGear(readEcon().gear);
+}
+
+export function ownsGear(id) {
+  return !!gearOwned()[id];
+}
+
+/**
+ * What is worn, validated against what is OWNED — a hand-edited save can claim
+ * to wear anything, and the renderer must never draw gear that was not paid
+ * for, or the whole point of the price is gone.
+ */
+export function fitOn() {
+  const raw = readEcon();
+  const owned = cleanGear(raw.gear);
+  const fit = cleanFit(raw.fit);
+  for (const s of GEAR_SLOTS) {
+    if (fit[s] && !owned[fit[s]]) fit[s] = null;
+  }
+  return fit;
+}
+
+/**
+ * Buy a piece of gear: funds check, ALREADY-OWNED check, debit and grant in a
+ * SINGLE storage write. Owning it already refuses without charging — there is
+ * nothing a second copy of a mask could be, so the money must not move.
+ * @returns {{left: number}|null} null when short or already owned — nothing taken.
+ */
+export function buyGear(id, price) {
+  const cost = int(price);
+  if (!id) return null;
+  state();                                 // migrate/repair before we do sums
+  let out = null;
+  writeEcon((b) => {
+    const gear = cleanGear(b.gear);
+    if (gear[id]) return;                  // owned — no debit, nothing changes
+    const have = int(b.chelas);
+    if (have < cost) return;               // short — no debit, no goods
+    gear[id] = true;
+    b.chelas = have - cost;
+    b.gear = gear;
+    out = { left: have - cost };
+  });
+  return out;
+}
+
+/**
+ * Wear something (or take it off with null). Only owned gear can be worn, and
+ * only known slots exist. Stamps fitSetAt so the cross-device merge knows
+ * which device dressed the player last (js/merge.js pickFit).
+ * @returns {boolean} whether anything changed
+ */
+export function equipGear(slot, id) {
+  if (!GEAR_SLOTS.includes(slot)) return false;
+  let changed = false;
+  writeEcon((b) => {
+    const gear = cleanGear(b.gear);
+    const want = typeof id === 'string' && id ? id : null;
+    if (want && !gear[want]) return;       // not owned — nothing to wear
+    const fit = cleanFit(b.fit);
+    if (fit[slot] === want) return;        // already exactly this — no write
+    fit[slot] = want;
+    b.fit = fit;
+    b.gear = gear;                          // write the repair back while here
+    b.fitSetAt = Date.now();
+    changed = true;
+  });
+  return changed;
+}
+
+// ------------------------------------------------------------------- banking
+
+/**
+ * Bank a finished run — takings PLUS whatever the settle callback prices — in
+ * ONE storage write. The callback gets the raw blob and may stamp the latches
+ * that gate its bonuses (racha, jales); returning the bonus total. Because the
+ * stamp and the deposit share the write, a payout and the latch that says it
+ * was paid can never tear apart — not across a crash, not across the cloud
+ * push that mirrors every economy write.
+ *
+ * deposit() stays for the caller with no settlement; this is game over's door.
+ *
+ * @param {number} takings chelas collected in the run
+ * @param {(blob: object) => number} [settle] stamps latches, returns bonus
+ * @returns {{balance: number, extra: number}}
+ */
+export function bankRun(takings, settle) {
+  state();                                 // migrate/seed before we do sums
+  let out = { balance: balance(), extra: 0 };
+  writeEcon((b) => {
+    const extra = int(settle ? settle(b) : 0);
+    const next = int(b.chelas) + int(takings) + extra;
+    b.chelas = next;
+    out = { balance: next, extra };
   });
   return out;
 }

@@ -84,15 +84,19 @@ const GLASSES = {
   'Round Reading': '#c9c3bb',
 };
 
+// Earrings carry a SHAPE as well as a colour, because at this size the three
+// classes are the only thing that separates eight names: a ring hanging off the
+// lobe, a point of light on it, or something on a short post below it. Colour
+// alone made all eight the same gold hoop.
 const EARRING = {
-  'Gold Hoop': '#e8b53c',
-  'Gold Stud': '#e8b53c',
-  'Cross': '#e8b53c',
-  'Silver Stud': '#cfd4dc',
-  'Diamond': '#bfe9ff',
-  'Double Diamond': '#bfe9ff',
-  'Diamond And Heart': '#bfe9ff',
-  'Heart': '#e0518b',
+  'Gold Hoop':         { color: '#e8b53c', kind: 'hoop' },
+  'Gold Stud':         { color: '#e8b53c', kind: 'stud' },
+  'Silver Stud':       { color: '#cfd4dc', kind: 'stud' },
+  'Diamond':           { color: '#bfe9ff', kind: 'stud' },
+  'Double Diamond':    { color: '#bfe9ff', kind: 'stud' },
+  'Cross':             { color: '#e8b53c', kind: 'drop' },
+  'Heart':             { color: '#e0518b', kind: 'drop' },
+  'Diamond And Heart': { color: '#bfe9ff', kind: 'drop' },
 };
 
 // Skin. `Demon` and `Alien` are not humans with a tan — a Primo whose base is
@@ -161,7 +165,11 @@ export function applyTraits(rig, traits) {
 
   if (traits.bandana) out.bandana = BANDANA[traits.bandana] || '#c0342f';
   if (traits.glasses) out.shades = GLASSES[traits.glasses] || '#15121a';
-  if (traits.earring) out.hoops = EARRING[traits.earring] || '#e8b53c';
+  if (traits.earring) {
+    const e = EARRING[traits.earring] || { color: '#e8b53c', kind: 'hoop' };
+    out.hoops = e.color;
+    out.earringKind = e.kind;
+  }
   if (traits.base && BASE_SKIN[traits.base]) {
     out.skin = BASE_SKIN[traits.base];
     out.skinDark = shade(BASE_SKIN[traits.base], 0.78);

@@ -137,6 +137,127 @@ function pickWallet(a, b, winner) {
 }
 
 /**
+ * GEAR OWNED, unioned — mergeShelf's reasoning without the counts. A mask was
+ * paid for with chelas the player actually earned, and a merge must never
+ * delete a purchase. There is no "came back once" cost here at all: gear is a
+ * latch per item, not a stock, so the union is simply correct.
+ */
+function mergeGear(a, b) {
+  const out = {};
+  for (const src of [a && a.gear, b && b.gear]) {
+    if (!src || typeof src !== 'object') continue;
+    for (const [id, v] of Object.entries(src)) {
+      if (typeof id === 'string' && id && v === true) out[id] = true;
+    }
+  }
+  return out;
+}
+
+/**
+ * WHAT IS WORN — the handle's rule, for the handle's reason. Wearing a mask is
+ * a preference, not progress: the device you dressed yourself on last is the
+ * one telling the truth, and riding the progress winner would quietly change
+ * the player's outfit because a different device had the better run. Carried
+ * as-is (readers re-clean the shape), tie keeps local like everywhere else.
+ *
+ * A worn item the merged gear no longer owns is NOT possible by construction —
+ * gear is unioned above, so anything either side could wear, the merged save
+ * owns. wallet.js re-validates on read anyway, because a hand-edited save can
+ * claim to wear anything.
+ */
+function pickFit(a, b) {
+  const at = a.fitSetAt || 0;
+  const bt = b.fitSetAt || 0;
+  const src = bt > at ? b : a;
+  return { fit: src.fit ?? null, fitSetAt: src.fitSetAt || 0 };
+}
+
+/**
+ * LA RACHA — the side with the LATER DAY wins; same day, the longer streak.
+ *
+ * Never summed and never maxed blind: a streak is a fact about consecutive
+ * days, and the device that counted a run most recently holds the freshest
+ * fact. Maxing lengths across different days would resurrect a streak that
+ * already broke (phone shows a 9 from last month, tablet a 2 from today — the
+ * 2 is the truth). Same-day max covers the fresh-device case: both counted
+ * today, but one carries the history.
+ *
+ * The BONUS this record gates is out of scope here, deliberately: it was paid
+ * into whichever balance pickWallet keeps, in the same write that stamped the
+ * day. Nothing in this function can re-open a paid day, which is the property
+ * that matters.
+ */
+function pickRacha(a, b) {
+  const clean = (r) => {
+    if (!r || typeof r !== 'object') return { len: 0, day: '' };
+    const n = Number(r.len);
+    const len = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+    const day = typeof r.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.day) ? r.day : '';
+    return len && day ? { len, day } : { len: 0, day: '' };
+  };
+  const ra = clean(a.racha);
+  const rb = clean(b.racha);
+  if (!ra.day && !rb.day) return { racha: null };
+  if (ra.day === rb.day) return { racha: { len: Math.max(ra.len, rb.len), day: ra.day } };
+  // Day keys compare lexicographically in chronological order.
+  return { racha: ra.day > rb.day ? ra : rb };
+}
+
+/**
+ * LOS JALES — later day wins outright; same day unions `done` and takes max
+ * progress per stat.
+ *
+ * Discarding the older day wholesale is the point of a daily, not a loss. The
+ * same-day union can let two devices played offline pay the same jale once
+ * each — bounded at the day's 70-chela ceiling, and partly self-cancelling
+ * because pickWallet keeps only one side's balance. Accepted and documented in
+ * docs/GAME_DESIGN.md. What the union may never do is UN-pay: `done` and
+ * `sweepPaid` only ever accumulate here, so a paid jale stays paid and cannot
+ * pay again on either device.
+ */
+function pickJales(a, b) {
+  const clean = (j) => {
+    if (!j || typeof j !== 'object') return null;
+    const day = typeof j.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(j.day) ? j.day : '';
+    if (!day) return null;
+    const prog = {};
+    if (j.prog && typeof j.prog === 'object') {
+      for (const [k, v] of Object.entries(j.prog)) {
+        const n = Number(v);
+        if (typeof k === 'string' && Number.isFinite(n) && n > 0) prog[k] = Math.floor(n);
+      }
+    }
+    const done = {};
+    if (j.done && typeof j.done === 'object') {
+      for (const [k, v] of Object.entries(j.done)) {
+        if (typeof k === 'string' && v === true) done[k] = true;
+      }
+    }
+    return { day, prog, done, sweepPaid: j.sweepPaid === true };
+  };
+  const ja = clean(a.jales);
+  const jb = clean(b.jales);
+  if (!ja && !jb) return { jales: null };
+  if (!ja || !jb || ja.day !== jb.day) {
+    if (!ja) return { jales: jb };
+    if (!jb) return { jales: ja };
+    return { jales: ja.day > jb.day ? ja : jb };
+  }
+  const prog = { ...ja.prog };
+  for (const [k, v] of Object.entries(jb.prog)) {
+    if (!(k in prog) || v > prog[k]) prog[k] = v;
+  }
+  return {
+    jales: {
+      day: ja.day,
+      prog,
+      done: { ...ja.done, ...jb.done },
+      sweepPaid: ja.sweepPaid || jb.sweepPaid,
+    },
+  };
+}
+
+/**
  * The chosen race name — MOST RECENTLY SET WINS, on its own timestamp.
  *
  * It cannot ride the progress winner. Rename yourself on the phone, then open a
@@ -225,9 +346,13 @@ export function mergeSaves(a, b) {
   out.days = boards.days;
   out.contDays = boards.contDays;
   out.shelf = mergeShelf(a, b);
+  out.gear = mergeGear(a, b);
   out.trainedAt = pickTrained(a, b);
   Object.assign(out, pickWallet(a, b, winner));
   Object.assign(out, pickHandle(a, b));
+  Object.assign(out, pickFit(a, b));
+  Object.assign(out, pickRacha(a, b));
+  Object.assign(out, pickJales(a, b));
   Object.assign(out, pickReferral(a, b));
   return out;
 }

@@ -24,7 +24,13 @@ const LEGACY = -1;
 // carry the stale `false` back to disk and the welcome could be collected
 // again, and again, minting currency. `referredBy` is set once at boot from a
 // ?ref= link, before there is any account to attach it to.
-const ECON_KEYS = ['chelas', 'shelf', 'walletSeeded', 'referredBy', 'referralWelcomeClaimed'];
+// `gear`/`fit`/`fitSetAt` join for the shop's reason: bought and worn from a
+// screen long after main.js took its boot copy. `racha`/`jales` join for the
+// sharper one — they are stamped by wallet.bankRun in the SAME write that pays
+// their bonuses, so a stale boot copy riding an ordinary save() would re-open
+// the day's latches and the bonuses would mint again on the next run.
+const ECON_KEYS = ['chelas', 'shelf', 'walletSeeded', 'referredBy', 'referralWelcomeClaimed',
+  'gear', 'fit', 'fitSetAt', 'racha', 'jales'];
 
 const DEFAULTS = {
   best: 0,
@@ -57,6 +63,19 @@ const DEFAULTS = {
   contDays: {},
   handle: null,        // chosen race name; null means "show the anonymous one"
   handleSetAt: 0,      // when it was chosen — the merge tiebreak (see js/merge.js)
+  // --- el fit (js/wallet.js + js/tiendita.js) --------------------------------
+  // Gear owned forever: { itemId: true }. Unioned by the merge like the shelf —
+  // it was paid for, and a merge must never delete a purchase.
+  gear: null,
+  // Gear worn: { mask: itemId|null, chain: itemId|null }, most-recently-set
+  // wins across devices on fitSetAt — the handle's rule, for the same reason.
+  fit: null,
+  fitSetAt: 0,
+  // --- coming back tomorrow (js/racha.js + js/jales.js) ----------------------
+  // { len, day } — the daily streak, stamped by the same write that pays it.
+  racha: null,
+  // { day, prog, done, sweepPaid } — the day's missions, same contract.
+  jales: null,
   // --- referral fields (js/referrals.js) -------------------------------------
   // The invite code this player arrived on, mirrored out of the ?ref= stash so
   // the ACCOUNT screen can say they were invited. SET ONCE — the first inviter
@@ -93,7 +112,11 @@ function read() {
  */
 export function coerce(raw) {
   const out = { ...DEFAULTS, ...(raw && typeof raw === 'object' ? raw : {}) };
-  for (const k of ['best', 'bestBeers', 'runs', 'totalBeers', 'handleSetAt']) {
+  // `gear`/`fit`/`racha`/`jales` are deliberately NOT deep-coerced here, on the
+  // shelf's precedent: every reader re-cleans them (wallet.js cleanGear/cleanFit,
+  // racha.js coerceRacha, jales.js coerceJales), so this file stays free of
+  // second copies of their shape rules.
+  for (const k of ['best', 'bestBeers', 'runs', 'totalBeers', 'handleSetAt', 'fitSetAt']) {
     const n = Number(out[k]);
     out[k] = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
   }
@@ -244,6 +267,9 @@ export function readEcon() {
     shelf: blob.shelf,
     walletSeeded: blob.walletSeeded,
     totalBeers: blob.totalBeers,
+    gear: blob.gear,
+    fit: blob.fit,
+    fitSetAt: blob.fitSetAt,
   };
 }
 

@@ -222,7 +222,7 @@ function defaultY(type) {
   return DEFAULT_Y[type] != null ? DEFAULT_Y[type] : 0;
 }
 const DEFAULT_Y = {
-  beer: 0.78, taco: 0.82, magnet: 0.92, chancla: 0.92, lowrider: 0.86,
+  beer: 0.78, taco: 0.82, magnet: 0.92, chancla: 0.92, skateboard: 0.86,
   clothesline: 1.15, awning: 1.12,
 };
 
@@ -248,10 +248,10 @@ function drawPlayer(ctx, g, t) {
     ctx.globalAlpha = 1;
   }
 
-  // lowrider board under the feet
-  if (g.power.lowrider > 0) {
-    drawBoard(ctx, at.x, at.y, u);
-  }
+  const riding = g.power.skateboard > 0;
+
+  // The board under the feet, drawn before the runner so the shoes land on it.
+  if (riding) drawBoard(ctx, at.x, at.y, u);
 
   const pose = {
     phase: p.phase,
@@ -261,6 +261,9 @@ function drawPlayer(ctx, g, t) {
     slideK: p.slideT > 0 ? p.slideT / 0.62 : 0,
     laneLean: p.lean,
     speedK: g.speedK(),
+    // Stops the run cycle and stands them on the deck. Without it the board was
+    // a plank sliding along under a sprinting character.
+    riding,
   };
 
   // chancla rush trail
@@ -361,7 +364,7 @@ function plank(ctx, hw0, y0, hw1, y1) {
  * The board you are riding, seen from behind — deck, both kicks, two trucks,
  * four wheels. It exists to match drawSkateboard() in art/props.js, which is
  * what the powerup on the ground now looks like; the maroon ellipse that used to
- * be here was a lowrider, from back when the pickup was a car.
+ * be here was a skateboard, from back when the pickup was a car.
  *
  * The proportions are cheated WIDER than a real deck and the wheels are pushed
  * proud of its edge, both deliberately. Honest perspective on a 0.85u plank

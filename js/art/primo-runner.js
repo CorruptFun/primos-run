@@ -42,6 +42,7 @@
 // Limbs still swing in DEPTH, not across the image plane — see TILT/YAW.
 
 import { drawBackHead } from './head-back.js';
+import { drawMaskBack, drawChainBack } from './gear.js';
 
 // Local 3D -> screen. Matches the tuning the old rig arrived at: a high camera
 // looking down the alley, where vertical dominates and depth contributes a
@@ -482,7 +483,27 @@ export function drawPrimoBody(ctx, sx, sy, u, rig, pose, laneLean) {
   ctx.save();
   ctx.translate(cx, cy - T.sr * 0.26);
   ctx.rotate((pose.headTilt || 0) * 0.5);
-  drawBackHead(ctx, D.head * H, rig, pose, skin.base);
+  const fit = rig && rig.fit;
+  const hs = D.head * H;
+  if (fit && fit.mask) {
+    // A pasamontañas covers hair and hat OUTRIGHT — a knit dome over a fitted
+    // cap is two hats, and long hair spilling out the back un-sells the mask.
+    // So the head draws with its silhouettes neutralised (shortest cut, no
+    // hat) and the dome goes over the skull; hair colour becomes the mask's
+    // base so any sliver surviving at the hem reads as knit, not a peek of
+    // mullet. Identity survives in the outfit colours, which stay the PFP's —
+    // that trade is the player's, documented in docs/GAME_DESIGN.md.
+    drawBackHead(ctx, hs,
+      { ...rig, hairStyle: 'short', beanie: null, hatKind: 'none', cap: null, hair: fit.mask.base },
+      pose, skin.base);
+    // Skull centre/radius per head-back.js: (0, -0.42·size), r ≈ 0.35·size.
+    drawMaskBack(ctx, 0, -hs * 0.42, hs * 0.345, fit.mask);
+  } else {
+    drawBackHead(ctx, hs, rig, pose, skin.base);
+  }
+  // The chain drapes at the nape, over the collar, under nothing — it is the
+  // one piece of gear that must read at 40px or it is not worth 250 chelas.
+  if (fit && fit.chain) drawChainBack(ctx, 0, -hs * 0.02, hs * 0.34, fit.chain);
   ctx.restore();
 
   // --- near arm and near leg, over everything

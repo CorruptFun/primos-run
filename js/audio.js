@@ -149,7 +149,17 @@ export function bust() {
   tone(120, 0.9, 'sawtooth', 0.18, 45, 0.1);
 }
 
+// One press is one sound. js/ui-feedback.js clicks every control on
+// `pointerdown`, and most of js/main.js's buttons also click in their own
+// `click` handler — the same gesture arriving twice, ~80ms apart, which is
+// close enough to be heard as a flam rather than as two presses. The second
+// one is dropped here rather than by unpicking twenty call sites.
+let lastClick = 0;
+
 export function uiClick() {
+  const now = performance.now();
+  if (now - lastClick < 120) return;
+  lastClick = now;
   tone(520, 0.06, 'square', 0.12);
 }
 

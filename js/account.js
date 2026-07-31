@@ -23,6 +23,7 @@ import {
 import * as store from './store.js';
 import { EVENTS, isOptedOut, setOptedOut, track } from './analytics.js';
 import { cachedCount, clearArtCache } from './primo-cache.js';
+import { busy, flashLabel, uiToast } from './ui-feedback.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -32,10 +33,23 @@ const SIGNIN_FLAG = 'primos-run:signin-started';
 
 let unsub = null;
 
+/**
+ * Say what just happened, twice.
+ *
+ * `#acct-status` is the record — it sits above BACK and holds the last thing
+ * that happened for as long as the screen is up. It is NOT the notification:
+ * this sheet is far taller than a phone, so a press on SAVE or COPY CODE wrote
+ * its confirmation several hundred pixels below the fold and the player saw
+ * nothing at all. The toast is fixed to the viewport and is the half that
+ * actually gets read.
+ */
 function status(msg, bad = false) {
   const el = $('acct-status');
   el.textContent = msg;
   el.classList.toggle('bad', bad);
+  // Guarded, because refreshAccount() clears the line on every repaint and an
+  // empty toast is a black bar sliding in over nothing.
+  if (msg) uiToast(msg, bad);
 }
 
 // --- auth block -------------------------------------------------------------
@@ -185,8 +199,13 @@ function paintInvite() {
     .replace('%s', QUALIFY_SCORE.toLocaleString());
 
   const link = $('invite-link');
+  const copy = $('btn-invite-copy');
   link.value = '';
   link.placeholder = t('invite.minting');
+  // There is nothing to copy until the mint lands, and a button that answers a
+  // press with an error is the same dead button by another route. It says so
+  // now — see `.btn:disabled` in the stylesheet.
+  copy.disabled = true;
   $('invite-stats').textContent = '';
   // navigator.share is a phone affordance and absent on most desktops. Asking
   // first is the difference between a share sheet and a button that does nothing.
@@ -202,6 +221,7 @@ function paintInvite() {
       return;
     }
     link.value = inviteLink(code);
+    copy.disabled = false;
   });
 
   void fetchMyReferralStats().then((s) => {
@@ -319,6 +339,10 @@ export function initAccount() {
     input.value = applied ?? '';
     previewNow();
     status(applied ? t('acct.nameSet').replace('%s', applied) : t('acct.nameCleared'));
+    // Saving a name you already had changes nothing visible anywhere on the
+    // sheet — same input, same preview line — so the button has to be the one
+    // that says it landed.
+    flashLabel($('btn-name'), t('ui.saved'));
   };
   $('btn-name').addEventListener('click', saveName);
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveName(); });
@@ -339,7 +363,10 @@ export function initAccount() {
     try {
       if (navigator.clipboard?.writeText) {
         navigator.clipboard.writeText(url)
-          .then(() => status(t('invite.copied')))
+          .then(() => {
+            status(t('invite.copied'));
+            flashLabel($('btn-invite-copy'), t('ui.copied'));
+          })
           .catch(fallback);
       } else fallback();
     } catch {
@@ -358,8 +385,12 @@ export function initAccount() {
   $('btn-invite-claim').addEventListener('click', () => {
     const btn = $('btn-invite-claim');
     if (pendingRewards.length === 0) return;
-    btn.disabled = true;
+    // A real round trip, and the only one on this screen the player is actually
+    // waiting on. paintInvite() below rebuilds the label either way, so the
+    // restore is belt and braces rather than the mechanism.
+    const done = busy(btn, t('invite.claiming'));
     void claimReferralRewards(pendingRewards).then((res) => {
+      done();
       if (res.claimed > 0) {
         status(t('invite.claimed')
           .replace('%n', String(res.claimed))
@@ -385,6 +416,10 @@ export function initAccount() {
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
       status(t('acct.savedFile'));
+      // A download that goes straight to the Files app shows nothing on the
+      // page it came from, which is exactly the "I pressed it and nothing
+      // happened" case.
+      flashLabel($('btn-backup-file'), t('ui.saved'));
     } catch {
       status(t('acct.noDownload'), true);
     }
@@ -406,7 +441,10 @@ export function initAccount() {
     try {
       if (navigator.clipboard?.writeText) {
         navigator.clipboard.writeText(code)
-          .then(() => status(t('acct.copied')))
+          .then(() => {
+            status(t('acct.copied'));
+            flashLabel($('btn-backup-copy'), t('ui.copied'));
+          })
           .catch(fallback);
       } else fallback();
     } catch {
@@ -417,8 +455,18 @@ export function initAccount() {
   $('btn-restore').addEventListener('click', () => {
     const code = $('restore-code').value.trim();
     if (!code) { status(t('acct.needCode'), true); return; }
-    if (store.importSave(code)) location.reload();
-    else status(t('acct.badCode'), true);
+    const done = busy($('btn-restore'), t('acct.loading'));
+    // Deferred past a paint on purpose. importSave() is synchronous and a
+    // successful one ends in location.reload(), so doing both in this task sets
+    // a working label the player never sees and then tears the page down — a
+    // press with a blank pause after it, which is the complaint this whole
+    // change is answering. rAF alone runs BEFORE the frame paints; the timeout
+    // inside it is what puts this after one.
+    requestAnimationFrame(() => setTimeout(() => {
+      if (store.importSave(code)) { location.reload(); return; }
+      done();
+      status(t('acct.badCode'), true);
+    }, 0));
   });
 
   const file = $('restore-file');

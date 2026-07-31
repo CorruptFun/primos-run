@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Head test — Primos Barrio Run</title>
+<style>
+  body { margin: 0; background: #241d2a; color: #fdf6e6; padding: 6px 10px 40px;
+         font: 12px ui-rounded, system-ui, sans-serif; }
+  h2 { font-size: 10px; letter-spacing: .16em; margin: 12px 0 4px; color: #ffc93c; }
+  canvas { display: block; border-radius: 5px; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+  /* No max-width. The canvas is sized off the size slider and a cap here
+     CLIPS it — at 170 the heads came out sliced down one side, which looks
+     exactly like a renderer bug and is not one. */
+  .cell { text-align: center; font-size: 9px; color: rgba(253,246,230,.55); }
+  .controls { display: flex; gap: 14px; align-items: center; font-size: 11px;
+              position: sticky; top: 0; background: #241d2a; padding: 6px 0;
+              z-index: 2; }
+</style>
+</head>
+<body>
+
+<!-- Every trait the collection can put on a head, side by side at the size the
+     player sees. rig-test.html shows ONE Primo in motion, which is the right
+     tool for the run cycle and the wrong one for this: a hat that reads as a
+     lump is only obvious next to the five hats that do not.
+
+     Synthetic rigs, not tokens off IPFS — these go through the same
+     applyTraits() the game does, so the pipeline under test is identical, and
+     forty heads render with no network. The bottom row loads real tokens as the
+     sanity check that the synthetic ones are honest. -->
+
+<div class="controls">
+  <label>size <input id="size" type="range" min="60" max="240" step="2" value="110"
+         style="width:120px"></label>
+  <span id="sizeN">110</span>
+  <label><input id="scene" type="checkbox" checked> alley background</label>
+  <label><input id="grid" type="checkbox"> centre line</label>
+  <span id="note" style="color:rgba(253,246,230,.4)"></span>
+</div>
+
+<h2>HEADWEAR — one hair, every hat</h2>
+<div class="row" id="hats"></div>
+
+<h2>HAIR — no hat, every cut</h2>
+<div class="row" id="hair"></div>
+
+<h2>HAIR COLOUR — messy, the full palette</h2>
+<div class="row" id="cols"></div>
+
+<h2>ACCESSORIES</h2>
+<div class="row" id="acc"></div>
+
+<h2>HAT OVER HAIR — the combinations that actually collide</h2>
+<div class="row" id="combo"></div>
+
+<h2>REAL TOKENS off IPFS</h2>
+<div class="row" id="real"></div>
+
+<script type="module">
+// Cache-busted like rig-test: python's http.server answers with Last-Modified
+// and the browser reuses a stale ES module across reloads.
+const V = `?t=${Date.now()}`;
+const { drawBackHead } = await import(`../js/art/head-back.js${V}`);
+const { applyTraits } = await import(`../js/art/primo-traits.js${V}`);
+const { traitsFor, cidFor } = await import(`../js/primo-picker.js${V}`);
+const { loadHead } = await import(`../js/art/primo-head.js${V}`);
+
+// What samplePalette() hands over for a mid-range Primo. The point of the
+// synthetic rigs is that only the TRAIT under test varies.
+const BASE = {
+  hair: '#221a1e', cap: null, hairStyle: 'messy',
+  skin: '#b9784e', skinDark: '#96593a',
+  bandana: null, beanie: null, hoops: null, shades: null,
+};
+
+const HATS = ['None', 'Primos', 'RIPDEV', 'Snake Skin', 'Love Gun', 'Poker Visor',
+  'Construction Helmet', 'Cowboy Hat', 'Mariachi Hat', 'Black Bandana', 'Horns'];
+const HAIRS = ['Messy Black', 'Casual Black', 'Short Black', 'Long Black',
+  'Bushy Black', 'Mullet Black'];
+const HAIR_COLS = ['Messy Black', 'Messy Brown', 'Messy Blonde', 'Messy Blue',
+  'Messy Light Blue', 'Messy Green', 'Messy Mint', 'Messy Pink', 'Messy Purple',
+  'Messy White', 'Short Dior', 'Long Purple'];
+
+const cells = [];
+
+function cell(parent, label, traits, over) {
+  const d = document.createElement('div');
+  d.className = 'cell';
+  const c = document.createElement('canvas');
+  const x = c.getContext('2d');
+  d.appendChild(c);
+  d.appendChild(document.createElement('div')).textContent = label;
+  parent.appendChild(d);
+  const entry = { c, x, rig: null, traits, over };
+  cells.push(entry);
+  return entry;
+}
+
+/** A rig for a trait set, or a preset object for the ones with no trait name. */
+function rigFor(e) {
+  if (e.rig) return e.rig;
+  return applyTraits({ ...BASE, ...(e.over || {}) }, e.traits);
+}
+
+// --- the alley, so a head is judged against what it sits on ---------------
+function bg(x, w, h) {
+  if (!document.getElementById('scene').checked) {
+    x.fillStyle = '#2f2836'; x.fillRect(0, 0, w, h); return;
+  }
+  const g = x.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#8d3b6b');
+  g.addColorStop(0.45, '#e8663c');
+  g.addColorStop(1, '#ffb35c');
+  x.fillStyle = g;
+  x.fillRect(0, 0, w, h);
+}
+
+function paint() {
+  const size = Number(document.getElementById('size').value);
+  document.getElementById('sizeN').textContent = size;
+  const line = document.getElementById('grid').checked;
+  // The head box is `size`, but the drawing reaches above and below it (hair,
+  // brims, horns, a ponytail), so the cell is padded generously and the origin
+  // sits where primo-runner puts it: the base of the neck.
+  const w = Math.ceil(size * 1.5), h = Math.ceil(size * 1.5);
+  for (const e of cells) {
+    e.c.width = w * 2; e.c.height = h * 2;
+    e.c.style.width = w + 'px'; e.c.style.height = h + 'px';
+    const x = e.x;
+    x.setTransform(2, 0, 0, 2, 0, 0);
+    bg(x, w, h);
+    x.save();
+    x.translate(w / 2, h * 0.80);
+    const rig = rigFor(e);
+    drawBackHead(x, size, rig, { phase: 0.25, laneLean: 0 },
+      rig.skin || BASE.skin);
+    x.restore();
+    if (line) {
+      x.strokeStyle = 'rgba(0,255,255,.35)';
+      x.beginPath(); x.moveTo(w / 2, 0); x.lineTo(w / 2, h); x.stroke();
+    }
+  }
+}
+
+// --- build the grids ------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+
+for (const hat of HATS) cell($('hats'), hat, { hat, hair: 'Messy Black' });
+for (const hair of HAIRS) cell($('hair'), hair, { hat: 'None', hair });
+for (const hair of HAIR_COLS) cell($('cols'), hair.replace('Messy ', ''),
+  { hat: 'None', hair });
+
+cell($('acc'), 'blue bandana', { hat: 'None', hair: 'Short Black', bandana: 'Blue Bandana' });
+cell($('acc'), 'red bandana', { hat: 'None', hair: 'Messy Brown', bandana: 'Red Bandana' });
+cell($('acc'), 'gold hoop', { hat: 'None', hair: 'Short Black', earring: 'Gold Hoop' });
+cell($('acc'), 'diamond', { hat: 'None', hair: 'Short Black', earring: 'Diamond' });
+cell($('acc'), 'sunglasses', { hat: 'None', hair: 'Short Black', glasses: 'Sunglasses' });
+cell($('acc'), 'gold blues', { hat: 'None', hair: 'Short Black', glasses: 'Gold Blues' });
+cell($('acc'), 'reading', { hat: 'None', hair: 'Short Black', glasses: 'Reading Glasses' });
+cell($('acc'), 'alien skin', { hat: 'None', hair: 'Messy Green', base: 'Alien' });
+cell($('acc'), 'demon skin', { hat: 'None', hair: 'Messy Black', base: 'Demon', hat: 'Horns' });
+cell($('acc'), 'everything', { hat: 'Primos', hair: 'Long Black', bandana: 'Red Bandana',
+  glasses: 'Gold Blues', earring: 'Gold Hoop', base: 'Tan' });
+
+// The pairs where a hat and a cut fight for the same silhouette.
+const COMBOS = [
+  ['Primos', 'Long Black'], ['Primos', 'Mullet Brown'], ['Primos', 'Bushy Black'],
+  ['Cowboy Hat', 'Mullet Brown'], ['Mariachi Hat', 'Mullet Brown'],
+  ['Mariachi Hat', 'Long Purple'], ['Construction Helmet', 'Bushy Brown'],
+  ['Poker Visor', 'Messy Blonde'], ['Black Bandana', 'Mullet Black'],
+  ['Horns', 'Long Black'], ['Snake Skin', 'Messy White'], ['Love Gun', 'Messy Pink'],
+];
+for (const [hat, hair] of COMBOS) {
+  cell($('combo'), `${hat.split(' ')[0]} / ${hair.split(' ')[0]}`, { hat, hair });
+}
+
+paint();
+for (const id of ['size', 'scene', 'grid']) $(id).addEventListener('input', paint);
+// The harness runs hidden under the agent browser, where rAF never fires and a
+// screenshot only ever sees the first viewport — so `only()` collapses the page
+// to one section rather than expecting anyone to scroll.
+window.step = paint;
+window.only = (id) => {
+  for (const h of document.querySelectorAll('h2')) {
+    const row = h.nextElementSibling;
+    const on = !id || row.id === id;
+    h.style.display = row.style.display = on ? '' : 'none';
+  }
+  paint();
+  window.scrollTo(0, 0);
+};
+
+// --- real tokens ----------------------------------------------------------
+// Chosen to cover the shaped hats and the cuts that were invisible before the
+// trait pass, not at random: random tokens are mostly bare-headed messy Primos.
+const idx = await (await fetch('/data/primos-index.json')).json();
+const REAL = [2664, 1, 2, 3, 4, 6];
+let n = 0;
+for (const id of REAL) {
+  const cid = cidFor(idx, id);
+  if (!cid) continue;
+  const e = cell($('real'), `#${id}`, null);
+  loadHead(`https://ipfs.io/ipfs/${cid}`).then((r) => {
+    if (!r) { e.rig = { ...BASE }; paint(); return; }
+    const t = traitsFor(idx, id);
+    e.rig = applyTraits({ ...r.head }, t);
+    e.c.parentNode.lastChild.textContent =
+      `#${id} ${t?.hat && t.hat !== 'None' ? t.hat : ''} ${t?.hair || ''}`;
+    $('note').textContent = `${++n}/${REAL.length} loaded`;
+    paint();
+  });
+}
+</script>
+</body>
+</html>

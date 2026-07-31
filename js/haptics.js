@@ -39,6 +39,7 @@ export function buzz(pattern) {
 
 // Named events, so call sites read as intent rather than as durations.
 export const hap = {
+  ui:      () => buzz(HAPTICS.ui),
   lane:    () => buzz(HAPTICS.lane),
   blocked: () => buzz(HAPTICS.blocked),
   jump:    () => buzz(HAPTICS.jump),

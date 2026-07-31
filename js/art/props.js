@@ -13,7 +13,7 @@ export const PROP_SPEC = {
   // grip is the whole bottom arm of it. At 0.44 the grip had nowhere to go and
   // the prop came out as a bar with a stub, which reads as a staple gun.
   chancla:    { w: 0.56, h: 0.56, y: 0.92, kind: 'power' },
-  lowrider:   { w: 0.66, h: 0.40, y: 0.86, kind: 'power' },
+  skateboard:   { w: 0.66, h: 0.40, y: 0.86, kind: 'power' },
 
   // Dodge props are deliberately taller than the jump apex (1.43u) so lane
   // changes are the only honest answer to them.
@@ -422,7 +422,7 @@ export function drawTaco(ctx, sx, sy, u, t, seed = 0) {
 // behind the icon is most of what you see. So the three are separated by
 // ORIENTATION and VALUE inside that disc rather than by detail:
 //
-//   lowrider  a long HORIZONTAL plank with two bright wheels slung under it.
+//   skateboard  a long HORIZONTAL plank with two bright wheels slung under it.
 //             The kicked nose and tail are load bearing — a plain rounded
 //             rectangle on wheels is a chocolate bar on wheels.
 //   chancla   an L. Barrel across the top, grip falling away behind it, and an
@@ -820,7 +820,7 @@ function drawPowder(ctx, w, h, u) {
 const POWER_LIGHT = {
   magnet:   { rim: '255,77,157',  core: '255,214,236' },
   chancla:  { rim: '255,201,60',  core: '255,244,206' },
-  lowrider: { rim: '77,216,255',  core: '214,246,255' },
+  skateboard: { rim: '77,216,255',  core: '214,246,255' },
 };
 
 /**
@@ -941,7 +941,7 @@ export function drawPowerup(ctx, sx, sy, u, type, t, seed = 0) {
   // A board rocks, a gun swings a little, a bag of powder barely moves. Keyed
   // per type so the motion is one more thing telling the three apart.
   ctx.rotate(Math.sin(t * 2 + seed)
-    * (type === 'lowrider' ? 0.26 : type === 'chancla' ? 0.16 : 0.08));
+    * (type === 'skateboard' ? 0.26 : type === 'chancla' ? 0.16 : 0.08));
   // Soft, not a slab. Every icon below already carries its own fat keyline, so
   // this only has to darken what is immediately behind them; a hard-edged
   // ellipse here reads as a black egg the item is sitting in, which is just the
@@ -2258,7 +2258,7 @@ export const PROP_DRAW = {
   taco: (c, x, y, u, o, t) => drawTaco(c, x, y, u, t, o.seed),
   magnet: (c, x, y, u, o, t) => drawPowerup(c, x, y, u, 'magnet', t, o.seed),
   chancla: (c, x, y, u, o, t) => drawPowerup(c, x, y, u, 'chancla', t, o.seed),
-  lowrider: (c, x, y, u, o, t) => drawPowerup(c, x, y, u, 'lowrider', t, o.seed),
+  skateboard: (c, x, y, u, o, t) => drawPowerup(c, x, y, u, 'skateboard', t, o.seed),
   checkpoint: (c, x, y, u, o, t) => drawCheckpoint(c, x, y, u, t, o.seed),
   border: (c, x, y, u, o, t) => drawBorderWall(c, x, y, u, t, o.seed),
   copcar: (c, x, y, u, o, t) => drawCopCar(c, x, y, u, t, o.seed),

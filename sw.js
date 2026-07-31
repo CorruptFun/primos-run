@@ -17,7 +17,7 @@
 */
 
 // 👉 CUSTOMIZE: rename to your app, and bump CACHE_VERSION per deploy (e.g. a build stamp).
-const CACHE_VERSION = "v17-art-cache";
+const CACHE_VERSION = "v18-el-fit";
 const CACHE_NAME    = `primos-run-${CACHE_VERSION}`;
 
 // 👉 CUSTOMIZE: the offline shell, precached at install. Relative paths (resolved against
@@ -60,6 +60,7 @@ const PRECACHE = [
   "./js/particles.js",
   "./js/perf.js",
   "./js/haptics.js",
+  "./js/ui-feedback.js",
   "./js/tutorial.js",
   "./js/intro.js",
   // Cloud save + boards. Same-origin only — supabase-js itself is loaded from a
@@ -72,6 +73,10 @@ const PRECACHE = [
   "./js/leaderboard.js",
   "./js/raceday.js",
   "./js/merge.js",
+  // Coming back tomorrow — imported by main.js, so the offline rule above
+  // applies: list them or an offline boot fetches them and fails.
+  "./js/racha.js",
+  "./js/jales.js",
   "./js/boards.js",
   "./js/account.js",
   "./js/referrals.js",
@@ -89,6 +94,7 @@ const PRECACHE = [
   "./js/art/palette.js",
   "./js/art/runner.js",
   "./js/art/head-back.js",
+  "./js/art/gear.js",
   "./js/art/ice.js",
   "./js/art/primo-runner.js",
   "./js/art/wet.js",

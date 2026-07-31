@@ -21,12 +21,15 @@ import {
 import { applyTraits } from './art/primo-traits.js';
 import {
   tutorialNeeded, startTutorial, updateTutorial, drawTutorial,
-  tutorialActive, tutorialInput, tutorialTap, finishTutorial,
+  tutorialActive, tutorialInput, tutorialTap, finishTutorial, resetTutorial,
 } from './tutorial.js';
 import * as wallet from './wallet.js';
 import {
   openShop, offerContinue, closeContinue, continueCost, loadoutFor, paintWallet,
+  onFitChange, gearStyleFor,
 } from './tiendita.js';
+import { settleRacha, rachaShown, rachaAtRisk, RACHA_TABLE } from './racha.js';
+import { applyJalesRun, jalesStatus, JALE_SWEEP, JALE_REWARD } from './jales.js';
 import { bootstrapCloud } from './cloud.js';
 import { captureRefFromUrl } from './referrals.js';
 // `track` here is the analytics one. js/hud.js exports a `track` too — a HUD
@@ -40,15 +43,17 @@ import {
 // Corrupt's badge, already baked for the tutorial. The suggestion box borrows
 // the same canvas rather than shipping a second crop of the same JPEG.
 import { drawTrainer, loadTrainer } from './art/trainer.js';
-// dayKey is the crew draw's rotation key — see crewDraw(). Same UTC day the
+// dayKey is the crew draw's rotation key — see crewDraw() — and with
+// previousDayKey it is also la racha's clock (paintDaily). Same UTC day the
 // boards and the save's `days` map use, so nothing in the game disagrees about
 // when "today" starts.
-import { dayKey, pruneDays, recordDay } from './raceday.js';
+import { dayKey, previousDayKey, pruneDays, recordDay } from './raceday.js';
 import { initBoards, refreshBoards, relangBoards, showRunStanding } from './boards.js';
 import { initAccount, refreshAccount, relangAccount, releaseAccount } from './account.js';
 import {
   initPrimoBrowser, openPrimoBrowser, releasePrimoBrowser,
 } from './primo-browser.js';
+import { initUiFeedback } from './ui-feedback.js';
 
 /**
  * i18n for this module, with the picker's strings layered over the shared
@@ -253,6 +258,9 @@ window.__step = (n = 1, dt = 1 / 60) => {
   for (let i = 0; i < n; i++) step(dt);
   return { z: Math.round(game.player.z), state: game.state };
 };
+// The other half of the capture seam: paint what __step just computed. Without
+// it a hidden page (rAF parked) can advance the world but never show it.
+window.__draw = (dt = 1 / 60) => { drawFrame(dt); };
 window.__game = game;
 // Read-only: scene scale, the 80th-percentile work time it was decided on, and
 // the buffer that scale currently implies.
@@ -271,6 +279,13 @@ canvas.addEventListener('pointerdown', (e) => {
   // not also fire a jump underneath.
   if (tutorialActive()) {
     suppressTap = tutorialTap(e.clientX, e.clientY);
+    // And then start the run the pill was skipping TOWARD. The course ends two
+    // ways: it runs out, which drawFrame() sees and follows with startRun(),
+    // or the pill ends it from out here — and that branch is guarded by
+    // tutorialActive(), which the pill has already turned off. So SKIP fell
+    // through every sheet the course had hidden and left the player on an empty
+    // scrolling alley with no UI and nothing to press.
+    if (suppressTap && !tutorialActive()) startRun();
     return;
   }
   if (game.state !== STATE.PLAYING) { suppressTap = false; return; }
@@ -321,9 +336,24 @@ const overlays = {
   primos: $('screen-primos'),
 };
 
+/**
+ * Pin or unpin the ? in the corner.
+ *
+ * It belongs to the MENU and to nothing else. Over a run it would sit on the
+ * HUD; over pause, game over, the shop and the two cloud sheets it would be a
+ * second way into a screen those already have their own button or their own
+ * BACK for. So rather than being pushed a boolean from a dozen call sites it
+ * reads the one thing that is actually true — whether the menu is up — and
+ * every function that shows or hides a screen ends by calling it.
+ */
+function syncHelpFab() {
+  $('btn-help-fab').classList.toggle('hidden', screens.menu.classList.contains('hidden'));
+}
+
 function showOverlay(name) {
   screens.menu.classList.add('hidden');
   overlays[name].classList.remove('hidden');
+  syncHelpFab();
 }
 
 /** Dismiss every overlay. `backToMenu` restores the menu behind them. */
@@ -332,6 +362,7 @@ function hideOverlays(backToMenu) {
   releaseAccount();
   releasePrimoBrowser();
   if (backToMenu) screens.menu.classList.remove('hidden');
+  syncHelpFab();
 }
 
 function showScreen(state) {
@@ -359,6 +390,7 @@ function showScreen(state) {
     // two, and its chelas are banked once — see declineContinue().
     offerContinue(game, { onTake: takeContinue, onDecline: declineContinue });
   }
+  syncHelpFab();
 }
 
 function refreshStats() {
@@ -366,6 +398,99 @@ function refreshStats() {
   $('stat-beers').textContent = saved.totalBeers.toLocaleString();
   $('stat-runs').textContent = saved.runs.toLocaleString();
   paintWallet();
+  paintDaily();
+}
+
+// -------------------------------------------------------- coming back tomorrow
+
+/**
+ * The menu's daily card: la racha and the day's three jales. Read-only — the
+ * run is what moves any of these numbers (see fillGameOver's settlement), so
+ * this paints straight from disk and can be called as often as screens change.
+ * Guarded per element: the card can ship to index.html independently of this
+ * code and neither half breaks the other.
+ */
+function paintDaily() {
+  const econ = store.load();
+  const today = dayKey(new Date());
+  const prev = previousDayKey(new Date());
+
+  const chip = $('racha-chip');
+  if (chip) {
+    const len = rachaShown(econ.racha, today, prev);
+    const risk = rachaAtRisk(econ.racha, today, prev);
+    chip.classList.toggle('hidden', len === 0);
+    chip.classList.toggle('risk', risk);
+    if (len > 0) {
+      $('racha-len').textContent = String(len);
+      // At risk: say what running today PAYS — the next rung of the table —
+      // because "don't lose it" lands harder with the number attached.
+      const nextBonus = RACHA_TABLE[Math.min(risk ? len + 1 : len, RACHA_TABLE.length - 1)];
+      $('racha-note').textContent = risk
+        ? t('racha.risk').replace('%n', nextBonus)
+        : t('racha.safe');
+    }
+  }
+
+  const card = $('jales-card');
+  if (card) {
+    const st = jalesStatus(econ.jales, today);
+    const rows = $('jales-rows');
+    rows.innerHTML = '';
+    for (const m of st.list) {
+      const row = document.createElement('div');
+      row.className = 'jale-row' + (m.done ? ' done' : '');
+      const name = document.createElement('span');
+      name.className = 'jale-name';
+      name.textContent = t(`jale.${m.id}`).replace('%n', m.target.toLocaleString());
+      row.appendChild(name);
+      const prog = document.createElement('b');
+      prog.className = 'jale-prog';
+      prog.textContent = m.done ? '✓' : `${m.value.toLocaleString()}/${m.target.toLocaleString()}`;
+      row.appendChild(prog);
+      rows.appendChild(row);
+    }
+    const sweep = $('jales-sweep');
+    if (sweep) {
+      sweep.textContent = st.allDone ? t('jales.swept') : t('jales.sweep').replace('%n', JALE_SWEEP);
+      sweep.classList.toggle('done', st.allDone);
+    }
+  }
+}
+
+/**
+ * The game-over sheet's bonus lines — the moment the retention loop actually
+ * pays, celebrated where the "one more run" decision is made. Empty container
+ * when nothing landed: a sheet that says "+0" every run teaches the player to
+ * stop reading it.
+ */
+function paintOverBonos(rachaRes, jalesRes, today) {
+  const box = $('over-bonos');
+  if (!box) return;
+  box.innerHTML = '';
+  const line = (cls, text, amount) => {
+    const row = document.createElement('div');
+    row.className = 'over-bono ' + cls;
+    const s = document.createElement('span');
+    s.textContent = text;
+    row.appendChild(s);
+    const b = document.createElement('b');
+    b.textContent = `+${amount}`;
+    row.appendChild(b);
+    box.appendChild(row);
+  };
+  if (rachaRes?.counted && rachaRes.bonus > 0) {
+    line('racha', t('racha.day').replace('%n', rachaRes.racha.len), rachaRes.bonus);
+  }
+  if (jalesRes) {
+    const missions = jalesStatus(jalesRes.state, today).list;
+    for (const id of jalesRes.completedNow || []) {
+      const m = missions.find((x) => x.id === id);
+      line('jale', t(`jale.${id}`).replace('%n', (m ? m.target : 0).toLocaleString()), JALE_REWARD);
+    }
+    if (jalesRes.sweepNow) line('sweep', t('jales.propina'), JALE_SWEEP);
+  }
+  box.classList.toggle('hidden', !box.children.length);
 }
 
 // ------------------------------------------------------------------ continue
@@ -414,7 +539,30 @@ function fillGameOver() {
   saved.totalBeers += game.beers;
   // Bank the takings BEFORE store.save(), which restores the wallet fields
   // from disk over whatever `saved` is holding — see ECON_KEYS in store.js.
-  wallet.deposit(game.beers);
+  //
+  // The settlement — takings, the racha bonus and the day's jales — happens in
+  // ONE wallet.bankRun write, so every payout and the latch that says it was
+  // paid land together or not at all. The callback runs against the blob on
+  // DISK, not `saved`: racha/jales are ECON_KEYS for exactly this reason.
+  const today = dayKey(new Date());
+  const runStats = {
+    beers: game.beers, tacos: game.tacos, slides: game.slides, jumps: game.jumps,
+    powerups: game.powerups, smashes: game.smashes,
+    score: Math.floor(game.score), distance: Math.floor(game.distance),
+    bestMult: game.bestMult,
+  };
+  let rachaRes = null;
+  let jalesRes = null;
+  wallet.bankRun(game.beers, (b) => {
+    rachaRes = settleRacha(b.racha, today);
+    jalesRes = applyJalesRun(b.jales, today, runStats);
+    b.racha = rachaRes.racha;
+    b.jales = jalesRes.state;
+    return rachaRes.bonus + jalesRes.payout;
+  });
+  for (const id of jalesRes?.completedNow || []) {
+    track(EVENTS.MISSION_DONE, { id, day: today });
+  }
   // Today's board takes the day's BEST, not the last run — recordDay keeps the
   // max. pruneDays stops the map growing forever, since it rides every cloud
   // push; days older than the cutoff are already immutable on the server.
@@ -433,6 +581,7 @@ function fillGameOver() {
   $('over-tacos').textContent = game.tacos;
   $('over-dist').textContent = Math.floor(game.distance);
   $('over-pb').classList.toggle('hidden', !isPB);
+  paintOverBonos(rachaRes, jalesRes, today);
 
   // The run, written down once. This is the ONLY run_end in the game, and it
   // sits here rather than in game.end() on purpose: end() also fires for a bust
@@ -453,6 +602,11 @@ function fillGameOver() {
     // language would split every row in two.
     reason: game.gameOverReason || 'unknown',
     pb: isPB,
+    // The retention loop, riding the run it settled on: the streak as it now
+    // stands, and how many of today's jales are done after this run. "Do
+    // dailies keep people running" is answerable from run_end alone.
+    racha: rachaRes?.racha?.len ?? 0,
+    jalesDone: jalesRes ? Object.keys(jalesRes.state.done || {}).length : 0,
   });
 
   // Fire-and-forget: it reveals itself only once it has a real rank to show.
@@ -478,6 +632,13 @@ function applyLang() {
   }
   for (const el of document.querySelectorAll('[data-i18n-ph]')) {
     el.placeholder = t(el.dataset.i18nPh);
+  }
+  // Labels nobody can see. The ? in the corner is a glyph and nothing else, so
+  // its aria-label is the only name a screen reader has for it — and an
+  // English one on a Spanish menu is the one bit of the page that never got
+  // switched.
+  for (const el of document.querySelectorAll('[data-i18n-aria]')) {
+    el.setAttribute('aria-label', t(el.dataset.i18nAria));
   }
   for (const btn of document.querySelectorAll('.lang button[data-lang]')) {
     btn.setAttribute('aria-pressed', String(btn.dataset.lang === lang));
@@ -780,35 +941,18 @@ async function loadRealCrew() {
 }
 
 /**
- * Bake a head sprite from an image source and switch to the custom slot.
- * @param {string} src   image URL or data URL
- * @param {string} label shown in the status line
- * @param {number|null} number Primo number, when we know it
- */
-async function usePrimo(src, label, number) {
-  status(t('status.loading').replace('%s', label));
-  const result = await loadPrimoUrl(src);
-  if (!result) {
-    status(t('status.badImage'));
-    return false;
-  }
-  wearPrimo(result, src, number);
-  status(t('status.ready').replace('%s', label));
-  return true;
-}
-
-/**
  * Put a loaded Primo on the runner and write the claim down.
  *
  * `customImage` + `primoNumber` are the whole persistence story and the seam
  * the cloud save hooks onto: the token number and the exact source URL it came
  * from, under the keys store.js already defines. Nothing else needs to travel.
+ *
+ * @param {'number'|'browse'} by which of the two doors this came through, for
+ *   the event below. It is passed in rather than guessed from `src`: both doors
+ *   now end at a real token whose art came off the same gateway walk, so there
+ *   is nothing left in the arguments that tells them apart.
  */
-function wearPrimo(result, src, number) {
-  // Traits are looked up only for a real token. A pasted URL or an uploaded
-  // file has no number and therefore no metadata, and applyTraits() leaves the
-  // sampled rig exactly as it found it — so those two paths keep working
-  // unchanged, on the old "no long hair means a cap" guess.
+function wearPrimo(result, src, number, by = 'number') {
   const traits = Number.isFinite(number) && primoIndex
     ? traitsFor(primoIndex, number) : null;
   customRig = applyTraits({ ...result.head, pants: '#2f3a52' }, traits);
@@ -817,14 +961,25 @@ function wearPrimo(result, src, number) {
   saved.primoNumber = Number.isFinite(number) ? number : null;
   store.save(saved);
   // HOW they got there, never WHICH Primo or from what URL. A token number is a
-  // wallet fingerprint on a public chain, and the source URL can be anything the
-  // player pasted — neither belongs in an event log this game does not need
-  // them in. `by` answers the only question worth asking: which of the three
-  // ways in actually gets used.
-  track(EVENTS.PRIMO_SET, {
-    by: Number.isFinite(number) ? 'number' : (/^data:/.test(String(src)) ? 'file' : 'url'),
-  });
+  // wallet fingerprint on a public chain, and the gateway URL is a CID with the
+  // same number behind it — neither belongs in an event log this game does not
+  // need them in. `by` answers the only question worth asking: of the two ways
+  // in, which one do people actually use.
+  track(EVENTS.PRIMO_SET, { by });
   selectCrew(roster.length - 1);
+  syncPrimoPanel();
+}
+
+/**
+ * CLEAR only exists once there is something to clear.
+ *
+ * It is the one control in that panel that is about a Primo you already have,
+ * and offering it to a player who has never claimed one reads as a button that
+ * does nothing — which is exactly what it did.
+ */
+function syncPrimoPanel() {
+  const has = saved.primoNumber != null || !!saved.customImage;
+  $('btn-clear-primo').classList.toggle('hidden', !has);
 }
 
 // ----------------------------------------------------------- find & claim
@@ -987,22 +1142,11 @@ $('btn-random').addEventListener('click', async () => {
   findPrimo(Number(n));
 });
 
-$('primo-file').addEventListener('change', (e) => {
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
-  hideFound();
-  const reader = new FileReader();
-  reader.onload = () => usePrimo(String(reader.result), file.name, null);
-  reader.onerror = () => status(t('status.badFile'));
-  reader.readAsDataURL(file);
-});
-
-$('btn-url').addEventListener('click', () => {
-  const url = $('primo-url').value.trim();
-  if (!url) return;
+// The other door: don't know the number, go and look. Same screen the empty
+// MY PRIMO tile opens, and it lands on whatever is already being worn.
+$('btn-primo-browse').addEventListener('click', () => {
   sfx.uiClick();
-  hideFound();
-  usePrimo(url, t('label.yourPrimo'), null);
+  openPrimos();
 });
 
 $('btn-clear-primo').addEventListener('click', () => {
@@ -1015,6 +1159,7 @@ $('btn-clear-primo').addEventListener('click', () => {
   status(t('status.cleared'));
   if (roster[selectedIdx].id === CUSTOM_ID) selectCrew(0);
   else paintCrew();
+  syncPrimoPanel();
 });
 
 /**
@@ -1023,8 +1168,12 @@ $('btn-clear-primo').addEventListener('click', () => {
  * A claim is a token number first and a URL second. The saved URL names one
  * gateway and that gateway will eventually have a bad day, so a claim with a
  * number behind it is re-fetched through the whole gateway walk and only falls
- * back to the stored URL — which for an uploaded file is a data URL, and is
- * then the only thing there is.
+ * back to the stored URL.
+ *
+ * The URL-only branch is now history, but it is LOAD BEARING history: a save
+ * written before the paste-a-URL box and the file picker were removed can still
+ * hold a plain image URL or a data URL with no number beside it, and that
+ * player's Primo has to keep coming back. Nothing writes that shape any more.
  */
 async function restoreClaim() {
   if (!saved.customImage && saved.primoNumber == null) return;
@@ -1044,6 +1193,7 @@ async function restoreClaim() {
       store.save(saved);
       if (roster[selectedIdx].id === CUSTOM_ID) selectCrew(0);
       else paintCrew();
+      syncPrimoPanel();
       status(t('status.reassigned').replace('%n', n));
       return;
     }
@@ -1077,11 +1227,30 @@ async function restoreClaim() {
 function startRun() {
   clearToasts();
   const stock = wallet.takeStock();
-  // The shelf ids themselves, not just a count: "players who bring a lowrider
+  // The shelf ids themselves, not just a count: "players who bring a skateboard
   // run twice as long" is the shape of question la tiendita's pricing needs.
   track(EVENTS.RUN_START, { loadout: stock.length, items: stock.join(',') || null });
   game.start(loadoutFor(stock));
+  wearFit();
 }
+
+/**
+ * Resolve what is WORN into the style blocks the renderer draws from, and hang
+ * them on the live rig. Called after game.start() because reset() rebuilds
+ * player.rig, and again whenever the shop changes the fit — so a mask bought
+ * at the continue offer is on the runner's head for the very next run.
+ * Resolved HERE so the art layer never learns the catalog exists.
+ */
+function wearFit() {
+  const fit = wallet.fitOn();
+  const styles = {
+    mask: fit.mask ? gearStyleFor(fit.mask) : null,
+    chain: fit.chain ? gearStyleFor(fit.chain) : null,
+  };
+  if (game.player.rig) game.player.rig.fit = styles;
+  if (game.rig) game.rig.fit = styles;
+}
+onFitChange(wearFit);
 
 $('btn-play').addEventListener('click', () => {
   sfx.resume();
@@ -1090,7 +1259,7 @@ $('btn-play').addEventListener('click', () => {
   // First run: teach before the first round. The game stays in MENU so the
   // alley scrolls behind the course; step() calls startRun() when it ends.
   if (tutorialNeeded()) {
-    for (const el of Object.values(screens)) el.classList.add('hidden');
+    hideAllScreens();
     startTutorial();
     return;
   }
@@ -1101,6 +1270,9 @@ $('btn-shop').addEventListener('click', () => {
   sfx.resume();
   sfx.uiClick();
   openShop(() => showScreen(STATE.MENU));
+  // The shop hides the sheets itself, from js/tiendita.js, which knows nothing
+  // about the ?. Without this it would float over the counter.
+  syncHelpFab();
 });
 
 // Straight back to the sheet it came from, NOT through showScreen(OVER) —
@@ -1129,6 +1301,7 @@ $('btn-account-back').addEventListener('click', () => {
   hideOverlays(true);
   saved = store.load();   // a restore may have replaced everything behind the screen
   refreshStats();
+  syncPrimoPanel();
 });
 
 /** Open the collection browser, landing on the Primo already being worn. */
@@ -1148,10 +1321,11 @@ $('btn-quit').addEventListener('click', () => {
 
 // -------------------------------------------------------------------- help
 //
-// The controls have always been on the menu, inside a collapsed `how` list —
-// which is behind the menu, which is exactly where a player who is mid-run or
-// freshly busted cannot get to. So the same material is reachable from both
-// places they actually are when the question comes up.
+// One sheet, three doors: the ? pinned to the corner of the menu, the pause
+// sheet, and the game over sheet. Those are the three places a player is
+// standing when they want the rules — and the menu's old collapsed `how` list
+// could only ever answer from one of them, while sitting under the stats where
+// nobody looked. That list is gone; this is all of it now.
 //
 // Opening it touches NO game state: the run stays paused and the game over
 // sheet keeps its numbers, so reading the rules can never cost a run. It goes
@@ -1166,6 +1340,13 @@ function openHelp(back) {
   helpBack = back;
   back.classList.add('hidden');
   screens.help.classList.remove('hidden');
+  // RUN THE TRAINING AGAIN ends the run it is pressed from — the course plays
+  // over a reset alley, and there is no way back into a run once it has. From
+  // pause that is a live run being thrown away by a button the player pressed
+  // expecting to read something, so the whole block goes. From the menu and
+  // from game over there is nothing to lose.
+  $('help-train').classList.toggle('hidden', back === screens.pause);
+  syncHelpFab();
 }
 
 function closeHelp() {
@@ -1173,11 +1354,45 @@ function closeHelp() {
   screens.help.classList.add('hidden');
   (helpBack || screens.menu).classList.remove('hidden');
   helpBack = null;
+  syncHelpFab();
 }
 
+/**
+ * Take Corrupt's course again, from the menu or from the game over sheet.
+ *
+ * The course is taught over a LIVE alley with the game parked in MENU — that is
+ * the only state it has ever run in (see the first-run branch of btn-play) and
+ * the only one where the scenery behind it scrolls. So whatever screen this was
+ * reached from, the run is ended and the game put back to MENU first, exactly
+ * as QUIT TO MENU does, and only then is everything hidden for the overlay.
+ *
+ * When it finishes, drawFrame() calls startRun() — same as the first time.
+ */
+function startTraining() {
+  sfx.uiClick();
+  sfx.stopMusic();
+  clearToasts();
+  screens.help.classList.add('hidden');
+  helpBack = null;
+  game.state = STATE.MENU;
+  game.reset();
+  showScreen(STATE.MENU);
+  resetTutorial();
+  hideAllScreens();
+  startTutorial();
+}
+
+/** Clear the deck for the tutorial overlay: no sheet, no ?, just the alley. */
+function hideAllScreens() {
+  for (const el of Object.values(screens)) el.classList.add('hidden');
+  syncHelpFab();
+}
+
+$('btn-help-fab').addEventListener('click', () => openHelp(screens.menu));
 $('btn-help-pause').addEventListener('click', () => openHelp(screens.pause));
 $('btn-help-over').addEventListener('click', () => openHelp(screens.over));
 $('btn-help-back').addEventListener('click', closeHelp);
+$('btn-help-train').addEventListener('click', startTraining);
 
 // ---------------------------------------------------------------- feedback
 //
@@ -1419,6 +1634,15 @@ function boot() {
   // Restore a previously claimed Primo in the background.
   restoreClaim();
 
+  // Before the screens wire themselves, though it delegates at the document and
+  // does not actually care: every button in the game gets its press, its click
+  // and its buzz from here, including ones built later.
+  initUiFeedback();
+
+  // CLEAR is hidden until there is a Primo to clear, and at boot there usually
+  // is not. restoreClaim() above may turn it back on when it lands.
+  syncPrimoPanel();
+
   initBoards();
   initAccount();
 
@@ -1435,11 +1659,11 @@ function boot() {
   }
   selectKind(fbKind);
   // The browser hands the chosen Primo straight to wearPrimo(), which is the
-  // same path the number search and the file picker already use — so the claim
-  // is written down, the crew tile repaints and the cloud push happens without
-  // primo-browser.js knowing that any of that exists.
+  // same path the number search uses — so the claim is written down, the crew
+  // tile repaints and the cloud push happens without primo-browser.js knowing
+  // that any of that exists. 'browse' is the only thing it says about itself.
   initPrimoBrowser(
-    (result, url, n) => { wearPrimo(result, url, n); },
+    (result, url, n) => { wearPrimo(result, url, n, 'browse'); },
     t,
     () => { sfx.uiClick(); hideOverlays(true); }
   );
@@ -1457,6 +1681,7 @@ function boot() {
   void bootstrapCloud().then(() => {
     saved = store.load();          // adopt whatever the merge decided
     refreshStats();
+    syncPrimoPanel();              // the merge can bring a Primo in with it
     const i = roster.findIndex((c) => c.id === saved.character);
     if (i >= 0 && i !== selectedIdx) selectCrew(i);
     // AFTER the auth restore, so a returning signed-in player's very first

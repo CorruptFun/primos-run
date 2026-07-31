@@ -493,7 +493,14 @@ html, body {
 
 .btn:hover { filter: brightness(1.05); }
 
-.btn:active {
+/* `.pressed` is `:active` painted by hand — js/ui-feedback.js adds it on
+   pointerdown. It is not a duplicate: iOS Safari withholds `:active` until it
+   knows the touch is not a scroll, and inside `.screen` (overflow-y: auto,
+   touch-action: pan-y) that verdict usually lands after the finger is gone, so
+   a quick tap on a phone never moves the button at all. Both selectors share
+   one rule so the two can never drift into two different presses. */
+.btn:active,
+.btn.pressed {
   transform: translateY(4px);
   box-shadow:
     0 0 0 var(--gold-deep),
@@ -541,7 +548,8 @@ html, body {
 .btn-ghost::after { inset: 1px 1px 60%; background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent); }
 .btn-ghost::before { display: none; }
 
-.btn-ghost:active {
+.btn-ghost:active,
+.btn-ghost.pressed {
   transform: translateY(2px);
   box-shadow: 0 0 0 rgba(0, 0, 0, 0.35), inset 0 2px 6px rgba(0, 0, 0, 0.35);
 }
@@ -604,7 +612,8 @@ html, body {
 }
 
 .lang button:hover { color: var(--ink); }
-.lang button:active { transform: translateY(1px); }
+.lang button:active,
+.lang button.pressed { transform: translateY(1px); }
 
 .lang button:focus-visible {
   outline: 2px solid rgba(255, 255, 255, 0.75);
@@ -736,7 +745,8 @@ html, body {
 }
 
 .file-btn:hover { border-color: var(--line-hi); }
-.file-btn:active { transform: translateY(2px); }
+.file-btn:active,
+.file-btn.pressed { transform: translateY(2px); }
 
 /* The gameplay-stats opt-out on ACCOUNT. A whole-row label so the tap target is
    the sentence and not just the 16px box — this is a privacy control, and one
@@ -754,6 +764,8 @@ html, body {
   cursor: pointer;
 }
 .opt-row:hover { border-color: var(--line-hi); }
+.opt-row:active,
+.opt-row.pressed { border-color: var(--line-hi); background: rgba(255, 255, 255, 0.08); }
 .opt-row input { width: 17px; height: 17px; accent-color: var(--gold, #ffc93c); flex: none; }
 
 .url-row {
@@ -856,9 +868,16 @@ html, body {
 #btn-claim { min-height: 38px; padding: 8px 16px; font-size: 12px; }
 
 /* Spoken for, or already yours — either way there is nothing to tap, and the
-   button says so rather than looking live and doing nothing. */
+   button says so rather than looking live and doing nothing.
+   This predates the general `.btn:disabled` at the foot of the file and stays
+   its own rule: CLAIM is a short button with a 2px lip, so it needs its own
+   shadow, and grayscale+brightness is tuned against the picker's panel rather
+   than the account sheet. `opacity: 1` is the opt-out — without it the general
+   rule's 0.5 would stack on top of the brightness already here and fade this
+   one to a smudge. */
 #btn-claim:disabled {
   filter: grayscale(0.85) brightness(0.66);
+  opacity: 1;
   cursor: default;
   transform: none;
   box-shadow: 0 2px 0 var(--gold-deep), inset 0 1px 0 rgba(255, 255, 255, 0.3);
@@ -885,8 +904,61 @@ html, body {
 
 /* ------------------------------------------------------------------ help */
 
-/* Same rows as the menu's `how` list, minus the disclosure triangle — this
-   sheet IS the disclosure, so nothing here should need a second tap. */
+/* The ? in the corner of the menu.
+ *
+ * Round, small, and pinned to the VIEWPORT rather than to the sheet, so
+ * scrolling the menu never takes it away. It has to be a sibling of the
+ * screens to manage that — every `.screen` sets a backdrop-filter, which makes
+ * it the containing block for anything fixed inside it, and the button would
+ * scroll with the content. `pointer-events: auto` because #ui above it is
+ * `none`; the z-index because .screen's backdrop-filter gives each screen a
+ * stacking context of its own. */
+.help-fab {
+  position: fixed;
+  top: calc(var(--safe-t) + 12px);
+  right: calc(env(safe-area-inset-right, 0px) + 14px);
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line-hi);
+  background: linear-gradient(180deg, rgba(74, 47, 88, 0.94), rgba(24, 14, 36, 0.95));
+  box-shadow: var(--lift-1), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--gold);
+  font: inherit;
+  font-size: 21px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.12s var(--ease-out), border-color 0.16s ease, color 0.16s ease;
+  animation: fab-in 0.42s var(--ease-back) both;
+}
+
+.help-fab:hover { border-color: rgba(255, 201, 60, 0.8); color: var(--gold-hi); }
+/* `.pressed` is the hand-painted `:active` — see the note on `.btn.pressed`. */
+.help-fab:active,
+.help-fab.pressed { transform: scale(0.92); }
+.help-fab:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+@keyframes fab-in {
+  from { opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: none; }
+}
+
+/* This sheet is the whole manual, and it is all left-aligned reading matter —
+   the section labels and the two body lines have to agree with the lists they
+   sit above, not with the centred sheet they are in. */
+#screen-help .sec,
+#screen-help .hint { text-align: left; }
+
+/* Same rows as the menu's `how` list used to be, minus the disclosure triangle
+   — this sheet IS the disclosure, so nothing here should need a second tap. */
 .help-list {
   margin: 0 0 4px;
   padding-left: 18px;
@@ -938,6 +1010,49 @@ html, body {
   line-height: 1.5;
   color: var(--ink-dim);
 }
+
+/* What the alley hands you. A legend rather than a fifth bullet list: each row
+   is dotted in the colour that pickup actually is on screen, so the sheet and
+   the run are visibly naming the same objects. Beer and chancla share a gold
+   because they share it in the game — the dots follow the alley, not vice
+   versa. Colours are the POWERUP entries in js/config.js. */
+.help-loot {
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-dim);
+}
+
+.help-loot li {
+  position: relative;
+  padding: 3px 0 3px 18px;
+}
+
+.help-loot li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  /* Against the cap height of the first line, not its box, so the dot sits on
+     the word rather than floating above a row that has wrapped. */
+  top: 0.75em;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+}
+
+.help-loot b { color: var(--ink); font-weight: 800; }
+
+/* Qualified by the list, and not because the rows are nested anywhere: bare
+   `.loot-taco::before` is a class and a pseudo-element, which LOSES to the
+   `.help-loot li::before` above it, and every dot comes out gold. */
+.help-loot .loot-taco::before { background: var(--lime); }
+.help-loot .loot-magnet::before { background: #ff4d9d; }
+.help-loot .loot-chancla::before { background: #ffcf3d; }
+.help-loot .loot-skateboard::before { background: #4dd8ff; }
 
 #btn-help-back { margin-top: 16px; }
 
@@ -1187,10 +1302,18 @@ h2 {
   .btn { min-height: 48px; margin-top: 8px; }
   .final { font-size: clamp(42px, 14vw, 54px); }
   /* At 320x568 in Spanish this sheet is the tallest thing in the game and was
-     pushing GOT IT off the bottom by about the height of one line. */
+     pushing GOT IT off the bottom by about the height of one line — and that
+     was before it absorbed the menu's how-to, the pickups and the training
+     button. It scrolls now rather than fits, so this is about how much of it
+     lands in the first screenful, not about avoiding a cut-off. */
   .help-list { font-size: 12px; line-height: 1.55; }
+  .help-loot { font-size: 12px; line-height: 1.45; }
+  .help-loot li { padding-top: 2px; padding-bottom: 2px; }
   .help-rule { margin-top: 10px; padding: 9px 11px; }
   .help-rule-body { margin-top: 4px; font-size: 11px; line-height: 1.45; }
+  #screen-help .sec { margin: 12px 0 5px; }
+  #screen-help .sec.sep { margin-top: 13px; padding-top: 10px; }
+  #screen-help .hint { margin: 8px 0; font-size: 11px; }
   #btn-help-back { margin-top: 12px; }
   /* HELP is the tallest sheet in the game and the Corrupt row is new weight on
      it, so on a 568px screen it gives back roughly what it costs. `.screen`
@@ -1208,6 +1331,11 @@ h2 {
   .corrupt-face-lg { width: 60px; height: 60px; margin-bottom: 8px; }
   .fb-message { font-size: 12.5px; }
   #btn-feedback-send { margin-top: 10px; }
+  /* The ? is NOT shrunk with the rest of it. Everything else in this block is
+     buying vertical space back, and a fixed element takes none — all shrinking
+     it would cost is the tap target on the one control that leads to any of
+     this. It only moves up, out of the way of the shorter sheet. */
+  .help-fab { top: calc(var(--safe-t) + 9px); }
 }
 
 @media (min-width: 760px) {
@@ -1705,3 +1833,202 @@ h2 {
 /* The game-over standing when the run was bought. Same line, same place —
    dimmed off the teal so it reads as qualified rather than celebrated. */
 .rank-line.bought { color: var(--ink-dim); }
+
+/* ================================================== press feedback + toast
+
+   The states a button needs so it never reads as dead. `.pressed` lives with
+   the `:active` rules further up, next to the shadow it cancels; these three
+   are their own block because nothing above them knew they existed.
+   js/ui-feedback.js is what adds all of them. */
+
+/* Disabled. Until this rule existed, `btn.disabled = true` — which sign-in,
+   sign-out and COLLECT all do — changed absolutely nothing on screen: the
+   button kept its full gold, kept the attract sweep, and simply stopped
+   responding. A control that looks pressable and is not is worse than a
+   greyed-out one, because the player concludes the whole screen is broken.
+
+   Placed after `.btn:hover` on purpose: same specificity, so being later is
+   what stops a hover from lighting a dead button back up. */
+.btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+  filter: saturate(0.45);
+  box-shadow: 0 4px 0 var(--gold-deep), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+/* The attract sweep says "press me". Not while it cannot be pressed. */
+.btn:disabled::before { animation: none; opacity: 0; }
+
+/* A disabled button must not depress, by either route. */
+.btn:disabled:active,
+.btn:disabled.pressed { transform: none; }
+
+/* Working. The label already says so; this is what keeps saying it 400ms
+   later, when a static "COLLECTING…" starts to read as stuck instead. The
+   animation beats the 0.5 opacity above, which is the point — busy is a live
+   state and plain disabled is not. */
+.btn.busy { animation: busy-pulse 1.15s ease-in-out infinite; }
+
+@keyframes busy-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* Landed. COPY becoming COPIED is the confirmation the eye is already pointed
+   at; the pop is what makes the swap register as an event rather than as text
+   that was always there. */
+.btn.flash { animation: flash-pop 0.42s var(--ease-back); }
+
+@keyframes flash-pop {
+  0% { transform: translateY(3px) scale(0.99); }
+  55% { transform: translateY(-2px) scale(1.035); }
+  100% { transform: none; }
+}
+
+/* The toast. Fixed to the VIEWPORT, not to the sheet, which is the whole
+   point: the ACCOUNT sheet is taller than a phone and its inline status line
+   sits at the bottom of it, so a confirmation for a button in the middle of
+   the scroll was written several hundred pixels below the fold. Bottom-centre
+   because that is where a thumb is not — the sheet's own buttons are under the
+   finger that just pressed one. */
+#ui-toast {
+  position: fixed;
+  /* Centred by equal offsets and auto margins, NOT by `left: 50%` — a fixed box
+     with no width shrinks to fit the space left of its containing block's right
+     edge, so `left: 50%` silently caps it at HALF the screen and every message
+     of more than about four words wrapped for no visible reason. */
+  left: 14px;
+  right: 14px;
+  margin-inline: auto;
+  width: fit-content;
+  /* --toast-lift clears the PWA update bar when that is up. Set from JS. */
+  bottom: calc(var(--safe-b) + 18px + var(--toast-lift, 0px));
+  z-index: 90;
+  max-width: min(360px, calc(100vw - 28px));
+  padding: 11px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line-hi);
+  border-left: 3px solid var(--teal);
+  background: rgba(18, 10, 28, 0.96);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: var(--lift-2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  /* It lands over a scrolling sheet, so it may never eat the next tap. */
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.22s ease, transform 0.28s var(--ease-out);
+}
+
+#ui-toast.show { opacity: 1; transform: translateY(0); }
+
+/* Same teal/red split the inline #acct-status uses — one language for "that
+   worked" and "that did not". */
+#ui-toast.bad { border-left-color: var(--red); }
+
+/* ------------------------------------------------------------------ el fit */
+/* The gear half of la tiendita shares .shop-item wholesale; these are only
+   the states the consumables never had. */
+
+.shop-sect {
+  margin: 14px 2px 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+}
+
+/* Owned reads as settled, not dead: full opacity (unlike .broke), tone bar
+   lit, and the button carries the WEAR/TAKE OFF verb instead of a price. */
+.shop-item.owned { border-left-color: var(--tone, var(--gold)); }
+.shop-item.owned .shop-name::after {
+  content: ' ✓';
+  color: var(--lime);
+}
+
+/* -------------------------------------------------- coming back tomorrow */
+/* The menu's daily card. Same glass the sheets use, deliberately quieter
+   than the RUN button above it — it supports the run, it does not compete. */
+
+.daily { margin-top: 10px; display: grid; gap: 8px; }
+
+.racha-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(255, 201, 60, 0.10);
+  border: 1px solid rgba(255, 201, 60, 0.28);
+  font-size: 12px;
+}
+.racha-chip b { color: var(--gold); letter-spacing: 0.08em; white-space: nowrap; }
+.racha-chip .racha-note { color: var(--ink-dim); font-size: 11px; line-height: 1.35; }
+
+/* At risk: the border warms up and the flame does one slow breath. Loss
+   aversion needs to be SEEN, but a strobe on the main menu is a migraine. */
+.racha-chip.risk { border-color: rgba(255, 107, 107, 0.5); background: rgba(255, 107, 107, 0.08); }
+.racha-chip.risk .racha-note { color: var(--ink); }
+.racha-chip.risk .racha-flame { animation: racha-breathe 1.8s ease-in-out infinite; }
+@keyframes racha-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.18); }
+}
+
+.jales-card {
+  padding: 10px 12px 8px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(253, 246, 230, 0.10);
+  text-align: left;
+}
+.jales-title {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--ink-dim);
+}
+.jale-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+.jale-row .jale-name { color: var(--ink); letter-spacing: 0.04em; }
+.jale-row .jale-prog { color: var(--ink-dim); font-weight: 700; white-space: nowrap; }
+.jale-row.done .jale-name { color: var(--ink-faint); text-decoration: line-through; }
+.jale-row.done .jale-prog { color: var(--lime); }
+.jales-sweep {
+  margin: 6px 0 2px;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.jales-sweep.done { color: var(--lime); }
+
+/* The game-over payout lines. Gold for money, one row per thing that landed —
+   the sheet is where "one more run" gets decided, so these are loud. */
+.over-bonos { margin: 10px 0 2px; display: grid; gap: 5px; }
+.over-bono {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 201, 60, 0.10);
+  border-left: 3px solid var(--gold);
+  font-size: 12px;
+}
+.over-bono span { color: var(--ink); letter-spacing: 0.04em; }
+.over-bono b { color: var(--gold); }
+.over-bono.sweep { border-left-color: var(--teal); }
+.over-bono.sweep b { color: var(--teal); }

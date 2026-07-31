@@ -224,22 +224,36 @@ block.**
 |---|---|---|
 | `app_open` | once per open | standalone, lang, signed_in |
 | `run_start` | RUN pressed | loadout size, shelf item ids |
-| `run_end` | the run is written down | score, distance, seconds, beers, tacos, continues, reason, pb |
+| `run_end` | the run is written down | score, distance, seconds, beers, tacos, continues, reason, pb, racha, jalesDone |
 | `tutorial_start` / `_done` / `_skip` | the escuela | step reached, total steps |
 | `shop_open` / `_buy` / `_denied` | La Tiendita | balance, item, price, how short |
 | `continue_offer` / `_take` / `_decline` | the bust | rung `n`, cost, could they afford it |
 | `primo_open` / `_set` | the picker | **how** they set it — never which Primo |
 | `sign_in_start` / `_done` | ACCOUNT | — |
 | `board_open`, `invite_share` | — | — |
+| `gear_equip` | el fit worn or taken off | item (or `none`), slot |
+| `mission_done` | a jale completes | mission id, day |
 | `client_error` | a crash | message, source basename, first stack frames |
+
+**The retention pair rides `run_end`.** `racha` (streak length after this run)
+and `jalesDone` (how many of today's three are finished) travel on every
+`run_end`, so "do dailies keep people running" is answerable from one event.
+`mission_done` exists separately because it names *which* jales players actually
+finish — the pool needs pruning evidence, not vibes. The DB guard normalises
+but does not whitelist names, so these needed **no migration**; the dashboard
+picks them up in the by-name counts panel.
 
 **`run_end` fires once per run, not once per bust** — it sits in
 `fillGameOver()`, not `game.end()`, because a bust the player pays their way out
 of is one run, not two. Same reasoning that decides where the chelas are banked.
 
 **A token number is never sent.** It is a wallet fingerprint on a public chain,
-and `primo_set` only records *how* the Primo was chosen (number / url / file),
-which is the only question worth asking.
+and `primo_set` only records *how* the Primo was chosen — `number` if it was
+typed into the menu panel, `browse` if it was picked out of the grid — which is
+the only question worth asking. (It read `number / url / file` until the
+paste-a-URL box and the file picker were removed; a save written before that can
+still hold a URL, but nothing writes one any more, so neither value can appear
+in new events.)
 
 **Crash telemetry is capped twice** — 5 per session *and* one per distinct
 message — because the thing producing errors here is a render frame, and an

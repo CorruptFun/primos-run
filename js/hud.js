@@ -16,7 +16,7 @@ import { t as tr } from './i18n.js';
 const POWER_LABEL = {
   magnet: 'power.magnet',
   chancla: 'power.chancla',
-  lowrider: 'power.lowrider',
+  skateboard: 'power.skateboard',
 };
 
 // Exported so the tutorial overlay draws in the same voice as the HUD by

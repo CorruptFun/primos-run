@@ -42,10 +42,50 @@ go stale here claimed 520 of 3,069 tokens for a day after full coverage landed.
   the screen — the legs go visually dead. `TILT` is low on purpose; `YAW`
   carries readability.
 
+- **A hair cut or a hat in `head-back.js` is ONE PATH, filled once.** Every
+  extra shape a cut adds — a spike, a bushy lobe, a cap's adjuster notch — is a
+  subpath of the same path, unioned by nonzero winding. Paint one on top
+  instead and it stays flat under the cel light pass while the crown goes
+  lighter around it, and a few flat marks high on an egg are a pair of eyes: the
+  head grows a face, which is the one thing that file exists to prevent. The
+  sheen is on its third attempt for exactly this reason and is now a tapered
+  band following the crown, because a *blob* says nothing about which way a
+  surface turns and two of them say "eyes".
+
+- **The traits separate by SILHOUETTE. Detail inside the shape is noise.** At
+  75px across, the cap's script mark read as a scribble, the beanie path's knit
+  ribbing turned every Black Bandana into a barrel, and three ruled lines down a
+  mullet made it a wooden keg. What distinguishes eleven hats is a notch, a
+  crease, a hem, a brim, a pair of tails. Judge it in `dev/head-test.html`,
+  which shows every trait at once — one at a time in `rig-test.html` is how a
+  batch of them shipped unreadable.
+
+- **`primo-traits.js` hands over structure; the PFP sampler hands over colour.**
+  Earrings carry a `kind` as well as a colour (`hoop`/`stud`/`drop`) because
+  eight names all rendered as the same gold hoop otherwise. The earring is drawn
+  on ONE ear, last, overlapping the head — a matched pair at the two edges of a
+  dark oval is another face, and drawn before the hair the hair covers the half
+  that says "this hangs off an ear".
+
 - **Checkpoints, border walls and cruisers cannot be jumped, by design.** Their
   heights are set above the jump apex deliberately (`RUN.jumpV` in `config.js`,
   and the comment on `PROP_SPEC` in `js/art/props.js`). Lane changes are the
   answer. Dumpsters/crates/cones are jumpable; clotheslines/awnings need a slide.
+
+- **The skateboard powerup was `lowrider` until v16 and the shelf remembers.**
+  A shelf is `{ itemId: count }` in the player's save and NOTHING validates it
+  against the catalog: `cleanShelf` keeps any key, `takeStock` hands every key
+  to `loadoutFor()`, and `loadoutFor` ignores an id it does not know. So the
+  rename does not error anywhere — it silently bins a 55-chela item off the
+  shelf of everyone who bought one. `RENAMED` in `js/wallet.js` is what carries
+  it across, and it is the pattern for any future id change.
+
+  `poseRide()` in `runner.js` is **inverse-kinematics against the deck**: both
+  ankles solve to y = 0.02, where `drawBoard()` in `render.js` puts the plate.
+  Change `hipY` and all four leg angles have to be re-solved — they are not
+  numbers to nudge. The stagger is paid in z, not x, because the projection
+  turns 0.26H of depth into ~0.09H across the screen. Corrupt still pulls up in
+  a lowrider in `cont.body`; that is his car and it stays.
 
 - **`data/primos-index.json` is built offline by `scripts/harvest-primos.mjs`,
   and it no longer touches Magic Eden.** ME could only ever reach ~520 of 3,069:
@@ -123,14 +163,27 @@ Use the preview tools, not `python3` in a Bash call.
 
 ## Iterate on the character in the harness, not in-game
 
-`dev/rig-test.html` renders the whole run cycle plus air/slide poses side by
-side, with a live oversized view and a real Primo loaded from IPFS. It
-cache-busts its imports on purpose — `python3 -m http.server` answers with
-`Last-Modified` and browsers reuse stale ES modules, which silently shows you
-the previous build. The game itself does NOT cache-bust, so clear the service
-worker (`primos-run-<CACHE_VERSION>`, whatever `sw.js` currently says) when
-testing there. `pwa-register.js` already skips registration on localhost, which
-covers the dev loop; a stale cache is a symptom of having tested on a deploy.
+Two harnesses, and reaching for the wrong one is how the trait pass shipped
+half-broken:
+
+- **`dev/rig-test.html` — the POSE.** The whole run cycle plus air, slide, lean
+  and the skateboard stance, with a live oversized view and a real Primo off
+  IPFS. One Primo at a time, moving.
+- **`dev/head-test.html` — the TRAITS.** Every hat, cut, hair colour, accessory
+  and the collisions between them, all on screen together, on a size slider from
+  gameplay to 2×. A hat that reads as a lump is only obvious beside the five
+  that do not. `window.only('<section>')` collapses it to one row, because an
+  automated browser screenshots the first viewport and never follows a scroll.
+
+Both cache-bust their imports, and **`scripts/dev-server.py` serves `no-store`**
+so the game does not need to. If an edit does not appear, check what is actually
+listening on the port before debugging the code — a stray `python3 -m
+http.server` squatting 4177 serves the same files WITH caching, and the symptom
+is a file you just saved rendering as its previous version with nothing in the
+console. The deployed game does not cache-bust either, so clear the service
+worker (`primos-run-<CACHE_VERSION>`, whatever `sw.js` says) when testing there;
+`pwa-register.js` skips registration on localhost, so a stale cache is a symptom
+of having tested on a deploy.
 
 ## Layout
 
@@ -140,7 +193,10 @@ covers the dev loop; a stale cache is a symptom of having tested on a deploy.
 | `js/world.js` | chunk generator — chunks are hand-authored and always fair |
 | `js/render.js` | scene renderer, painter's algorithm |
 | `js/config.js` | every tunable lives here |
-| `js/art/runner.js` | skeleton, run cycle, toon-3D body |
+| `js/art/runner.js` | the POSES — run cycle, air, slide, the skateboard stance |
+| `js/art/primo-runner.js` | projects a pose and paints the toon-3D body |
+| `js/art/head-back.js` | the back of the head — every hat and cut, one path each |
+| `js/art/primo-traits.js` | collection metadata → the fields head-back draws |
 | `js/art/primo-head.js` | PFP → head sprite (crop, mask, palette, lighting) |
 | `js/art/scenery.js` | sky + alley walls |
 | `js/art/sprites.js` | painted cut-out rig (unused for the body) + prop sprites |
@@ -150,7 +206,10 @@ covers the dev loop; a stale cache is a symptom of having tested on a deploy.
 | `js/leaderboard.js` | board submit/read + the race-name rules |
 | `js/referrals.js` | invite codes, `?ref=` capture, qualify + payout |
 | `js/merge.js`, `js/raceday.js` | pure: save reconciliation, day/week keys |
+| `js/racha.js`, `js/jales.js` | pure: daily streak + daily missions — see below |
+| `js/art/gear.js` | el fit draw code (shop icons + worn mask/chain) |
 | `js/account.js`, `js/boards.js` | the ACCOUNT and LEADERBOARD screens |
+| `js/ui-feedback.js` | what a DOM button does when pressed — see below |
 | `js/analytics.js` | the event pipe — `track()`, crash telemetry, opt-out |
 | `js/feedback.js` | the suggestion box — what players write to Corrupt |
 | `js/version.js` | the build stamp. Bump WITH `sw.js`'s `CACHE_VERSION` |
@@ -158,6 +217,43 @@ covers the dev loop; a stale cache is a symptom of having tested on a deploy.
 | `scripts/gen_art.py` | Gemini art generation + chroma key |
 | `scripts/make-icons.js` | PWA icons, zero dependencies |
 | `scripts/verify-rls.sh` | RLS audit — run after any migration |
+
+## El fit, la racha and los jales (the retention loop)
+
+Design in `docs/GAME_DESIGN.md` → "El Fit" and "Coming back tomorrow". The
+rules that will bite if rediscovered the hard way:
+
+- **Every payout and the latch that says it was paid share ONE storage write.**
+  Run takings, the racha bonus and jale rewards all land through
+  `wallet.bankRun`'s single `writeEcon` in `fillGameOver()` — the settle
+  callback stamps `racha`/`jales` on the same blob the deposit writes. Split
+  that into deposit-then-stamp and a crash between the two (or a cloud push of
+  the gap) re-opens the day and mints the bonus again. Same class of scar as
+  `referralWelcomeClaimed`.
+- **`gear`, `fit`, `fitSetAt`, `racha`, `jales` are all in `ECON_KEYS`** —
+  written straight against storage, disk always beats a caller's boot-time
+  copy. Remove one and the next mute-toggle `save()` silently reverts it.
+- **Merge rules are not interchangeable.** `gear` unions (paid goods), `fit`
+  rides its own timestamp like the handle (a preference), `racha` takes the
+  LATER day — maxing lengths would resurrect a broken streak — and `jales`
+  unions `done` per same-day only. Each has a stated reason in `js/merge.js`;
+  swapping one for another compiles fine and mints or destroys quietly.
+- **`jalesForDay(dayKey)` must stay pure and deterministic** — every player on
+  earth draws the same three. It runs on the boards' UTC `dayKey`, never local
+  midnight (double-dip by timezone otherwise).
+- **The jales pool prices stats `game.js` counts** (`jumps`, `slides`,
+  `smashes`, `powerups`, `bestMult`, …). Stop counting one and its mission
+  becomes a permanently-stuck bar — which looks like a mission bug, not a
+  game.js bug. `dev/cloud-test.html` pins the pool's stats against a run-stat
+  bundle shape.
+- **A worn mask deliberately replaces the hair/hat silhouette** (a balaclava
+  over a fitted cap is two hats). The renderer draws `rig.fit.mask` INSTEAD of
+  the head-back hair pass, not on top of it. Outfit colours still come off the
+  player's PFP, on purpose — that identity trade is the player's to make.
+- **Retention pays by RUNNING, never by showing up.** No login bonus, no claim
+  button. If a future feature wants one, read the design chapter first — the
+  streak resets are the loss-aversion hook and a claim button breaks the "no
+  payment sheet, chelas in chelas out" honesty stance.
 
 ## Cloud save, sign-in and the boards
 
@@ -353,6 +449,34 @@ Everything the analytics section says about the `primos_` prefix, `db push`, and
 - ⚠ `scripts/verify-rls.sh`'s rate-limit probe **writes five rows**, and they
   arrive marked `new`. Clear them after a production run:
   `delete from public.primos_feedback where app_version = 'verify';`
+
+## Press feedback (`js/ui-feedback.js`)
+
+Every DOM button's press, click, buzz and confirmation, delegated at the
+document so a screen that wires its own controls cannot be born silent — which
+is how the whole ACCOUNT screen was. Written up in `docs/BUILD_OVERVIEW.md`.
+
+- **`.pressed` is not a duplicate of `:active`, it is the only one that fires on
+  a phone.** iOS Safari withholds `:active` until it knows the touch is not a
+  scroll, and every menu is inside `.screen` (`overflow-y: auto`,
+  `touch-action: pan-y`), so on a quick tap the verdict arrives after the finger
+  has gone and the button never moves. The body also sets
+  `-webkit-tap-highlight-color: transparent` deliberately, so there is no OS
+  flash underneath to save it. Both selectors share ONE rule per button family
+  — keep it that way or the two presses drift.
+- **`uiClick()` drops a repeat inside 120ms, and that is load bearing.**
+  ui-feedback clicks on `pointerdown`; ~20 buttons in `js/main.js` also click in
+  their own handler. Same gesture, twice, ~80ms apart — heard as a flam. Remove
+  the guard and every menu button stutters.
+- **The toast is fixed to the VIEWPORT, and centred by `left/right` + auto
+  margins, never `left: 50%`** — a fixed box with no width shrinks to fit the
+  space left of its containing block's right edge, so `left: 50%` silently caps
+  it at half the screen and messages wrap for no visible reason.
+- **`busy()` writes `textContent`**, so it is for buttons only. Point it at
+  `.file-btn` and it deletes the hidden file input inside the label.
+- `#btn-claim:disabled` predates the general `.btn:disabled` and carries
+  `opacity: 1` to opt out of it. It is a shorter button with a 2px lip and its
+  own tuning; without the opt-out the two dimmings stack.
 
 ## Checks
 

@@ -41,7 +41,7 @@ export const RUN = {
   gassedSpeed: 8.5,                  // crawl once stamina is gone
   laneSnap: 11.0,                    // how fast you slide between lanes
   gravity: -52.0,
-  // apex = v^2 / (2g): 1.43u standing, 2.16u on the lowrider. Tuned so a jump
+  // apex = v^2 / (2g): 1.43u standing, 2.16u on the skateboard. Tuned so a jump
   // clears dumpsters/crates/cones but never a checkpoint or a border wall.
   jumpV: 12.2,
   boardJumpV: 15.0,
@@ -134,7 +134,7 @@ export const CHASE = {
 export const POWER = {
   magnet:   { time: 10.0, label: 'PIÑATA MAGNET', color: '#ff4d9d' },
   chancla:  { time: 6.5,  label: 'CHANCLA RUSH',  color: '#ffcf3d' },
-  lowrider: { time: 13.0, label: 'LOWRIDER',      color: '#4dd8ff' },
+  skateboard: { time: 13.0, label: 'SKATEBOARD',      color: '#4dd8ff' },
 };
 
 export const MAGNET_RADIUS = 3.6;
@@ -208,6 +208,9 @@ export const FX = {
 
 // Vibration patterns, in ms. Kept short — long buzzes read as a malfunction.
 export const HAPTICS = {
+  // A menu press. The shortest one in the table on purpose: it fires on every
+  // button in the game, so anything you can still feel a moment later is a tic.
+  ui: 6,
   lane: 9,
   blocked: [5, 20, 5],
   jump: 7,

@@ -49,7 +49,15 @@ class NoCacheHandler(SimpleHTTPRequestHandler):
 
 
 def main():
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 4177
+    # argv wins, then the PORT env var (the preview harness's autoPort hands the
+    # assigned port over this way), then the traditional default. The env path
+    # exists so several sessions can each run their own server without editing
+    # anything — port collisions between parallel chats cost real time once.
+    import os
+    if len(sys.argv) > 1:
+        port = int(sys.argv[1])
+    else:
+        port = int(os.environ.get('PORT', 4177))
     handler = partial(NoCacheHandler, directory=str(ROOT))
     with ThreadingHTTPServer(('127.0.0.1', port), handler) as httpd:
         print(f'primos-run dev server on http://localhost:{port} (no-store)')

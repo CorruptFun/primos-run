@@ -19,6 +19,7 @@ import { PAL, roundRect } from './art/palette.js';
 import { PROP_DRAW } from './art/props.js';
 import { PROP_EXTENT } from './tutorial.js';
 import { drawTrainer, loadTrainer } from './art/trainer.js';
+import { GEAR_STYLE, drawMaskIcon, drawChainIcon } from './art/gear.js';
 import { t, onLangChange } from './i18n.js';
 import * as wallet from './wallet.js';
 import * as sfx from './audio.js';
@@ -83,18 +84,51 @@ export const CATALOG = [
     effect: { life: 1 },
   },
   {
-    id: 'lowrider',
+    id: 'skateboard',
     price: 55,
-    icon: 'lowrider',
+    icon: 'skateboard',
     tone: '#4dd8ff',
-    name: 'item.lowrider',
-    blurb: 'item.lowrider.b',
-    effect: { power: 'lowrider' },
+    name: 'item.skateboard',
+    blurb: 'item.skateboard.b',
+    effect: { power: 'skateboard' },
   },
 ];
 
 const BY_ID = {};
 for (const item of CATALOG) BY_ID[item.id] = item;
+
+/**
+ * El fit — the second half of the counter. Everything above is consumed by a
+ * run; everything here is owned forever and WORN, and priced accordingly: the
+ * shelf is one run's takings, gear is several DAYS of engaged play (racha +
+ * jales pay ~110/day on top of takings — see docs/GAME_DESIGN.md). A cosmetic
+ * must be saved for or owning it says nothing.
+ *
+ * `slot` is the body location (one worn per slot); `style` keys GEAR_STYLE in
+ * js/art/gear.js, so a new colourway is one row here and one entry there.
+ * Cheapest first, same reason as the shelf.
+ */
+export const GEAR_CATALOG = [
+  { id: 'mask-negro',   slot: 'mask',  price: 150, style: 'maskNegro',
+    tone: '#3a3d49', name: 'gear.maskNegro', blurb: 'gear.maskNegro.b' },
+  { id: 'mask-rosa',    slot: 'mask',  price: 200, style: 'maskRosa',
+    tone: PAL.hotPink, name: 'gear.maskRosa', blurb: 'gear.maskRosa.b' },
+  { id: 'chain-oro',    slot: 'chain', price: 250, style: 'chainOro',
+    tone: PAL.gold, name: 'gear.chainOro', blurb: 'gear.chainOro.b' },
+  { id: 'mask-oro',     slot: 'mask',  price: 400, style: 'maskOro',
+    tone: PAL.gold, name: 'gear.maskOro', blurb: 'gear.maskOro.b' },
+  { id: 'chain-cubana', slot: 'chain', price: 500, style: 'chainCubana',
+    tone: '#ffd75e', name: 'gear.chainCubana', blurb: 'gear.chainCubana.b' },
+];
+
+const GEAR_BY_ID = {};
+for (const item of GEAR_CATALOG) GEAR_BY_ID[item.id] = item;
+
+/** The style block the renderer needs for a worn item id, or null. */
+export function gearStyleFor(id) {
+  const item = GEAR_BY_ID[id];
+  return item ? GEAR_STYLE[item.style] || null : null;
+}
 
 /**
  * What a continue costs, by how many you have already taken THIS RUN.
@@ -183,6 +217,31 @@ function paintIcon(cv, item) {
   const u = Math.min((w * 0.74) / span, (w * 0.66) / (ex.halfW * 2));
   TOBJ.seed = ex.seed;
   draw(c, w / 2, w / 2 + ((ex.hi + ex.lo) / 2) * u, u, TOBJ, 0);
+  c.restore();
+}
+
+function paintGearIcon(cv, item) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = ICON_PX;
+  cv.width = Math.round(w * dpr);
+  cv.height = Math.round(w * dpr);
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, w, w);
+
+  const bg = c.createLinearGradient(0, 0, 0, w);
+  bg.addColorStop(0, 'rgba(255,255,255,0.10)');
+  bg.addColorStop(1, 'rgba(0,0,0,0.30)');
+  c.fillStyle = bg;
+  roundRect(c, 0, 0, w, w, 13);
+  c.fill();
+
+  c.save();
+  roundRect(c, 0, 0, w, w, 13);
+  c.clip();
+  const st = GEAR_STYLE[item.style];
+  if (item.slot === 'mask') drawMaskIcon(c, w, st);
+  else drawChainIcon(c, w, st);
   c.restore();
 }
 
@@ -281,9 +340,115 @@ function renderShelf() {
     list.appendChild(row);
   }
 
+  // ---- el fit, below the consumables in the same list. One scroll, one
+  // counter — a second screen would hide the reason to save up.
+  const sect = document.createElement('p');
+  sect.className = 'shop-sect';
+  sect.textContent = t('gear.sect');
+  list.appendChild(sect);
+
+  const worn = wallet.fitOn();
+  for (const item of GEAR_CATALOG) {
+    const owned = wallet.ownsGear(item.id);
+    const isWorn = worn[item.slot] === item.id;
+    const can = have >= item.price;
+    if (!owned && can) anyAffordable = true;
+
+    const row = document.createElement('div');
+    row.className = 'shop-item' + (owned ? ' owned' : can ? '' : ' broke');
+    row.style.setProperty('--tone', item.tone);
+
+    const cv = document.createElement('canvas');
+    cv.className = 'shop-icon';
+    cv.setAttribute('aria-hidden', 'true');
+    paintGearIcon(cv, item);
+    row.appendChild(cv);
+
+    const meta = document.createElement('div');
+    meta.className = 'shop-meta';
+    const name = document.createElement('p');
+    name.className = 'shop-name';
+    name.textContent = t(item.name);
+    meta.appendChild(name);
+    const blurb = document.createElement('p');
+    blurb.className = 'shop-blurb-i';
+    blurb.textContent = t(item.blurb);
+    meta.appendChild(blurb);
+    if (isWorn) {
+      const stock = document.createElement('p');
+      stock.className = 'shop-stock';
+      stock.textContent = t('gear.wornNote');
+      meta.appendChild(stock);
+    }
+    row.appendChild(meta);
+
+    // One button, three lives: the price (buy), WEAR (owned, not worn), and
+    // TAKE OFF (worn). Owning is permanent, so the price never comes back.
+    const act = document.createElement('button');
+    act.type = 'button';
+    if (!owned) {
+      act.className = can ? 'btn btn-small shop-buy' : 'btn btn-ghost btn-small shop-buy';
+      act.textContent = can ? String(item.price) : t('shop.short').replace('%n', item.price - have);
+      act.setAttribute('aria-label', `${t(item.name)} — ${item.price}`);
+      act.addEventListener('click', () => attemptBuyGear(item));
+    } else {
+      act.className = isWorn ? 'btn btn-ghost btn-small shop-buy' : 'btn btn-small shop-buy';
+      act.textContent = isWorn ? t('gear.takeOff') : t('gear.wear');
+      act.setAttribute('aria-label', `${t(item.name)} — ${isWorn ? t('gear.takeOff') : t('gear.wear')}`);
+      act.addEventListener('click', () => wearGear(item, isWorn ? null : item.id));
+    }
+    row.appendChild(act);
+
+    list.appendChild(row);
+  }
+
   // Never a wall of dead buttons with no way out of it: if nothing on the
   // shelf is reachable, say what the way out is — and the way out is running.
   if (!anyAffordable) note(t('shop.broke'));
+}
+
+function attemptBuyGear(item) {
+  sfx.resume();
+  // Pay, grant AND own in one write — wallet.buyGear refuses double-purchase
+  // without charging, so a stale row after a cloud merge cannot double-bill.
+  const bought = wallet.buyGear(item.id, item.price);
+  if (bought === null) {
+    sfx.uiClick();
+    track(EVENTS.SHOP_DENIED, {
+      item: item.id,
+      price: item.price,
+      short: Math.max(0, item.price - wallet.balance()),
+    });
+    note(t('shop.denied'));
+    renderShelf();
+    return;
+  }
+  track(EVENTS.SHOP_BUY, { item: item.id, price: item.price, left: bought.left });
+  // Straight onto the body — buying a mask and not wearing it is a click no
+  // one asked for, and the equip is one more tap to undo.
+  wallet.equipGear(item.slot, item.id);
+  track(EVENTS.GEAR_EQUIP, { item: item.id, slot: item.slot });
+  notifyFitChanged();
+  sfx.powerUp();
+  note(t('shop.bought').replace('%s', t(item.name)));
+  renderShelf();
+}
+
+function wearGear(item, id) {
+  sfx.uiClick();
+  if (wallet.equipGear(item.slot, id)) {
+    track(EVENTS.GEAR_EQUIP, { item: id || 'none', slot: item.slot });
+    notifyFitChanged();
+  }
+  renderShelf();
+}
+
+// The runner's rig is rebuilt by main.js when the fit changes — the shop must
+// not import the game to tell it, so main.js registers interest here.
+let fitListener = null;
+export function onFitChange(cb) { fitListener = cb; }
+function notifyFitChanged() {
+  try { fitListener?.(wallet.fitOn()); } catch { /* the shop must not crash on a listener */ }
 }
 
 function attemptBuy(item) {
