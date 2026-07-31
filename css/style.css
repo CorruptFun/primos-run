@@ -176,14 +176,27 @@ html, body {
 
 /* ------------------------------------------------------- the primo browser */
 
-/* A fixed row height is load bearing: js/primo-browser.js works out which tiles
-   are near the viewport from scrollTop, and it can only do that if every row is
-   the same height. Change the tile size here and change TILE there. */
+/* ⚠ `grid-auto-rows` IS THE FIX FOR THE OVERLAP BUG, and it must stay.
+
+   The rows used to take their height from `aspect-ratio: 1` on the tile. That
+   works everywhere except the place it shipped to: `.primo-tile` is a <button>,
+   and Safari lays form controls out through their own intrinsic-size path where
+   aspect-ratio is not honoured. The tile's only content is an <img> with no src
+   (zero intrinsic height) and an absolutely-positioned number, so every row
+   collapsed to a couple of pixels and 3,069 of them stacked into five unreadable
+   vertical stripes. It looked like a rendering bug and it was a sizing one.
+
+   Stating the row height outright makes the grid's geometry independent of what
+   the tile happens to be made of. `aspect-ratio` stays below as a belt-and-
+   braces for wider columns, but nothing depends on it any more. */
 .primo-grid {
   position: relative;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  grid-auto-rows: 68px;
   gap: 6px;
+  /* One page of 24 fits without scrolling on a phone; the cap is a guard for
+     very narrow columns, not the way the grid is meant to be read. */
   max-height: min(46vh, 380px);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -196,8 +209,32 @@ html, body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* The pager. `justify-content: space-between` would push the arrows to the
+   sheet edges and leave the range floating; a fixed centre column keeps the
+   label still while the two buttons flank it. */
+.pager {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 2px;
+}
+
+.pager .btn { margin-top: 0; min-height: 38px; }
+.pager .btn:disabled { opacity: 0.35; cursor: default; }
+
+.pager-range {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 .primo-tile {
   position: relative;
+  height: 100%;
   aspect-ratio: 1;
   padding: 0;
   border: 1px solid var(--line);

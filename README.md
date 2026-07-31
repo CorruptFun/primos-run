@@ -96,6 +96,7 @@ Full tuning rationale in [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md).
 | `js/referrals.js` | invite codes, qualification, rewards |
 | `js/analytics.js` | the event pipe |
 | `js/feedback.js` | the suggestion box — what players write to Corrupt |
+| `js/primo-cache.js` | the local art cache — each Primo downloaded once, ever |
 | `js/account.js` | ACCOUNT — sign-in, race name, backup, invites, privacy |
 | `stats.html` · `js/stats/` | the admin analytics dashboard |
 | `dev/rig-test.html` | character pose harness — iterate here, not in-game |

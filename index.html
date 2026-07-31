@@ -327,6 +327,13 @@
         <button class="btn btn-small" id="btn-browse-jump" data-i18n="browse.jump">GO</button>
       </div>
       <div class="primo-grid" id="browse-grid"></div>
+      <!-- A page at a time, not one 3,069-tile scroll. See the header of
+           js/primo-browser.js for what that cost on a real phone. -->
+      <div class="pager">
+        <button class="btn btn-small" id="btn-browse-prev" type="button" aria-label="Previous page">‹</button>
+        <span class="pager-range" id="browse-range"></span>
+        <button class="btn btn-small" id="btn-browse-next" type="button" aria-label="Next page">›</button>
+      </div>
       <!-- The chosen one, and the only control that writes anything. -->
       <div class="browse-pick hidden" id="browse-pick">
         <canvas id="browse-preview" width="132" height="132" role="img" aria-label="Primo"></canvas>
@@ -398,6 +405,13 @@
            about what leaves this device, because a privacy control the player
            cannot find is not a control. Checked = on, so the label reads as the
            thing being allowed rather than as a double negative. -->
+      <!-- Downloaded Primo art. Disclosed and clearable because the browser copy
+           now says it is "kept on your device" — a claim that needs somewhere to
+           point. js/primo-cache.js owns the bucket. -->
+      <p class="sec sep" data-i18n="acct.artTitle">Downloaded art</p>
+      <p class="hint" id="acct-art-copy"></p>
+      <button class="btn btn-ghost btn-small wide" id="btn-clear-art" data-i18n="acct.artClear">CLEAR DOWNLOADED ART</button>
+
       <p class="sec sep" data-i18n="acct.statsTitle">Gameplay stats</p>
       <p class="hint" data-i18n="acct.statsCopy"></p>
       <label class="opt-row">

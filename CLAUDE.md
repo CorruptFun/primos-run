@@ -64,7 +64,54 @@ go stale here claimed 520 of 3,069 tokens for a day after full coverage landed.
 
 - **No collection artwork lives in this repo, and none should.** The index holds
   IPFS CIDs only. Player images are fetched client-side at the player's request
-  and kept in `localStorage`.
+  and kept in `localStorage` — and, since `js/primo-cache.js`, in a Cache Storage
+  bucket on the player's own device. Nothing is uploaded anywhere.
+
+- **PRIMO ART HAS NOTHING TO DO WITH SUPABASE.** It is the natural assumption and
+  it is wrong: the pixels come from public IPFS gateways and
+  `data/primos-index.json` is a static file on this game's own host (precached by
+  `sw.js`). Supabase serves saves, boards, analytics and feedback only. When
+  someone asks to "reduce Supabase pulls" for the art, the honest answer is that
+  there were never any — the traffic to cut is the gateways' and the static
+  host's, which is what the art cache does.
+
+- **`sw.js`'s activate sweep must only delete its OWN `primos-run-` caches.** It
+  used to delete every cache whose key was not the current shell — the shape
+  every service-worker tutorial ships — which silently wiped `primos-art-v1` on
+  **every deploy**, turning a permanent per-device cache into a per-release one.
+  The players who update most often would have paid the most bandwidth and
+  nothing would have logged a thing.
+
+- **`aspect-ratio` on a `<button>` is not honoured by Safari's form-control
+  layout.** The Primo grid's tiles are buttons whose only content is an `<img>`
+  with no `src`, so every row collapsed to a couple of pixels and the tiles
+  stacked into unreadable vertical stripes ON IPHONE ONLY — Chromium renders it
+  fine, so it cannot be caught on a desktop. `.primo-grid` states
+  `grid-auto-rows` outright; nothing about the grid's geometry may go back to
+  depending on what the tile is made of.
+
+- **The Primo browser is PAGINATED (`PAGE_SIZE = 20`), not one long scroll.** The
+  first version built all 3,069 tiles up front: measured at 3,069 DOM nodes, a
+  61,000px scroll height and just over a second of layout before the sheet could
+  open — on a desktop. 20 is sized to the grid's own height cap so a page fits
+  with nothing clipped; 24 spilled a sixth row under the fold, which meant the
+  page you were told you were on was not the page you could see.
+
+- **The crew draw rotates DAILY, and that is what makes the art cache work.** It
+  used to pick four fresh tokens on every launch, so the four menu images could
+  never be anything but a cache miss — every launch re-fetched four PFPs and the
+  hand-drawn stand-ins sat on screen until they landed, which is the "art flashes
+  on load" bug. Keep the rotation coarse enough that a returning player hits
+  cache. `paintCrew` also holds a neutral placeholder for `CREW_ART_GRACE` rather
+  than painting cartoons it is about to replace — four faces visibly changing
+  identity is a much louder event than four faces arriving.
+
+- **`loadPrimoArt` must fetch each image ONCE.** Its first version baked from the
+  gateway with an `<img>` and then re-fetched the same bytes to fill the cache:
+  32 requests for a 24-tile page, i.e. a caching layer that doubled first-visit
+  bandwidth to halve the second visit's. Go through `fetchArt` and bake from what
+  it returns. The `<img>` walk that remains is the fallback for a gateway with no
+  CORS headers, where `fetch` cannot serve at all.
 
 - **`art/*.png` is generated, not hand-drawn.** `scripts/gen_art.py` calls
   Gemini and chroma-keys the result. `art/raw/` is gitignored.
@@ -97,6 +144,7 @@ covers the dev loop; a stale cache is a symptom of having tested on a deploy.
 | `js/art/primo-head.js` | PFP → head sprite (crop, mask, palette, lighting) |
 | `js/art/scenery.js` | sky + alley walls |
 | `js/art/sprites.js` | painted cut-out rig (unused for the body) + prop sprites |
+| `js/primo-cache.js` | the local art cache — fetch a Primo's pixels once per device |
 | `js/store.js` | localStorage + backup code — the AUTHORITATIVE save |
 | `js/cloud.js` | Google sign-in, cloud save pull/merge/push |
 | `js/leaderboard.js` | board submit/read + the race-name rules |

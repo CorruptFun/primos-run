@@ -22,6 +22,7 @@ import {
 } from './referrals.js';
 import * as store from './store.js';
 import { EVENTS, isOptedOut, setOptedOut, track } from './analytics.js';
+import { cachedCount, clearArtCache } from './primo-cache.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -284,6 +285,25 @@ function paintPrivacy() {
   box.checked = !isOptedOut();
 }
 
+/**
+ * How much collection art this device is holding.
+ *
+ * Shown because the browser's own copy now promises the art "is kept on your
+ * device, never on ours" — a claim that needs somewhere to point, and a stored-
+ * data disclosure the player cannot act on is not a disclosure. Clearing it
+ * costs nothing but a re-download of whatever they look at next.
+ */
+function paintArtCache() {
+  const copy = $('acct-art-copy');
+  const btn = $('btn-clear-art');
+  if (!copy || !btn) return;
+  const n = cachedCount();
+  copy.textContent = n > 0
+    ? t('acct.artCopy').replace('%n', String(n))
+    : t('acct.artNone');
+  btn.disabled = n === 0;
+}
+
 export function initAccount() {
   const input = $('name-input');
   const preview = $('name-preview');
@@ -414,6 +434,16 @@ export function initAccount() {
       .catch(() => status(t('acct.badBackup'), true));
   });
 
+  // --- downloaded art ---
+  $('btn-clear-art').addEventListener('click', () => {
+    const btn = $('btn-clear-art');
+    btn.disabled = true;
+    void clearArtCache().then((ok) => {
+      status(ok ? t('acct.artCleared') : t('acct.artClearFail'), !ok);
+      paintArtCache();
+    });
+  });
+
   // --- privacy ---
   const optIn = $('acct-analytics');
   if (optIn) {
@@ -443,6 +473,7 @@ export function refreshAccount() {
   paintName();
   paintInvite();
   paintPrivacy();
+  paintArtCache();
   // After paintInvite, so a welcome that pays out repaints over a panel that has
   // already been built rather than racing it.
   payWelcomeIfDue();

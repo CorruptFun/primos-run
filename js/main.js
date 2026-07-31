@@ -40,7 +40,10 @@ import {
 // Corrupt's badge, already baked for the tutorial. The suggestion box borrows
 // the same canvas rather than shipping a second crop of the same JPEG.
 import { drawTrainer, loadTrainer } from './art/trainer.js';
-import { pruneDays, recordDay } from './raceday.js';
+// dayKey is the crew draw's rotation key — see crewDraw(). Same UTC day the
+// boards and the save's `days` map use, so nothing in the game disagrees about
+// when "today" starts.
+import { dayKey, pruneDays, recordDay } from './raceday.js';
 import { initBoards, refreshBoards, relangBoards, showRunStanding } from './boards.js';
 import { initAccount, refreshAccount, relangAccount, releaseAccount } from './account.js';
 import {
@@ -574,9 +577,31 @@ function paintCrew() {
       c2.font = '700 30px system-ui, sans-serif';
       c2.fillText('+', 66, 40);
     } else {
-      // Real collection art once it has landed; the drawn stand-in until then.
       const art = isCustom ? customImg : crewImgs.get(c.id);
-      drawPrimoPortrait(c2, 66, 84, 112, c, { img: art || null });
+      if (!art && !isCustom && crewArtPending) {
+        // ⚠ NOT the drawn stand-in, for this brief moment only.
+        //
+        // The cartoons used to be painted immediately and then swapped for real
+        // collection art a moment later, which read as the game glitching on
+        // every single launch — four faces visibly changing identity is a much
+        // louder event than four faces arriving. The stand-ins are still the
+        // fallback and still the reason the menu is never empty; they just stop
+        // being shown during the window where they are about to be replaced.
+        //
+        // See crewArtPending: the window closes the instant the art lands, and
+        // in any case after CREW_ART_GRACE, so a cold or offline device gets its
+        // cartoons and never sits looking at placeholders.
+        c2.fillStyle = 'rgba(253,246,230,0.10)';
+        c2.beginPath();
+        c2.arc(66, 60, 26, 0, Math.PI * 2);
+        c2.fill();
+        c2.beginPath();
+        c2.ellipse(66, 116, 38, 26, 0, Math.PI, Math.PI * 2);
+        c2.fill();
+      } else {
+        // Real collection art once it has landed; the drawn stand-in until then.
+        drawPrimoPortrait(c2, 66, 84, 112, c, { img: art || null });
+      }
     }
     cv.classList.toggle('on', i === selectedIdx);
   });
@@ -667,10 +692,68 @@ const status = (msg) => { $('primo-status').textContent = msg; };
  * Each one leaves the cartoons on screen with nothing logged, which is exactly
  * how it looks when it "just doesn't work".
  */
+// The crew draw, remembered for the UTC day.
+//
+// ⚠ THIS IS THE FIX FOR THE ART FLASH, and the draw is where the flash came
+// from. drawTokens() picked four NEW tokens on every single launch, so the four
+// images could never be anything but a cache miss — every launch re-fetched
+// four PFPs from a public gateway, and the hand-drawn cartoons sat on screen
+// until they landed. The cache in js/primo-cache.js could not help, because the
+// game never asked for the same token twice.
+//
+// Rotating daily keeps what the randomness was for — the menu is four different
+// faces, not four fixed strangers — while making every launch after the first
+// one of the day an instant cache hit. One day's four images per device instead
+// of four per launch.
+const CREW_DRAW_KEY = 'primos-run:crew-draw';
+
+/**
+ * How long the crew tiles will hold a placeholder rather than show a stand-in
+ * that is about to be replaced. See the branch in paintCrew().
+ *
+ * With a warm art cache the real faces land far inside this, so the swap the
+ * player used to see simply does not happen. Cold or offline, it is the longest
+ * anyone waits before the cartoons appear and stay — which is the old behaviour,
+ * just under three quarters of a second of a quiet placeholder first.
+ */
+const CREW_ART_GRACE = 900;
+let crewArtPending = true;
+
+/** Close the window and repaint, whatever happened. Idempotent. */
+function endCrewGrace() {
+  if (!crewArtPending) return;
+  crewArtPending = false;
+  paintCrew();
+}
+
+function crewDraw(idx) {
+  const today = dayKey();
+  try {
+    const saved = JSON.parse(localStorage.getItem(CREW_DRAW_KEY) || 'null');
+    if (saved && saved.day === today && Array.isArray(saved.tokens)
+        && saved.tokens.length === CREW.length
+        // A token that has fallen out of the index (a re-harvest) would draw a
+        // blank tile forever, so the remembered draw is only trusted while
+        // every one of its members still resolves.
+        && saved.tokens.every((n) => cidFor(idx, n))) {
+      return saved.tokens;
+    }
+  } catch {
+    /* unreadable — fall through and draw a fresh set */
+  }
+  const tokens = drawTokens(idx, CREW.length);
+  try {
+    localStorage.setItem(CREW_DRAW_KEY, JSON.stringify({ day: today, tokens }));
+  } catch {
+    /* blocked — the draw is simply per-launch again, as it used to be */
+  }
+  return tokens;
+}
+
 async function loadRealCrew() {
   const idx = await getIndex();
   primoIndex = idx;
-  const tokens = drawTokens(idx, CREW.length);
+  const tokens = crewDraw(idx);
   if (!tokens.length) return;
 
   await Promise.all(CREW.map(async (c, i) => {
@@ -690,6 +773,10 @@ async function loadRealCrew() {
     // pick up the real art immediately rather than on the next tap.
     if (roster[selectedIdx].id === c.id) selectCrew(selectedIdx);
   }));
+  // Every token has resolved one way or the other. Any tile still without art
+  // is one whose gateway never answered, and it should show its stand-in now
+  // rather than wait out the rest of the grace window.
+  endCrewGrace();
 }
 
 /**
@@ -1309,8 +1396,12 @@ function boot() {
   // Bake head sprites for the drawn crew so the in-game head is always a
   // sprite, whether it came from code or from the collection.
   for (const c of CREW) crewRigs.set(c.id, { ...headFromCharacter(c), pants: c.pants });
-  // Upgrade the roster to real collection art in the background.
+  // Upgrade the roster to real collection art in the background. The grace
+  // timer is the backstop: loadRealCrew() ends the window itself when it
+  // finishes, but a gateway that stalls holds it open for its full fence, and
+  // nobody should look at placeholders for nine seconds.
   loadRealCrew();
+  setTimeout(endCrewGrace, CREW_ART_GRACE);
   crewRigs.set(CUSTOM_ID, { ...headFromCharacter(CUSTOM_TEMPLATE), pants: CUSTOM_TEMPLATE.pants });
 
   buildCrew();

@@ -462,6 +462,21 @@ const STR = {
   // Gameplay stats. The copy says exactly what is collected and exactly what is
   // not, because the whole reason the identity is a random id rather than a
   // fingerprint is so this paragraph can be written honestly.
+  // Downloaded Primo art (js/primo-cache.js). The honest counterpart to the
+  // browser's "kept on your device, never on ours" — it says how much, and the
+  // button next to it is what makes that sentence actionable rather than a
+  // reassurance the player has to take on trust.
+  'acct.artTitle':    { en: 'Downloaded art', es: 'Arte descargado' },
+  'acct.artCopy':     { en: '%n Primos are saved on this device so they load instantly and do not '
+                          + 'come down again. Clearing costs nothing but the next download.',
+                        es: '%n Primos guardados en este dispositivo para que carguen al instante y '
+                          + 'no se vuelvan a descargar. Borrarlos no cuesta más que la próxima descarga.' },
+  'acct.artNone':     { en: 'Nothing downloaded yet. Primos you look at get kept here.',
+                        es: 'Nada descargado todavía. Los Primos que veas se guardan aquí.' },
+  'acct.artClear':    { en: 'CLEAR DOWNLOADED ART', es: 'BORRAR ARTE DESCARGADO' },
+  'acct.artCleared':  { en: 'Cleared. They will download again as you look at them.',
+                        es: 'Borrado. Se descargarán otra vez cuando los veas.' },
+  'acct.artClearFail':{ en: 'Could not clear it. Try again.', es: 'No se pudo borrar. Inténtalo otra vez.' },
   'acct.statsTitle':  { en: 'Gameplay stats', es: 'Estadísticas de juego' },
   'acct.statsCopy':   { en: 'Anonymous counts — runs, scores, which buttons get used — '
                           + 'tied to a random id, never to you. No trackers, no ad networks, '
