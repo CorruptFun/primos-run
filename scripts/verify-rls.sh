@@ -30,14 +30,29 @@ case "${1:-}" in
     URL="$1"; KEY="${2:?publishable key required}" ;;
 esac
 
-PASS=0; FAIL=0
+PASS=0; FAIL=0; INCONCLUSIVE=0
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; PASS=$((PASS+1)); }
 bad()  { printf '  \033[31m✗\033[0m %s\n     got: %s\n' "$1" "$2"; FAIL=$((FAIL+1)); }
+# Neither a pass nor a failure. A test that CANNOT distinguish safe from unsafe
+# must say so — reporting it green is the false assurance this whole script
+# exists to avoid, and reporting it red sends you hunting a bug that isn't there.
+meh()  { printf '  \033[33m?\033[0m %s\n     %s\n' "$1" "$2"; INCONCLUSIVE=$((INCONCLUSIVE+1)); }
 
 anon() { curl -s -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
               -H 'Content-Type: application/json' "$@"; }
 code() { curl -s -o /dev/null -w '%{http_code}' -H "apikey: $KEY" \
               -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' "$@"; }
+# The rows a write ACTUALLY touched. This is the only trustworthy signal for a
+# PATCH/DELETE: PostgREST answers 204 No Content whether it changed a thousand
+# rows or none, so RLS filtering an anonymous caller down to zero is byte-for-
+# byte indistinguishable from a successful mass delete if you read the status.
+touched() { curl -s -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+                 -H 'Content-Type: application/json' \
+                 -H 'Prefer: return=representation' "$@"; }
+# How many rows the table has, via the Content-Range header ("*/0" when empty).
+rowcount() { curl -s -D- -o /dev/null -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+                  -H 'Prefer: count=exact' -H 'Range: 0-0' "$1" \
+             | tr -d '\r' | sed -n 's|^[Cc]ontent-[Rr]ange: .*/||p'; }
 
 REST="$URL/rest/v1"
 FAKE="11111111-1111-1111-1111-111111111111"
@@ -97,13 +112,40 @@ C="$(code -X POST "$REST/primos_daily_scores" \
 [ "$C" = "401" ] || [ "$C" = "403" ] || [ "$C" = "400" ] \
   && ok "anonymous INSERT of a score refused (HTTP $C)" || bad "anonymous score INSERT accepted" "HTTP $C"
 
-C="$(code -X PATCH "$REST/primos_daily_scores?day_key=eq.$(date -u +%F)" -d '{"score":999999}')"
-[ "$C" = "401" ] || [ "$C" = "403" ] || [ "$C" = "404" ] || [ "$C" = "400" ] \
-  && ok "anonymous UPDATE refused (HTTP $C)" || bad "anonymous UPDATE accepted" "HTTP $C"
+# UPDATE / DELETE — judged on ROWS TOUCHED, never on the status code.
+#
+# PostgREST returns 204 No Content for a write that matched nothing, exactly as
+# it does for one that matched everything. Asserting on the status therefore
+# reports "anonymous DELETE accepted" against a perfectly locked table, which is
+# how this script cried wolf on 2026-07-31.
+#
+# And there is a second trap underneath: against an EMPTY table both probes
+# touch nothing no matter what the policies say, so a pass there means nothing
+# at all. That case is reported as inconclusive rather than green.
+BOARD_ROWS="$(rowcount "$REST/primos_daily_scores?select=user_id")"
+: "${BOARD_ROWS:=0}"
 
-C="$(code -X DELETE "$REST/primos_daily_scores?day_key=eq.$(date -u +%F)")"
-[ "$C" = "401" ] || [ "$C" = "403" ] || [ "$C" = "404" ] \
-  && ok "anonymous DELETE refused (HTTP $C)" || bad "anonymous DELETE accepted" "HTTP $C"
+R="$(touched -X PATCH "$REST/primos_daily_scores?day_key=eq.$(date -u +%F)" -d '{"score":999999}')"
+if [ "$BOARD_ROWS" = "0" ]; then
+  meh "anonymous UPDATE — INCONCLUSIVE" "the board is empty, so nothing could be touched either way; re-run once a real player has submitted a score"
+elif [ "$R" = "[]" ]; then
+  ok "anonymous UPDATE touched no rows"
+else
+  bad "anonymous UPDATE modified rows" "$R"
+fi
+
+R="$(touched -X DELETE "$REST/primos_daily_scores?day_key=eq.$(date -u +%F)")"
+if [ "$BOARD_ROWS" = "0" ]; then
+  meh "anonymous DELETE — INCONCLUSIVE" "the board is empty; note there is deliberately NO delete policy on this table, so RLS denies it to everyone — but that is unproven until a row exists"
+elif [ "$R" = "[]" ]; then
+  ok "anonymous DELETE removed no rows"
+  AFTER="$(rowcount "$REST/primos_daily_scores?select=user_id")"
+  [ "$AFTER" = "$BOARD_ROWS" ] \
+    && ok "row count unchanged after the delete attempt ($AFTER)" \
+    || bad "rows disappeared during the delete probe" "$BOARD_ROWS -> $AFTER"
+else
+  bad "anonymous DELETE removed rows" "$R"
+fi
 
 # --- the rollup view --------------------------------------------------------
 echo
@@ -125,5 +167,10 @@ echo "  – rename a CLOSED day's row             → must SUCCEED (history is s
 echo "    Run these by hand with a real user JWT after the first player signs in."
 
 echo
-printf 'passed %d, failed %d\n\n' "$PASS" "$FAIL"
+if [ "$INCONCLUSIVE" -gt 0 ]; then
+  printf 'passed %d, failed %d, INCONCLUSIVE %d\n' "$PASS" "$FAIL" "$INCONCLUSIVE"
+  printf 'An inconclusive check is not a pass. Re-run once the board has real rows.\n\n'
+else
+  printf 'passed %d, failed %d\n\n' "$PASS" "$FAIL"
+fi
 [ "$FAIL" -eq 0 ] || exit 1
