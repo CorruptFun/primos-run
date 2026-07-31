@@ -42,8 +42,11 @@ const { anonName, sanitizeName } = await import(`../js/leaderboard.js${V}`);
 const { coerce } = await import(`../js/store.js${V}`);
 const { inviteLink } = await import(`../js/referrals.js${V}`);
 const { EVENTS } = await import(`../js/analytics.js${V}`);
-const { buildFunnel, coerceStats, fillDays, fillScoreBuckets, niceScale, rate, ratePct,
-        retentionRate, SCORE_BUCKET_LABELS } = await import(`../js/stats/model.js${V}`);
+const { KINDS, MAX_CONTACT, MAX_MESSAGE, MIN_MESSAGE, normalizeKind, sanitizeContact,
+        sanitizeMessage, validateFeedback } = await import(`../js/feedback.js${V}`);
+const { buildFunnel, coerceFeedback, coerceStats, fillDays, fillScoreBuckets, niceScale, rate,
+        ratePct, retentionRate, FEEDBACK_STATUSES, SCORE_BUCKET_LABELS } =
+        await import(`../js/stats/model.js${V}`);
 
 const out = document.getElementById('out');
 let pass = 0, fail = 0;
@@ -448,6 +451,69 @@ group('analytics — the axis');
   eq(niceScale(7).max, 8, 'a max rounds up to something readable');
   eq(niceScale(1000).max, 1000, 'a round number is left alone');
   eq(niceScale(-5).ticks, [0, 1], 'and nonsense does not produce a negative axis');
+}
+
+group('feedback — what actually leaves the device');
+{
+  // These four bounds are enforced AGAIN in the guard trigger
+  // (20260731190000_primos_feedback.sql). The client's job is to make the
+  // refusal happen before the player has typed a paragraph; the server's job is
+  // to make it true. If they drift, this is the side that must be stricter — the
+  // other way round promises a send the server will reject.
+  eq(MIN_MESSAGE, 4, 'the floor matches the guard');
+  eq(MAX_MESSAGE, 1000, 'the ceiling matches the guard');
+  eq(MAX_CONTACT, 80, 'the contact cap matches the guard');
+  eq(KINDS, ['bug', 'idea', 'other'], 'and the three lanes match the guard exactly');
+
+  eq(normalizeKind('bug'), 'bug', 'a known lane survives');
+  eq(normalizeKind('BUG'), 'bug', 'case does not matter');
+  eq(normalizeKind('rant'), 'other', 'an unknown lane buckets rather than throwing');
+  eq(normalizeKind(undefined), 'other', 'and so does nothing at all');
+
+  eq(sanitizeMessage('  the slide sticks  '), 'the slide sticks', 'trimmed');
+  eq(sanitizeMessage('a\r\nb'), 'a\nb', 'CRLF becomes a plain newline');
+  eq(sanitizeMessage('a\n\n\n\n\nb'), 'a\n\nb', 'a wall of blank lines collapses to one');
+  eq(sanitizeMessage('a\tb'), 'a\tb', 'tabs survive — people paste repro steps as a list');
+  // The one that matters: this string's destination is a page authenticated as
+  // the owner. Nothing invisible gets to ride along.
+  eq(sanitizeMessage('a\u0000b\u0007c\u001bd'), 'abcd', 'control characters are stripped');
+  eq(sanitizeMessage('x'.repeat(1200)).length, MAX_MESSAGE, 'and length is capped, not rejected');
+  eq(sanitizeMessage(null), '', 'nothing degrades to an empty string, never to "null"');
+
+  eq(sanitizeContact(' me@example.com '), 'me@example.com', 'contact is trimmed');
+  eq(sanitizeContact('a\nb'), 'a b', 'a pasted newline cannot break the dashboard row it lands in');
+  eq(sanitizeContact('x'.repeat(200)).length, MAX_CONTACT, 'and it is capped too');
+
+  // Only the cases that short-circuit BEFORE the rate-limit ledger is read, so
+  // this block cannot go red because of something you sent from this origin an
+  // hour ago. The limit itself is asserted against a live server by
+  // scripts/verify-rls.sh, which is the only place it is real anyway.
+  eq(validateFeedback({ message: '' }).reason, 'empty', 'an empty box is refused here, not there');
+  eq(validateFeedback({ message: '   ' }).reason, 'empty', 'and so is whitespace');
+  eq(validateFeedback({ message: 'ok' }).reason, 'empty', 'a mis-tap is not a report');
+}
+
+group('feedback — the panel survives a server that predates it');
+{
+  eq(coerceFeedback(undefined).rows, [], 'no payload at all is an empty list, not a crash');
+  eq(coerceFeedback({}).counts.new, 0, 'a missing count reads as zero');
+  eq(coerceFeedback({ rows: 'nonsense' }).rows, [], 'a wrong TYPE degrades like a missing key');
+  eq(FEEDBACK_STATUSES, ['new', 'triaged', 'done', 'spam'], 'the lanes match the RPC');
+
+  const one = coerceFeedback({
+    counts: { new: 2, total: 3 },
+    rows: [{ id: '7', kind: 'bug', message: 'the slide sticks', status: 'new',
+             device: 'abcd1234', device_reports: 3, created_at: '2026-07-31T12:00:00Z' }],
+  }).rows[0];
+  eq(one.id, 7, 'a numeric string id still counts');
+  eq(one.message, 'the slide sticks', 'the message comes through whole');
+  eq(one.deviceReports, 3, 'and the repeat-reporter signal survives');
+  eq(coerceFeedback({ rows: [{ status: 'pwned' }] }).rows[0].status, 'new',
+     'a status the client invented falls back to new rather than rendering as a lane');
+  // The message is the one field allowed to be long — a report truncated to a
+  // headline is a report whose repro steps are gone.
+  eq(coerceFeedback({ rows: [{ message: 'x'.repeat(1500) }] }).rows[0].message.length, 1000,
+     'a long message keeps its full stored length');
 }
 
 const total = document.getElementById('total');

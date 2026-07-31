@@ -188,6 +188,57 @@ const STR = {
                           + 'cámbiate de carril.' },
   'help.back':        { en: 'GOT IT', es: 'ENTENDIDO' },
 
+  // ------------------------------------------------------------- feedback
+  // The suggestion box, fronted by Corrupt's face on the HELP sheet.
+  //
+  // VOICE, and it is doing real work here. He is the shopkeeper who charges you
+  // to keep running, so him taking complaints is the joke — and the joke is what
+  // makes a support form worth tapping. It must not tip into customer service:
+  // "we value your feedback" is the exact register this game is satirising, and
+  // a player who reads it stops believing anyone is on the other end.
+  //
+  // The deadpan is also what keeps the promise honest. He says he reads them,
+  // which is true — stats.html is where they land — and he does not say anyone
+  // will write back, which would not be.
+  'fb.cta.title':     { en: 'TELL CORRUPT', es: 'DILE A CORRUPT' },
+  'fb.cta.sub':       { en: 'Found a glitch? Want something in the game? He reads these.',
+                        es: '¿Encontraste una falla? ¿Quieres algo en el juego? Él los lee.' },
+  'fb.title':         { en: 'TELL CORRUPT', es: 'DILE A CORRUPT' },
+  'fb.blurb':         { en: 'He runs the store, the lowrider and, apparently, the complaints '
+                          + 'department. Broken, missing or just annoying — say which.',
+                        es: 'Él lleva la tienda, el lowrider y, al parecer, el buzón de quejas. '
+                          + 'Roto, faltante o nomás molesto — dile cuál.' },
+  // Three lanes, and they are the three the guard trigger knows. Short enough
+  // to sit in a row of tabs on a 320px screen in both languages.
+  'fb.kind.bug':      { en: 'GLITCH', es: 'FALLA' },
+  'fb.kind.idea':     { en: 'IDEA', es: 'IDEA' },
+  'fb.kind.other':    { en: 'OTHER', es: 'OTRO' },
+  // The placeholder is a worked example, not an invitation. "Tell us what you
+  // think" gets you "good game"; naming the lane, the phone and what happened
+  // gets you something that can actually be fixed.
+  'fb.ph':            { en: 'What happened? Which lane, which phone, what you were doing…',
+                        es: '¿Qué pasó? Qué carril, qué teléfono, qué estabas haciendo…' },
+  'fb.count':         { en: '%n left', es: 'quedan %n' },
+  'fb.contactTitle':  { en: 'If you want an answer', es: 'Si quieres respuesta' },
+  'fb.contactPh':     { en: 'Email or @handle — optional', es: 'Correo o @usuario — opcional' },
+  'fb.send':          { en: 'SEND IT', es: 'MÁNDALO' },
+  'fb.sending':       { en: 'SENDING…', es: 'MANDANDO…' },
+  'fb.back':          { en: 'BACK', es: 'ATRÁS' },
+  'fb.sent':          { en: 'Sent. Corrupt has it.', es: 'Mandado. Corrupt ya lo tiene.' },
+  'fb.empty':         { en: 'Write something first.', es: 'Escribe algo primero.' },
+  // Deliberately not an accusation. The player who hits this is usually someone
+  // filing their fifth genuine bug in an hour, not a spammer.
+  'fb.rate':          { en: 'That is plenty for now. Try again in a bit.',
+                        es: 'Ya es suficiente por ahora. Inténtalo en un rato.' },
+  'fb.net':           { en: 'It did not go through. Check your connection and try again.',
+                        es: 'No se envió. Revisa tu conexión e inténtalo otra vez.' },
+  'fb.off':           { en: 'Messages are off on this build.',
+                        es: 'Los mensajes están apagados en esta versión.' },
+  'fb.privacy':       { en: 'Your message, which build you are on, and an anonymous device ID go '
+                          + 'with it. Nothing else — not your email, unless you type it above.',
+                        es: 'Se manda tu mensaje, en qué versión estás y un ID anónimo del '
+                          + 'dispositivo. Nada más — ni tu correo, salvo que lo escribas arriba.' },
+
   // ------------------------------------------------------------ game over
   // The one line the whole run ends on, and the best joke in the game. Deadpan
   // is the entire point: nobody in this alley is surprised about who it was.
@@ -411,6 +462,21 @@ const STR = {
   // Gameplay stats. The copy says exactly what is collected and exactly what is
   // not, because the whole reason the identity is a random id rather than a
   // fingerprint is so this paragraph can be written honestly.
+  // Downloaded Primo art (js/primo-cache.js). The honest counterpart to the
+  // browser's "kept on your device, never on ours" — it says how much, and the
+  // button next to it is what makes that sentence actionable rather than a
+  // reassurance the player has to take on trust.
+  'acct.artTitle':    { en: 'Downloaded art', es: 'Arte descargado' },
+  'acct.artCopy':     { en: '%n Primos are saved on this device so they load instantly and do not '
+                          + 'come down again. Clearing costs nothing but the next download.',
+                        es: '%n Primos guardados en este dispositivo para que carguen al instante y '
+                          + 'no se vuelvan a descargar. Borrarlos no cuesta más que la próxima descarga.' },
+  'acct.artNone':     { en: 'Nothing downloaded yet. Primos you look at get kept here.',
+                        es: 'Nada descargado todavía. Los Primos que veas se guardan aquí.' },
+  'acct.artClear':    { en: 'CLEAR DOWNLOADED ART', es: 'BORRAR ARTE DESCARGADO' },
+  'acct.artCleared':  { en: 'Cleared. They will download again as you look at them.',
+                        es: 'Borrado. Se descargarán otra vez cuando los veas.' },
+  'acct.artClearFail':{ en: 'Could not clear it. Try again.', es: 'No se pudo borrar. Inténtalo otra vez.' },
   'acct.statsTitle':  { en: 'Gameplay stats', es: 'Estadísticas de juego' },
   'acct.statsCopy':   { en: 'Anonymous counts — runs, scores, which buttons get used — '
                           + 'tied to a random id, never to you. No trackers, no ad networks, '

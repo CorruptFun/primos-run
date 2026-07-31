@@ -201,7 +201,56 @@
         <p class="help-rule-body" data-i18n="help.rule.body">Checkpoints, the wall, the ICE cruiser. Every one of them is taller than your jump, and always has been. Jumping one is a hit, every single time. Change lanes instead.</p>
       </div>
 
+      <!-- Corrupt takes requests. He is here rather than in ACCOUNT because HELP
+           is where a player already is when the game has just confused them —
+           and "I don't understand this" and "this is broken" are the same tap
+           apart. js/main.js unhides it only on a build that can actually send;
+           a button that opens a form nothing receives is worse than no button. -->
+      <button class="corrupt-cta hidden" id="btn-feedback-open" type="button">
+        <canvas class="corrupt-face" id="corrupt-face-help" width="72" height="72" aria-hidden="true"></canvas>
+        <span class="corrupt-cta-text">
+          <b data-i18n="fb.cta.title">TELL CORRUPT</b>
+          <span data-i18n="fb.cta.sub">Found a glitch? Want something in the game? He reads these.</span>
+        </span>
+      </button>
+
       <button class="btn btn-primary" id="btn-help-back" data-i18n="help.back">GOT IT</button>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- feedback -->
+  <!-- Opened OVER help and closed straight back to it, the same way help is
+       opened over pause or game over — see openFeedback() in js/main.js. The
+       run stays paused throughout, so writing a bug report can never cost the
+       run that produced it. -->
+  <section id="screen-feedback" class="screen hidden">
+    <div class="sheet sheet-small">
+      <canvas class="corrupt-face corrupt-face-lg" id="corrupt-face-fb" width="96" height="96" aria-hidden="true"></canvas>
+      <h2 data-i18n="fb.title">TELL CORRUPT</h2>
+      <p class="hint" id="fb-blurb" data-i18n="fb.blurb">He runs the store, the lowrider and, apparently, the complaints department.</p>
+
+      <div class="tabs" id="fb-kinds" role="group" aria-label="What kind of message">
+        <button class="tab on" type="button" data-kind="bug" data-i18n="fb.kind.bug">GLITCH</button>
+        <button class="tab" type="button" data-kind="idea" data-i18n="fb.kind.idea">IDEA</button>
+        <button class="tab" type="button" data-kind="other" data-i18n="fb.kind.other">OTHER</button>
+      </div>
+
+      <textarea id="fb-message" class="fb-message" rows="5" maxlength="1000"
+                data-i18n-ph="fb.ph" aria-label="Your message"></textarea>
+      <p class="hint fb-count" id="fb-count"></p>
+
+      <!-- Optional, and NEVER prefilled from the signed-in email — see
+           sanitizeContact() in js/feedback.js for why that rule is absolute. -->
+      <p class="sec sep" data-i18n="fb.contactTitle">If you want an answer</p>
+      <input type="text" id="fb-contact" class="fb-contact" maxlength="80"
+             autocomplete="off" spellcheck="false"
+             data-i18n-ph="fb.contactPh" aria-label="How to reach you, optional">
+
+      <button class="btn btn-primary wide" id="btn-feedback-send" data-i18n="fb.send">SEND IT</button>
+      <p class="hint" id="fb-status"></p>
+      <p class="fine" data-i18n="fb.privacy">Your message, which build you are on, and an anonymous device ID go with it. Nothing else.</p>
+
+      <button class="btn btn-ghost" id="btn-feedback-back" data-i18n="fb.back">BACK</button>
     </div>
   </section>
 
@@ -278,6 +327,13 @@
         <button class="btn btn-small" id="btn-browse-jump" data-i18n="browse.jump">GO</button>
       </div>
       <div class="primo-grid" id="browse-grid"></div>
+      <!-- A page at a time, not one 3,069-tile scroll. See the header of
+           js/primo-browser.js for what that cost on a real phone. -->
+      <div class="pager">
+        <button class="btn btn-small" id="btn-browse-prev" type="button" aria-label="Previous page">‹</button>
+        <span class="pager-range" id="browse-range"></span>
+        <button class="btn btn-small" id="btn-browse-next" type="button" aria-label="Next page">›</button>
+      </div>
       <!-- The chosen one, and the only control that writes anything. -->
       <div class="browse-pick hidden" id="browse-pick">
         <canvas id="browse-preview" width="132" height="132" role="img" aria-label="Primo"></canvas>
@@ -349,6 +405,13 @@
            about what leaves this device, because a privacy control the player
            cannot find is not a control. Checked = on, so the label reads as the
            thing being allowed rather than as a double negative. -->
+      <!-- Downloaded Primo art. Disclosed and clearable because the browser copy
+           now says it is "kept on your device" — a claim that needs somewhere to
+           point. js/primo-cache.js owns the bucket. -->
+      <p class="sec sep" data-i18n="acct.artTitle">Downloaded art</p>
+      <p class="hint" id="acct-art-copy"></p>
+      <button class="btn btn-ghost btn-small wide" id="btn-clear-art" data-i18n="acct.artClear">CLEAR DOWNLOADED ART</button>
+
       <p class="sec sep" data-i18n="acct.statsTitle">Gameplay stats</p>
       <p class="hint" data-i18n="acct.statsCopy"></p>
       <label class="opt-row">

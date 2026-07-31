@@ -32,8 +32,8 @@ into invite links for exactly this reason, trailing slash included.
       ```
 
 - [ ] **`dev/cloud-test.html` is green** if anything under `raceday.js`,
-      `merge.js`, `store.js`, `leaderboard.js` or `analytics.js` moved. It
-      cache-busts its imports, so a reload is enough.
+      `merge.js`, `store.js`, `leaderboard.js`, `analytics.js` or `feedback.js`
+      moved. It cache-busts its imports, so a reload is enough.
 - [ ] **`dev/rig-test.html` still reads right** if the character changed. Iterate
       there, not in-game.
 - [ ] **⚠ `CACHE_VERSION` in `sw.js` is bumped.** Skip this and players keep
@@ -43,7 +43,8 @@ into invite links for exactly this reason, trailing slash included.
       - supabase-js (cross-origin CDN — the fetch handler never touches
         cross-origin GETs, and precaching it would ship it to players on a build
         where `cloud-config.js` is empty)
-      - `stats.html` and `js/stats/` (players must not download the owner's tool)
+      - `stats.html` and `js/stats/` (players must not download the owner's tool
+        — `js/stats/feedback.js` included, for the same reason)
 - [ ] **No collection artwork was added.** `data/primos-index.json` holds IPFS
       CIDs only. `art/raw/` stays gitignored.
 - [ ] **No keys in the repo.** `js/cloud-config.js` carries the *publishable* anon
@@ -79,6 +80,13 @@ production until both have happened*.
 - [ ] **`scripts/verify-rls.sh <url> <publishable-key>` run against production**,
       and the output actually read. It checks effects, not status codes, and
       reports `?` for anything it cannot distinguish.
+- [ ] **The verify probe rows are cleared afterwards.** The feedback rate-limit
+      check deliberately WRITES five reports to prove the limit is real, and they
+      land in the box marked `new` — i.e. in the owner's unread queue:
+
+      ```sql
+      delete from public.primos_feedback where app_version = 'verify';
+      ```
 - [ ] The vault note's Current State says what was applied **from a real probe**,
       not from intent.
 
@@ -116,7 +124,12 @@ noted.
    allowlisted bounces back to the Site URL and **sign-in silently does nothing**.
    If a player ever reports sign-in bouncing to the menu, re-check this first.
 5. **`app_admins` seeded** with the owner's user id, or the analytics dashboard
-   answers 403 to everyone. See [ANALYTICS.md](ANALYTICS.md#getting-in).
+   answers 403 to everyone. See [ANALYTICS.md](ANALYTICS.md#getting-in). The same
+   row gates the FEEDBACK panel.
+6. **`20260731190000_primos_feedback.sql` applied**, or the Corrupt row on HELP
+   sends every report into a 404 and every player who writes in is told it did
+   not go through. Unlike the analytics pipe, they will notice — they are
+   watching a status line. See [FEEDBACK.md](FEEDBACK.md#rolling-it-out).
 
 ---
 

@@ -1,171 +1,202 @@
-// The PICK YOUR PRIMO screen: all 3,069, scrollable, searchable by number.
+// The PICK YOUR PRIMO screen: all 3,069, a page at a time, searchable by number.
 //
 // Before this existed the `+ MY PRIMO` tile on the menu selected an EMPTY slot,
 // which fell back to the hand-drawn stand-in — so the plus promised a picker
 // that was never built, and a player who tapped it ran as a cartoon and
 // reasonably concluded the feature was broken.
 //
-// Nothing from the collection is bundled. The grid is 3,069 empty tiles; art is
-// fetched from public IPFS gateways in the player's own browser, and only for
-// the tiles they actually scroll past.
+// Nothing from the collection is bundled. Art is fetched from public IPFS
+// gateways in the player's own browser, and only for the tiles on the page they
+// are actually looking at.
 //
-// THREE THINGS THAT MAKE THIS SURVIVE CONTACT WITH IPFS
+// ⚠ WHY A PAGER AND NOT ONE LONG SCROLL, which is what this used to be.
+//
+// The first version built all 3,069 tiles up front and virtualised the loading
+// with an IntersectionObserver. It measured at 3,069 DOM nodes, a 61,000px
+// scroll height and just over a SECOND of layout before the sheet could be
+// shown — on a desktop. On the phone it shipped to, the tiles collapsed on top
+// of each other into unreadable stripes, because `aspect-ratio` on a <button>
+// is not honoured in Safari's form-control layout and nothing else was giving
+// the row a height. Both problems are the same problem: three thousand nodes is
+// not a grid, it is a stress test.
+//
+// 24 at a time is a screenful, builds in under a millisecond, and makes the
+// row height something the stylesheet can simply state.
+//
+// TWO THINGS THAT MAKE THIS SURVIVE CONTACT WITH IPFS
 //
 //   * Gateways STALL rather than fail. A dead gateway accepts the connection
-//     and holds it, so an <img> fires neither load nor error. Every tile gets
-//     its own timeout and rotates to the next gateway; without that a single
-//     bad gateway leaves a screen of permanently blank tiles.
-//   * Requests are CAPPED. Flinging the scrollbar over three thousand tiles
-//     would otherwise open three thousand connections at once, and a public
-//     gateway answers that with 429s for the next few minutes.
-//   * Only what is near the viewport is ever requested, and tiles that scroll
-//     far away have their src dropped so the decoded images are reclaimed.
+//     and holds it, so a request that is never fenced hangs for the session.
+//     js/primo-cache.js puts an AbortController on every fetch and the chain
+//     rotates to the next gateway.
+//   * Requests are CAPPED. Paging quickly through the collection would
+//     otherwise open connections faster than any public gateway tolerates.
+//
+// And the third thing, which is new: every image the player has already seen is
+// served from js/primo-cache.js without touching the network at all.
 
 import {
   getIndex, cidFor, GATEWAYS, MAX_TOKEN, SUPPLY, loadPrimoArt, claimStatus,
 } from './primo-picker.js';
+import { fetchArt, release } from './primo-cache.js';
 
 const $ = (id) => document.getElementById(id);
 
-// How far outside the viewport a tile still counts as "coming up", in pixels.
-// Generous, because a gateway can take a second or two and a tile that starts
-// loading only as it crosses the edge arrives grey.
-const PRELOAD_PX = 500;
+// A screenful, and measured rather than picked: at 4 columns — what a 390px
+// phone gives — 20 tiles is 5 rows of 68px plus gaps, which is 372px and fits
+// inside the grid's 380px cap with nothing clipped. 24 was the first try and
+// spilled a sixth row under the fold, so the page you were told you were on was
+// not the page you could see. It also divides evenly by 4 and 5, the two column
+// counts this grid actually produces on a phone.
+export const PAGE_SIZE = 20;
+export const PAGE_COUNT = Math.ceil(SUPPLY / PAGE_SIZE);
+
 // Concurrent gateway fetches. Eight is comfortably under what ipfs.io tolerates
-// and still fills a screen in one go.
+// and fills a page of 24 in three waves.
 const MAX_INFLIGHT = 8;
-const TILE_TIMEOUT = 8000;
 
 let built = false;
 let onPick = null;             // (result, url, number) => void, set by main.js
 let t = (k) => k;              // translator, injected so this file owns no i18n
-let tiles = [];                // index === token number
 let index = null;
 let selected = null;           // { n, result, url } once art has been baked
-let observer = null;
+let page = 0;
+
+// The 24 <button>s, rebuilt-in-place per page. Reused rather than recreated so
+// paging does not churn the DOM.
+let tiles = [];
+// Object URLs currently held by this page's <img>s. Blob URLs leak until
+// revoked, and a player flicking through the collection would otherwise pin
+// every image they passed in memory for the life of the tab.
+const held = new Map();        // slot -> object URL
+
+// Bumped on every page change and on close. Every async art load checks it
+// before touching the DOM, so a slow gateway answering after the player has
+// moved on cannot paint a stale face into a tile that now means another token.
+let renderGen = 0;
 let inflight = 0;
-const queue = [];              // token numbers waiting for a slot
-const state = new Map();       // n -> 'queued' | 'loading' | 'done' | 'failed'
 
 // ---------------------------------------------------------------- loading
 
+function releaseSlot(slot) {
+  const url = held.get(slot);
+  if (url) { release(url); held.delete(slot); }
+  const img = tiles[slot]?.querySelector('img');
+  if (img) { img.classList.remove('in'); img.removeAttribute('src'); }
+}
+
 /**
- * Point one tile's <img> at the first gateway that answers.
- *
- * Resolves rather than rejects on failure: a tile that cannot load is a grey
- * square with its number on it, which is a perfectly honest thing for the grid
- * to show and must never take the queue down with it.
+ * Fill one tile. Resolves rather than rejects on failure: a tile that cannot
+ * load is a numbered grey square, which is a perfectly honest thing for the
+ * grid to show and must never take the page down with it.
  */
-function loadTile(n) {
-  const tile = tiles[n];
+async function loadSlot(slot, n, gen) {
   const cid = index && cidFor(index, n);
-  if (!tile || !cid) { state.set(n, 'failed'); return Promise.resolve(); }
-
-  const img = tile.querySelector('img');
-  return new Promise((resolve) => {
-    let gw = 0;
-    let timer = 0;
-    const done = (ok) => {
-      clearTimeout(timer);
-      img.onload = null;
-      img.onerror = null;
-      state.set(n, ok ? 'done' : 'failed');
-      if (ok) img.classList.add('in');
-      resolve();
-    };
-    const attempt = () => {
-      if (gw >= GATEWAYS.length) { done(false); return; }
-      const url = GATEWAYS[gw++] + cid;
-      clearTimeout(timer);
-      // The stall guard. Not a nicety — see the header.
-      timer = setTimeout(() => { img.src = ''; attempt(); }, TILE_TIMEOUT);
-      img.onload = () => done(true);
-      img.onerror = () => attempt();
-      img.src = url;
-    };
-    attempt();
-  });
+  if (!cid) return;
+  const url = await fetchArt(cid, GATEWAYS);
+  if (!url) return;
+  // The page moved while this was in the air. Revoke immediately — the tile it
+  // was for is showing a different token now.
+  if (gen !== renderGen) { release(url); return; }
+  const img = tiles[slot]?.querySelector('img');
+  if (!img) { release(url); return; }
+  releaseSlot(slot);
+  held.set(slot, url);
+  img.src = url;
+  img.classList.add('in');
 }
 
-function pump() {
-  while (inflight < MAX_INFLIGHT && queue.length) {
-    const n = queue.shift();
-    // It may have scrolled away, or another pass may have already taken it.
-    if (state.get(n) !== 'queued') continue;
-    state.set(n, 'loading');
-    inflight++;
-    loadTile(n).finally(() => { inflight--; pump(); });
+/** Load the page's 24 tiles, at most MAX_INFLIGHT at a time. */
+async function loadPage(gen) {
+  const first = page * PAGE_SIZE;
+  const jobs = [];
+  for (let slot = 0; slot < PAGE_SIZE; slot++) {
+    const n = first + slot;
+    if (n > MAX_TOKEN) break;
+    jobs.push([slot, n]);
   }
-}
-
-function want(n) {
-  const s = state.get(n);
-  if (s === 'loading' || s === 'done') return;
-  // A previous failure is worth one more try when the tile comes back around —
-  // most failures here are a gateway having a bad minute, not a missing CID.
-  state.set(n, 'queued');
-  queue.push(n);
-  pump();
-}
-
-/** Drop a tile's decoded image. Three thousand of them will not fit in memory. */
-function release(n) {
-  const s = state.get(n);
-  if (s === 'loading') return;              // let it finish; it is nearly free
-  const tile = tiles[n];
-  if (!tile) return;
-  const img = tile.querySelector('img');
-  if (!img.src) return;
-  img.classList.remove('in');
-  img.removeAttribute('src');
-  state.delete(n);
+  let next = 0;
+  const worker = async () => {
+    while (next < jobs.length && gen === renderGen) {
+      const [slot, n] = jobs[next++];
+      inflight++;
+      try { await loadSlot(slot, n, gen); } finally { inflight--; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(MAX_INFLIGHT, jobs.length) }, worker));
 }
 
 // ------------------------------------------------------------------- grid
 
+/** Build the 24 reusable tiles. Runs once. */
 function build() {
   const grid = $('browse-grid');
   grid.replaceChildren();
-  tiles = new Array(SUPPLY);
+  tiles = [];
 
-  // One fragment, one reflow. Appending 3,069 nodes one at a time is about a
-  // second of layout on a phone.
   const frag = document.createDocumentFragment();
-  for (let n = 0; n < SUPPLY; n++) {
+  for (let slot = 0; slot < PAGE_SIZE; slot++) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'primo-tile';
-    b.dataset.n = String(n);
+    b.dataset.slot = String(slot);
     const img = document.createElement('img');
     img.alt = '';
-    img.loading = 'lazy';
     img.decoding = 'async';
     b.append(img);
     const tag = document.createElement('b');
-    tag.textContent = String(n);
     b.append(tag);
-    tiles[n] = b;
+    tiles.push(b);
     frag.append(b);
   }
   grid.append(frag);
 
-  // One observer for the lot. Per-tile scroll maths would be 3,069 rect reads
-  // per frame; the observer does it off the main thread.
-  observer = new IntersectionObserver((entries) => {
-    for (const e of entries) {
-      const n = Number(e.target.dataset.n);
-      if (e.isIntersecting) want(n);
-      else release(n);
-    }
-  }, { root: grid, rootMargin: `${PRELOAD_PX}px 0px` });
-  for (const tile of tiles) observer.observe(tile);
-
   grid.addEventListener('click', (e) => {
     const tile = e.target.closest('.primo-tile');
-    if (tile) pick(Number(tile.dataset.n));
+    if (!tile || tile.hidden) return;
+    const n = Number(tile.dataset.n);
+    if (Number.isInteger(n)) pick(n);
   });
 
   built = true;
+}
+
+/** Point the 24 tiles at `page`, repaint the pager, and start loading. */
+function renderPage() {
+  const gen = ++renderGen;
+  const first = page * PAGE_SIZE;
+  const last = Math.min(first + PAGE_SIZE - 1, MAX_TOKEN);
+
+  for (let slot = 0; slot < PAGE_SIZE; slot++) {
+    const n = first + slot;
+    const tile = tiles[slot];
+    releaseSlot(slot);
+    // The final page is short — 3,069 is not a multiple of 24. Hidden rather
+    // than removed, so the grid never reflows to a different column count on
+    // the last page.
+    if (n > MAX_TOKEN) { tile.hidden = true; tile.removeAttribute('data-n'); continue; }
+    tile.hidden = false;
+    tile.dataset.n = String(n);
+    tile.querySelector('b').textContent = String(n);
+    tile.classList.toggle('on', selected ? selected.n === n : false);
+  }
+
+  $('browse-range').textContent = t('browse.range')
+    .replace('%a', String(first))
+    .replace('%b', String(last))
+    .replace('%p', String(page + 1))
+    .replace('%t', String(PAGE_COUNT));
+  $('btn-browse-prev').disabled = page <= 0;
+  $('btn-browse-next').disabled = page >= PAGE_COUNT - 1;
+
+  void loadPage(gen);
+}
+
+function goToPage(p) {
+  const next = Math.max(0, Math.min(PAGE_COUNT - 1, p));
+  if (next === page && built) return;
+  page = next;
+  renderPage();
 }
 
 // ---------------------------------------------------------------- picking
@@ -180,8 +211,7 @@ let pickGen = 0;
  */
 async function pick(n) {
   const gen = ++pickGen;
-  for (const tile of tiles) tile.classList.remove('on');
-  tiles[n]?.classList.add('on');
+  for (const tile of tiles) tile.classList.toggle('on', Number(tile.dataset.n) === n);
 
   selected = null;
   $('browse-pick').classList.remove('hidden');
@@ -199,6 +229,8 @@ async function pick(n) {
     return;
   }
 
+  // Goes through the same cache the grid does, so picking a tile you can
+  // already see costs nothing.
   const result = await loadPrimoArt(cid);
   if (gen !== pickGen) return;               // they tapped another one meanwhile
   if (!result) {
@@ -248,6 +280,9 @@ export function initPrimoBrowser(pickHandler, translate, close) {
     close();
   });
 
+  $('btn-browse-prev').addEventListener('click', () => goToPage(page - 1));
+  $('btn-browse-next').addEventListener('click', () => goToPage(page + 1));
+
   const jump = () => {
     const raw = $('browse-num').value.trim();
     if (raw === '') return;
@@ -258,7 +293,7 @@ export function initPrimoBrowser(pickHandler, translate, close) {
       return;
     }
     $('browse-status').textContent = '';
-    tiles[n]?.scrollIntoView({ block: 'center' });
+    goToPage(Math.floor(n / PAGE_SIZE));
     pick(n);
   };
   $('btn-browse-jump').addEventListener('click', jump);
@@ -267,7 +302,7 @@ export function initPrimoBrowser(pickHandler, translate, close) {
   });
 }
 
-/** Called every time the screen is shown. Builds the grid once, lazily. */
+/** Called every time the screen is shown. Builds the 24 tiles once, lazily. */
 export async function openPrimoBrowser(currentNumber) {
   $('browse-status').textContent = '';
   index = await getIndex();
@@ -281,20 +316,22 @@ export async function openPrimoBrowser(currentNumber) {
   selected = null;
   $('btn-browse-use').disabled = true;
   $('browse-pick').classList.add('hidden');
-  for (const tile of tiles) tile.classList.remove('on');
 
-  if (Number.isInteger(currentNumber) && currentNumber >= 0 && currentNumber <= MAX_TOKEN) {
-    tiles[currentNumber]?.classList.add('on');
-    // `instant`, not smooth: the grid was just un-hidden, and animating a jump
-    // of up to three thousand rows means the tiles the observer is asked about
-    // are the ones flying past rather than the ones being landed on.
-    tiles[currentNumber]?.scrollIntoView({ block: 'center', behavior: 'instant' });
+  // Open on the page holding the Primo they are already wearing, so coming back
+  // lands where they left rather than at #0.
+  const n = Number.isInteger(currentNumber) && currentNumber >= 0 && currentNumber <= MAX_TOKEN
+    ? currentNumber : null;
+  page = n === null ? 0 : Math.floor(n / PAGE_SIZE);
+  renderPage();
+  if (n !== null) {
+    const slot = n - page * PAGE_SIZE;
+    tiles[slot]?.classList.add('on');
   }
 }
 
 /** Stop the queue when the screen closes — those fetches are no longer wanted. */
 export function releasePrimoBrowser() {
-  queue.length = 0;
-  for (const [n, s] of state) if (s === 'queued') state.delete(n);
+  renderGen++;
   pickGen++;
+  for (let slot = 0; slot < tiles.length; slot++) releaseSlot(slot);
 }

@@ -6,6 +6,7 @@
 // a public gateway in the player's own browser, at the player's own request.
 
 import { loadHead } from './art/primo-head.js';
+import { fetchArt, release } from './primo-cache.js';
 
 // Public gateways, tried in order, first answer wins.
 //
@@ -147,10 +148,49 @@ export function drawTokens(idx, count) {
 // ------------------------------------------------------------------- art
 
 /**
- * Fetch a Primo's art and bake it into a head sprite, walking the gateways.
+ * Fetch a Primo's art and bake it into a head sprite.
+ *
+ * Goes through js/primo-cache.js first, so a token this device has already
+ * downloaded — the crew from an earlier launch, a tile the player scrolled past
+ * in the browser — is baked straight off disk with no gateway involved. A miss
+ * falls back to the gateway walk, and the bytes are remembered on the way past.
+ *
+ * ⚠ `url` IS ALWAYS A DURABLE GATEWAY URL, never the `blob:` one the cache hands
+ * out. wearPrimo() writes it straight into the save, and an object URL is only
+ * valid for the life of the document that created it — storing one would put a
+ * dead reference in localStorage that fails silently on the next launch and
+ * looks exactly like the art having gone missing.
+ *
  * @returns {{head: object, img: HTMLImageElement, url: string} | null}
  */
 export async function loadPrimoArt(cid) {
+  // The durable identity of this art, independent of which gateway answered and
+  // independent of any object URL. Restoring a save re-resolves it through this
+  // same function, which will usually be a cache hit anyway.
+  const canonical = GATEWAYS[0] + cid;
+
+  // ONE request. fetchArt checks the cache, walks the gateways on a miss, and
+  // stores whatever answered — so the bytes cross the network at most once ever.
+  //
+  // ⚠ It is deliberately not "bake from the gateway, then cache it in the
+  // background". That was the first version and it FETCHED EVERY IMAGE TWICE on
+  // a cold cache: once through the <img>, once again to fill the cache. It
+  // measured at 32 gateway requests for a 24-tile page — a caching layer that
+  // doubled first-visit bandwidth to halve the second visit's.
+  const blob = await fetchArt(cid, GATEWAYS);
+  if (blob) {
+    const result = await withTimeout(loadHead(blob), LOAD_TIMEOUT);
+    // The Image has decoded the bytes by now, so the object URL has done its
+    // job — holding it would leak one blob per Primo ever looked at.
+    release(blob);
+    if (result) return { ...result, url: canonical };
+  }
+
+  // Fallback for the cases fetch() cannot serve: a gateway that answers images
+  // but sends no CORS headers, or storage being unavailable entirely. An <img>
+  // needs neither, so this path still renders the Primo — it just cannot cache
+  // it or sample its colours. Losing the caching is much better than losing the
+  // art, which is what returning null here would mean.
   for (const gw of GATEWAYS) {
     const url = gw + cid;
     const result = await withTimeout(loadHead(url), LOAD_TIMEOUT);
@@ -322,8 +362,16 @@ const EXTRA = {
 
   // --- the browser (js/primo-browser.js) ---
   'browse.title':     { en: 'PICK YOUR PRIMO', es: 'ESCOGE TU PRIMO' },
-  'browse.copy':      { en: 'All 3,069 of them. Scroll, or jump straight to your number. The art loads live from IPFS — nothing is kept here.',
-                        es: 'Los 3,069. Desplázate, o salta directo a tu número. El arte se carga en vivo desde IPFS — aquí no se guarda nada.' },
+  // "Nothing is kept here" was true of the SERVER and is still true — no
+  // collection artwork is in this repo and none is uploaded anywhere. It read
+  // as "nothing is kept anywhere", which stopped being true when
+  // js/primo-cache.js started remembering what the player already downloaded.
+  // The distinction is the honest one and it is worth the extra clause: the
+  // pixels live on their device, not on ours.
+  'browse.copy':      { en: 'All 3,069 of them, 20 at a time. Jump straight to your number if you know it. The art loads from public IPFS and is kept on your device, never on ours.',
+                        es: 'Los 3,069, de 20 en 20. Salta directo a tu número si lo sabes. El arte se carga desde IPFS público y se guarda en tu dispositivo, nunca en el nuestro.' },
+  // %a first token, %b last, %p page, %t total pages.
+  'browse.range':     { en: '#%a–%b · %p/%t', es: '#%a–%b · %p/%t' },
   'browse.jump':      { en: 'GO', es: 'IR' },
   'browse.jumpPh':    { en: 'Jump to #', es: 'Ir al #' },
   'browse.use':       { en: 'RUN AS THIS ONE', es: 'CORRE CON ESTE' },

@@ -65,6 +65,7 @@ Full tuning rationale in [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md).
 | [GAME_DESIGN.md](docs/GAME_DESIGN.md) | every rule and every number, with the reasoning |
 | [CLOUD_AND_LEADERBOARDS.md](docs/CLOUD_AND_LEADERBOARDS.md) | cloud save, sign-in, boards, invites, the merge, migrations |
 | [ANALYTICS.md](docs/ANALYTICS.md) | the event pipe, the admin dashboard, what is collected and what is not |
+| [FEEDBACK.md](docs/FEEDBACK.md) | the suggestion box: Corrupt on HELP, the guard, the triage queue |
 | [GO_LIVE_CHECKLIST.md](docs/GO_LIVE_CHECKLIST.md) | what must be true before and after a deploy |
 
 ## Layout
@@ -94,6 +95,8 @@ Full tuning rationale in [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md).
 | `js/leaderboard.js` · `js/boards.js` | daily/weekly boards and the screen |
 | `js/referrals.js` | invite codes, qualification, rewards |
 | `js/analytics.js` | the event pipe |
+| `js/feedback.js` | the suggestion box — what players write to Corrupt |
+| `js/primo-cache.js` | the local art cache — each Primo downloaded once, ever |
 | `js/account.js` | ACCOUNT — sign-in, race name, backup, invites, privacy |
 | `stats.html` · `js/stats/` | the admin analytics dashboard |
 | `dev/rig-test.html` | character pose harness — iterate here, not in-game |
@@ -177,6 +180,17 @@ write and **not read**, an anonymous random device id (never a fingerprint), a
 working opt-out in ACCOUNT, and an admin-gated dashboard at `stats.html`. Ships
 dormant with the rest of the cloud layer. See
 [docs/ANALYTICS.md](docs/ANALYTICS.md).
+
+## Telling Corrupt
+
+Tap Corrupt's face on the HOW TO PLAY sheet and you get a box: glitch, idea, or
+other. It goes to an append-only table nobody but the owner can read, carrying
+your message, which build you are on and an anonymous device id — nothing else,
+and not your email unless you type it in the optional reply field. The run stays
+paused while you write, so reporting a bug can never cost the run that produced
+it. Reports land at the top of `stats.html`, where they can be marked read.
+Rate limited in the database, not just in the client. See
+[docs/FEEDBACK.md](docs/FEEDBACK.md).
 
 ## Regenerating art
 

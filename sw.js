@@ -17,7 +17,7 @@
 */
 
 // 👉 CUSTOMIZE: rename to your app, and bump CACHE_VERSION per deploy (e.g. a build stamp).
-const CACHE_VERSION = "v15-primo-browser";
+const CACHE_VERSION = "v17-art-cache";
 const CACHE_NAME    = `primos-run-${CACHE_VERSION}`;
 
 // 👉 CUSTOMIZE: the offline shell, precached at install. Relative paths (resolved against
@@ -48,10 +48,15 @@ const PRECACHE = [
   "./js/wallet.js",
   "./js/primo-picker.js",
   // Imported by main.js, so an offline boot fetches it whether it is listed or
-  // not — leaving it out only guarantees that fetch fails. The 3,069 thumbnails
-  // it shows are NOT cached and never should be: they are cross-origin IPFS and
-  // the fetch handler does not touch cross-origin GETs.
+  // not — leaving it out only guarantees that fetch fails.
+  //
+  // The thumbnails it shows are still NOT handled by THIS worker: they are
+  // cross-origin IPFS and the fetch handler below never touches cross-origin
+  // GETs. They ARE cached now, but by js/primo-cache.js from the page, in its
+  // own `primos-art-v1` bucket — which is why the activate sweep below had to
+  // stop deleting every cache it did not recognise.
   "./js/primo-browser.js",
+  "./js/primo-cache.js",
   "./js/particles.js",
   "./js/perf.js",
   "./js/haptics.js",
@@ -75,6 +80,11 @@ const PRECACHE = [
   // stats.html and js/stats/ are the owner's tool and players must never
   // download it. Do not add them here.
   "./js/analytics.js",
+  // The suggestion box's client half. Imported by main.js, so an offline boot
+  // fetches it whether it is listed or not — leaving it out only guarantees that
+  // fetch fails. Its READ path (the FEEDBACK panel in js/stats/) is not here, for
+  // the same reason the dashboard is not: it is the owner's tool.
+  "./js/feedback.js",
   "./js/version.js",
   "./js/art/palette.js",
   "./js/art/runner.js",
@@ -118,7 +128,22 @@ self.addEventListener("message", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)));
+    // ⚠ SWEEP ONLY OUR OWN SHELL CACHES — the `primos-run-` prefix.
+    //
+    // This used to delete EVERY cache whose key was not the current shell,
+    // which is the shape every service-worker tutorial ships. It is wrong the
+    // moment anything else on the origin keeps a cache of its own, and
+    // js/primo-cache.js now does: `primos-art-v1`, holding Primo art the player
+    // already downloaded from IPFS. Under the old line every deploy wiped it,
+    // turning a permanent per-device cache into a per-release one — the players
+    // who update most often would have paid the most bandwidth, and nothing
+    // would have logged a thing.
+    //
+    // Anything NOT matching the prefix is somebody else's and is left alone.
+    await Promise.all(
+      keys.filter((k) => k.startsWith("primos-run-") && k !== CACHE_NAME)
+          .map((k) => caches.delete(k)),
+    );
     await self.clients.claim();
   })());
 });

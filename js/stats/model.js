@@ -159,6 +159,70 @@ function coerceCohort(raw) {
   return { eligible: int(c.eligible), returned: int(c.returned) };
 }
 
+/** The four triage lanes, in the order the queue is worked. */
+export const FEEDBACK_STATUSES = ['new', 'triaged', 'done', 'spam'];
+
+/**
+ * Force primos_admin_feedback()'s payload into the shape the panel expects.
+ *
+ * Same shape-tolerance rule as coerceStats, and one addition that only applies
+ * here: EVERY STRING ON A ROW WAS TYPED BY A PLAYER. The caps below are the
+ * second line of defence behind the guard trigger — a client that predates a
+ * cap, or a row written before one existed, still has to render as a row and
+ * not as a page-wide layout failure. The FIRST line of defence is that the
+ * renderer only ever writes these through textContent; see the XSS note at the
+ * top of js/stats/feedback.js. Truncating here is not that defence and must
+ * never be mistaken for it.
+ */
+export function coerceFeedback(raw) {
+  const r = obj(raw);
+  const meta = obj(r.meta);
+  const counts = obj(r.counts);
+
+  return {
+    meta: {
+      days: int(meta.days, 30),
+      status: FEEDBACK_STATUSES.includes(meta.status) ? meta.status : null,
+      limit: int(meta.limit, 200),
+      matched: int(meta.matched),
+      generatedAt: str(meta.generated_at, 40),
+    },
+    counts: {
+      total: int(counts.total),
+      new: int(counts.new),
+      triaged: int(counts.triaged),
+      done: int(counts.done),
+      spam: int(counts.spam),
+      devices: int(counts.devices),
+    },
+    kinds: arr(r.kinds).map((k) => ({
+      kind: str(obj(k).kind, 16),
+      reports: int(obj(k).reports),
+    })),
+    rows: arr(r.rows).map((x) => {
+      const row = obj(x);
+      return {
+        id: int(row.id),
+        kind: str(row.kind, 16) || 'other',
+        // The one field that is allowed to be long — it is the whole point of
+        // the panel, and a bug report cut off at 140 characters is a bug report
+        // whose repro steps are missing.
+        message: str(row.message, 1000),
+        contact: str(row.contact, 80),
+        context: obj(row.context),
+        appVersion: str(row.app_version, 32),
+        lang: str(row.lang, 8),
+        status: FEEDBACK_STATUSES.includes(row.status) ? row.status : 'new',
+        adminNote: str(row.admin_note, 500),
+        signedIn: !!row.signed_in,
+        device: str(row.device, 8),
+        deviceReports: int(row.device_reports, 1),
+        createdAt: str(row.created_at, 40),
+      };
+    }),
+  };
+}
+
 // ----------------------------------------------------------------- rate math
 
 /**

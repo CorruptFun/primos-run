@@ -19,6 +19,9 @@
 
 import { sbClient } from '../cloud.js';
 import { SUPABASE_URL } from '../cloud-config.js';
+// The suggestion box. Its own module, its own RPC and its own window — it is a
+// queue rather than a measurement, so it does not follow the range buttons.
+import { initFeedback, loadFeedback } from './feedback.js';
 import {
   bounceRate, buildFunnel, coerceStats, fillDays, fillScoreBuckets,
   formatCount, formatDuration, linePoints, niceScale, ratePct, retentionRate,
@@ -125,6 +128,11 @@ async function load() {
 
     render(coerceStats(data));
     show('view-stats');
+    // AFTER the view is shown, and not awaited. The feedback RPC is applied by a
+    // separate hand-run migration, so on the deploy between merging this and
+    // running that file it will fail — and that must cost its own panel and
+    // nothing else. It renders its own error in place.
+    void loadFeedback();
   } catch (e) {
     showError(e?.message || 'Something went wrong.');
   } finally {
@@ -486,6 +494,7 @@ for (const btn of document.querySelectorAll('[data-signout]')) {
 }
 
 wireRange();
+initFeedback();
 try {
   $('host').textContent = SUPABASE_URL ? new URL(SUPABASE_URL).host : 'not configured';
 } catch {
