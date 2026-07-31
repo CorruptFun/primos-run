@@ -1,0 +1,5 @@
+{
+  "_readme": "Editorial corrections for the Primo picker, edited by hand and pushed in a commit. NOT security: this is a public JSON file on a static host and any player can ignore it from the console. Real ownership is enforced server-side at write time. 'assigned' maps a token number to a holder handle — anyone whose local handle does not match is refused the claim. 'blocked' is a plain list of token numbers nobody may claim. Both are optional; an empty file, a missing file or a malformed one means everything is claimable, which is the intended default.",
+  "assigned": {},
+  "blocked": []
+}

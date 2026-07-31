@@ -6,22 +6,30 @@ import { resizeCamera } from './camera.js';
 import { drawHUD, pauseRect, pushToast, clearToasts } from './hud.js';
 import { attachInput } from './input.js';
 import { CREW, CUSTOM_TEMPLATE, CUSTOM_ID, drawPrimoPortrait } from './art/runner.js';
-import { headFromCharacter, loadHead } from './art/primo-head.js';
+import { headFromCharacter } from './art/primo-head.js';
 import { loadSprites, loadProps } from './art/sprites.js';
 import * as store from './store.js';
 import * as sfx from './audio.js';
-import { t, tRaw, initLang, setLang, getLang, onLangChange } from './i18n.js';
+import { t as tBase, tRaw, initLang, setLang, getLang, onLangChange } from './i18n.js';
+import {
+  getIndex, indexReady, cidFor, drawTokens, loadPrimoArt, loadPrimoUrl,
+  claimStatus, MAX_TOKEN, extraString,
+} from './primo-picker.js';
 import {
   tutorialNeeded, startTutorial, updateTutorial, drawTutorial,
   tutorialActive, tutorialInput, tutorialTap, finishTutorial,
 } from './tutorial.js';
 
-// Public gateways, tried in order. The first that answers wins.
-const GATEWAYS = [
-  'https://ipfs.io/ipfs/',
-  'https://cloudflare-ipfs.com/ipfs/',
-  'https://dweb.link/ipfs/',
-];
+/**
+ * i18n for this module, with the picker's strings layered over the shared
+ * table. They are in primo-picker.js only because js/i18n.js is being edited
+ * by another session right now — see the note there. Anything not the picker's
+ * falls through to i18n.js untouched, so every existing call site is unchanged.
+ */
+function t(key) {
+  const extra = extraString(key, getLang());
+  return extra !== undefined ? extra : tBase(key);
+}
 
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d', { alpha: false });
@@ -41,7 +49,6 @@ initLang(saved.lang);
 let customImg = null;      // source image for the HUD badge + menu tile
 let customRig = null;      // baked head sprite + sampled outfit palette
 let safe = { top: 0, bottom: 0 };
-let primoIndex = null;     // { images: { "1921": "Qm…" } }
 
 const roster = [...CREW, CUSTOM_TEMPLATE];
 // Head sprites for the crew. Seeded at boot with the code-drawn approximations
@@ -50,10 +57,6 @@ const roster = [...CREW, CUSTOM_TEMPLATE];
 const crewRigs = new Map();
 const crewImgs = new Map();   // id -> the real PFP Image, once loaded
 const crewNums = new Map();   // id -> token number, once loaded
-
-// The four the crew slots become. Fixed rather than random so a player's roster
-// is the same every launch, and so the picker doesn't reshuffle under them.
-const CREW_TOKENS = [4, 34, 56, 96];
 
 const game = new Game({
   // game.js is read-only from the language work, so its handful of literals get
@@ -255,6 +258,12 @@ function applyLang() {
   // from live state rather than sat in the markup.
   $('btn-mute').textContent = t(sfx.isMuted() ? 'pause.soundOff' : 'pause.soundOn');
   labelCrew();
+  // The found card is state, not markup, so data-i18n cannot reach it — but it
+  // is on screen mid-claim and must not be left half in the old language.
+  if (found) {
+    $('primo-found-num').textContent = t('crew.primoNum') + found.n;
+    applyClaimState(found.n, found.claim);
+  }
   // Transient feedback about an action taken in the OTHER language. Clearing
   // it beats leaving a stale sentence in the wrong one; the styling hides an
   // empty status line entirely.
@@ -377,57 +386,53 @@ function selectCrew(i) {
 
 // ------------------------------------------------------------ real primos
 
-async function getIndex() {
-  if (primoIndex) return primoIndex;
-  try {
-    const res = await fetch('data/primos-index.json');
-    primoIndex = await res.json();
-  } catch {
-    primoIndex = { images: {} };
-  }
-  return primoIndex;
-}
-
 const status = (msg) => { $('primo-status').textContent = msg; };
 
 /**
  * Swap the code-drawn crew for real collection art.
  *
- * The four built-in characters were hand-coded cartoons standing in for Primos,
+ * The four built-in characters are hand-coded cartoons standing in for Primos,
  * and next to the actual art they read as exactly that. The whole pipeline for
- * using the real thing already existed for the "MI PRIMO" slot — this just
- * points the default roster at it too.
+ * using the real thing already existed for the "MI PRIMO" slot — this points
+ * the default roster at it too, on a fresh random draw every launch so the
+ * menu is four different faces each time you open it.
  *
  * Deliberately non-blocking and best-effort: the drawn heads are already in
  * place, so a slow gateway, a rate-limit or being offline costs nothing but the
- * upgrade. Nothing here is stored in the repo — the index holds CIDs, and the
- * pixels live in the player's browser.
+ * upgrade, and there is never an empty menu or a wait. Nothing here is stored
+ * in the repo — the index holds CIDs, and the pixels live in the browser.
+ *
+ * WHY THIS STOPPED WORKING. Three faults, all silent:
+ *   · getIndex() memoised its own failures, so one flaky fetch at boot left an
+ *     empty index for the whole session and this returned before doing
+ *     anything (fixed in primo-picker.js — only successes are cached now);
+ *   · loadHead() has no timeout, and a stalled gateway resolves neither load
+ *     nor error, so the `for (const gw of GATEWAYS)` fallback below could
+ *     never be reached while the first one hung (fenced in loadPrimoArt);
+ *   · the second of the three gateways was cloudflare-ipfs.com, which has not
+ *     resolved since Cloudflare retired it.
+ * Each one leaves the cartoons on screen with nothing logged, which is exactly
+ * how it looks when it "just doesn't work".
  */
 async function loadRealCrew() {
   const idx = await getIndex();
-  const nums = Object.keys(idx.images);
-  if (!nums.length) return;
+  const tokens = drawTokens(idx, CREW.length);
+  if (!tokens.length) return;
 
   await Promise.all(CREW.map(async (c, i) => {
-    // Fall back to any indexed token if a chosen one is missing.
-    const want = String(CREW_TOKENS[i]);
-    const num = idx.images[want] ? want : nums[(i * 97) % nums.length];
-    const cid = idx.images[num];
+    const num = tokens[i];
+    const cid = cidFor(idx, num);
     if (!cid) return;
-
-    for (const gw of GATEWAYS) {
-      const result = await loadHead(gw + cid);
-      if (!result) continue;
-      // Keep the character's own trousers; everything above comes from the art.
-      crewRigs.set(c.id, { ...result.head, pants: c.pants });
-      crewImgs.set(c.id, result.img);
-      crewNums.set(c.id, num);
-      paintCrew();
-      // If this one is already on screen, re-select so the rig and the badge
-      // pick up the real art immediately rather than on the next tap.
-      if (roster[selectedIdx].id === c.id) selectCrew(selectedIdx);
-      return;
-    }
+    const result = await loadPrimoArt(cid);
+    if (!result) return;
+    // Keep the character's own trousers; everything above comes from the art.
+    crewRigs.set(c.id, { ...result.head, pants: c.pants });
+    crewImgs.set(c.id, result.img);
+    crewNums.set(c.id, String(num));
+    paintCrew();
+    // If this one is already on screen, re-select so the rig and the badge
+    // pick up the real art immediately rather than on the next tap.
+    if (roster[selectedIdx].id === c.id) selectCrew(selectedIdx);
   }));
 }
 
@@ -439,40 +444,167 @@ async function loadRealCrew() {
  */
 async function usePrimo(src, label, number) {
   status(t('status.loading').replace('%s', label));
-  const result = await loadHead(src);
+  const result = await loadPrimoUrl(src);
   if (!result) {
     status(t('status.badImage'));
     return false;
   }
-  customRig = { ...result.head, pants: '#2f3a52' };
-  customImg = result.img;
-  saved.customImage = src;
-  saved.primoNumber = number || null;
-  store.save(saved);
+  wearPrimo(result, src, number);
   status(t('status.ready').replace('%s', label));
-  selectCrew(roster.length - 1);
   return true;
 }
 
-/** Try each gateway in turn — public ones rate-limit and go down. */
-async function usePrimoByNumber(n) {
-  const idx = await getIndex();
-  const cid = idx.images[String(n)];
-  if (!cid) {
-    const have = Object.keys(idx.images).length;
-    status(t('status.notIndexed').replace('%n', n).replace('%h', have));
-    return;
-  }
-  for (const gw of GATEWAYS) {
-    if (await usePrimo(gw + cid, t('label.primoNum') + n, n)) return;
-  }
+/**
+ * Put a loaded Primo on the runner and write the claim down.
+ *
+ * `customImage` + `primoNumber` are the whole persistence story and the seam
+ * the cloud save hooks onto: the token number and the exact source URL it came
+ * from, under the keys store.js already defines. Nothing else needs to travel.
+ */
+function wearPrimo(result, src, number) {
+  customRig = { ...result.head, pants: '#2f3a52' };
+  customImg = result.img;
+  saved.customImage = src;
+  saved.primoNumber = Number.isFinite(number) ? number : null;
+  store.save(saved);
+  selectCrew(roster.length - 1);
 }
 
-$('btn-num').addEventListener('click', () => {
-  const n = parseInt($('primo-num').value, 10);
-  if (!Number.isFinite(n)) return;
+// ----------------------------------------------------------- find & claim
+
+// The Primo currently sitting in the found card, waiting to be claimed.
+let found = null;   // { n, result, url, claim }
+
+const foundCard = $('primo-found');
+
+function hideFound() {
+  found = null;
+  foundCard.classList.add('hidden');
+}
+
+/** Paint the found card: the art, its number, and whether it can be taken. */
+function showFound(n, result, url, claim) {
+  found = { n, result, url, claim };
+  foundCard.classList.remove('hidden');
+
+  const cv = $('primo-preview');
+  const c2 = cv.getContext('2d');
+  c2.clearRect(0, 0, cv.width, cv.height);
+  const grad = c2.createLinearGradient(0, 0, 0, cv.height);
+  grad.addColorStop(0, '#4a2f58');
+  grad.addColorStop(1, '#1d1229');
+  c2.fillStyle = grad;
+  c2.fillRect(0, 0, cv.width, cv.height);
+  drawPrimoPortrait(c2, 66, 84, 112, CUSTOM_TEMPLATE, { img: result.img });
+
+  $('primo-found-num').textContent = t('crew.primoNum') + n;
+  applyClaimState(n, claim);
+}
+
+/** The verdict line + the button, for a claim state that may still be pending. */
+function applyClaimState(n, claim) {
+  const line = $('primo-found-state');
+  const btn = $('btn-claim');
+  const mine = saved.primoNumber === n;
+  if (found && found.n === n) found.claim = claim;
+
+  if (!claim) {                       // still asking
+    line.textContent = t('claim.checking');
+    line.className = 'found-state';
+    btn.disabled = true;
+    btn.textContent = t('primo.claim');
+    return;
+  }
+  // The owner's correction outranks the local belief, deliberately: a player
+  // who took someone else's Primo has it in their own save, and if "already
+  // mine" were checked first they would be the one person the reassignment
+  // never reached.
+  if (claim.state === 'free' && mine) {
+    line.textContent = t('claim.mine');
+    line.className = 'found-state ok';
+    btn.disabled = true;
+    btn.textContent = t('primo.claimed');
+    return;
+  }
+  if (claim.state === 'blocked') {
+    line.textContent = t('claim.blocked');
+    line.className = 'found-state no';
+    btn.disabled = true;
+  } else if (claim.state === 'assigned') {
+    line.textContent = claim.holder
+      ? t('claim.assignedTo').replace('%h', claim.holder)
+      : t('claim.assigned');
+    line.className = 'found-state no';
+    btn.disabled = true;
+  } else {
+    line.textContent = t('claim.free');
+    line.className = 'found-state ok';
+    btn.disabled = false;
+  }
+  btn.textContent = t('primo.claim');
+}
+
+/**
+ * Find one Primo by number and show it. Does NOT claim it — seeing your Primo
+ * and taking it are two different taps, so a typo is a look, not a swap.
+ *
+ * Every branch says something out loud: searching, found, out of range, in
+ * range but not indexed, indexed but no gateway would answer.
+ */
+async function findPrimo(n) {
+  if (!Number.isFinite(n) || n < 0 || n > MAX_TOKEN) {
+    hideFound();
+    status(t('status.outOfRange'));
+    return;
+  }
+  hideFound();
+  status(t('status.searching').replace('%n', n));
+
+  const idx = await getIndex();
+  if (!indexReady()) { status(t('status.noIndex')); return; }
+
+  const cid = cidFor(idx, n);
+  if (!cid) {
+    status(t('status.notIndexed').replace('%n', n).replace('%h', idx.count || Object.keys(idx.images).length));
+    return;
+  }
+
+  // The art and the claim check are independent — asked together so the card
+  // is never waiting on the slower of two round trips in series.
+  const [result, claim] = await Promise.all([loadPrimoArt(cid), claimStatus(n)]);
+  if (!result) {
+    status(t('status.gatewayOut').replace('%n', n));
+    return;
+  }
+  showFound(n, result, result.url, claim);
+  status(claim.state === 'free' ? t('status.found') : '');
+}
+
+$('btn-claim').addEventListener('click', async () => {
+  if (!found) return;
   sfx.uiClick();
-  usePrimoByNumber(n);
+  const { n, result, url } = found;
+
+  // Asked again at the moment of the claim rather than trusted from the
+  // search: this is a network call in waiting, and the answer can move between
+  // the two taps. The button is parked while it answers.
+  $('btn-claim').disabled = true;
+  applyClaimState(n, null);
+  const claim = await claimStatus(n);
+  applyClaimState(n, claim);
+  if (claim.state !== 'free') {
+    status('');
+    return;
+  }
+
+  wearPrimo(result, url, n);
+  status(t('status.claimedNum').replace('%n', n));
+  applyClaimState(n, claim);
+});
+
+$('btn-num').addEventListener('click', () => {
+  sfx.uiClick();
+  findPrimo(parseInt($('primo-num').value, 10));
 });
 
 $('primo-num').addEventListener('keydown', (e) => {
@@ -482,16 +614,17 @@ $('primo-num').addEventListener('keydown', (e) => {
 $('btn-random').addEventListener('click', async () => {
   sfx.uiClick();
   const idx = await getIndex();
-  const keys = Object.keys(idx.images);
-  if (!keys.length) { status(t('status.noIndex')); return; }
-  const n = keys[Math.floor(Math.random() * keys.length)];
+  if (!indexReady()) { status(t('status.noIndex')); return; }
+  const [n] = drawTokens(idx, 1);
+  if (n === undefined) { status(t('status.noIndex')); return; }
   $('primo-num').value = n;
-  usePrimoByNumber(Number(n));
+  findPrimo(Number(n));
 });
 
 $('primo-file').addEventListener('change', (e) => {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
+  hideFound();
   const reader = new FileReader();
   reader.onload = () => usePrimo(String(reader.result), file.name, null);
   reader.onerror = () => status(t('status.badFile'));
@@ -502,6 +635,7 @@ $('btn-url').addEventListener('click', () => {
   const url = $('primo-url').value.trim();
   if (!url) return;
   sfx.uiClick();
+  hideFound();
   usePrimo(url, t('label.yourPrimo'), null);
 });
 
@@ -511,10 +645,54 @@ $('btn-clear-primo').addEventListener('click', () => {
   saved.customImage = null;
   saved.primoNumber = null;
   store.save(saved);
+  hideFound();
   status(t('status.cleared'));
   if (roster[selectedIdx].id === CUSTOM_ID) selectCrew(0);
   else paintCrew();
 });
+
+/**
+ * Put the player's claimed Primo back on at launch.
+ *
+ * A claim is a token number first and a URL second. The saved URL names one
+ * gateway and that gateway will eventually have a bad day, so a claim with a
+ * number behind it is re-fetched through the whole gateway walk and only falls
+ * back to the stored URL — which for an uploaded file is a data URL, and is
+ * then the only thing there is.
+ */
+async function restoreClaim() {
+  if (!saved.customImage && saved.primoNumber == null) return;
+
+  let result = null;
+  if (Number.isFinite(saved.primoNumber)) {
+    // The correction has to actually reach the player holding the token, or
+    // "I can always reassign it" reassigns nothing. Checked at launch, before
+    // the art is worth fetching. Fails open — see claimStatus().
+    const claim = await claimStatus(saved.primoNumber);
+    if (claim.state !== 'free') {
+      const n = saved.primoNumber;
+      customImg = null;
+      customRig = null;
+      saved.customImage = null;
+      saved.primoNumber = null;
+      store.save(saved);
+      if (roster[selectedIdx].id === CUSTOM_ID) selectCrew(0);
+      else paintCrew();
+      status(t('status.reassigned').replace('%n', n));
+      return;
+    }
+    const idx = await getIndex();
+    const cid = cidFor(idx, saved.primoNumber);
+    if (cid) result = await loadPrimoArt(cid);
+  }
+  if (!result && saved.customImage) result = await loadPrimoUrl(saved.customImage);
+  if (!result) return;
+
+  customRig = { ...result.head, pants: '#2f3a52' };
+  customImg = result.img;
+  paintCrew();
+  if (roster[selectedIdx].id === CUSTOM_ID) selectCrew(selectedIdx);
+}
 
 // ----------------------------------------------------------------- buttons
 
@@ -590,16 +768,8 @@ function boot() {
   // localised — and it is what fills in the mute button too.
   applyLang();
 
-  // Restore a previously chosen Primo in the background.
-  if (saved.customImage) {
-    loadHead(saved.customImage).then((result) => {
-      if (!result) return;
-      customRig = { ...result.head, pants: '#2f3a52' };
-      customImg = result.img;
-      paintCrew();
-      if (roster[selectedIdx].id === CUSTOM_ID) selectCrew(selectedIdx);
-    });
-  }
+  // Restore a previously claimed Primo in the background.
+  restoreClaim();
 
   showScreen(STATE.MENU);
   // Not named `t` — that is the translator in this module now.

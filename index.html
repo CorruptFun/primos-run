@@ -65,11 +65,24 @@
 
       <details class="how" id="primo-panel">
         <summary data-i18n="primo.title">Corre como un Primo de verdad</summary>
-        <p class="hint" data-i18n="primo.hintNum">Type a number from the collection — the art loads live from IPFS.</p>
+        <p class="hint" data-i18n="primo.hintFind">¿Eres holder? Busca tu número.</p>
         <div class="url-row">
-          <input type="number" id="primo-num" data-i18n-ph="primo.numPh" placeholder="Primo #" min="1" max="3069" inputmode="numeric">
-          <button class="btn btn-small" id="btn-num" data-i18n="primo.load">CARGAR</button>
+          <!-- 0..3068 — the collection is 3,069 tokens numbered from zero. -->
+          <input type="number" id="primo-num" data-i18n-ph="primo.numPh" placeholder="Primo #" min="0" max="3068" inputmode="numeric">
+          <button class="btn btn-small" id="btn-num" data-i18n="primo.find">BUSCAR</button>
         </div>
+
+        <!-- Found, not yet claimed: seeing your Primo and taking it are two
+             separate taps, so a typo is a look rather than a swap. -->
+        <div class="found hidden" id="primo-found">
+          <canvas id="primo-preview" width="132" height="132" role="img" aria-label="Primo"></canvas>
+          <div class="found-meta">
+            <p class="found-num" id="primo-found-num">PRIMO #0</p>
+            <p class="found-state" id="primo-found-state"></p>
+            <button class="btn btn-small" id="btn-claim" data-i18n="primo.claim">RECLÁMALO</button>
+          </div>
+        </div>
+
         <button class="btn btn-ghost btn-small wide" id="btn-random" data-i18n="primo.random">SORPRÉNDEME</button>
 
         <p class="hint sep" data-i18n="primo.hintUrl">¿Eres holder? Use your own — right-click your Primo on Magic Eden,

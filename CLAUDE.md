@@ -27,10 +27,20 @@ Live repo: <https://github.com/CorruptFun/primos-run>
   and the comment on `PROP_SPEC` in `js/art/props.js`). Lane changes are the
   answer. Dumpsters/crates/cones are jumpable; clotheslines/awnings need a slide.
 
-- **Magic Eden's API blocks browser CORS.** That is why `data/primos-index.json`
-  is built offline by `scripts/harvest-primos.mjs`. `ipfs.io` *does* send
-  `access-control-allow-origin: *`, so a player's Primo loads untainted and its
-  pixels can be sampled for outfit colours.
+- **`data/primos-index.json` is built offline by `scripts/harvest-primos.mjs`,
+  and it no longer touches Magic Eden.** ME could only ever reach ~520 of 3,069:
+  it serves ~150 listings, caps `activities` near a thousand records, and an
+  activity only exists for a token that has *traded*. No budget fixes that. The
+  harvester now reads the collection's on-chain Metaplex metadata URI via Solana
+  RPC to find the pinned IPFS directory, then walks `<dir>/<n>.json` for every
+  token across a pool of gateways. Full 3,069 coverage, ~167KB, CIDs only.
+- **The collection is numbered 0–3068, not 1–3069.** Token #0 exists. Any
+  `min`/`max` on a number input has to allow it.
+- `ipfs.io` sends `access-control-allow-origin: *`, so a player's Primo loads
+  untainted and its pixels can be sampled for outfit colours. `cloudflare-ipfs.com`
+  is dead (ENOTFOUND) — do not put it back in the gateway list. Gateways also
+  *stall* rather than erroring, so any fetch through one needs its own timeout or
+  the fallback chain never advances.
 
 - **No collection artwork lives in this repo, and none should.** The index holds
   IPFS CIDs only. Player images are fetched client-side at the player's request
