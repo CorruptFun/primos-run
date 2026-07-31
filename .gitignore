@@ -9,3 +9,6 @@ art/raw/
 # Never commit the Gemini key — it lives in ~/.gemini_env
 .env
 *.key
+
+# Supabase CLI scratch — version probes and link state, not project source.
+supabase/.temp/
