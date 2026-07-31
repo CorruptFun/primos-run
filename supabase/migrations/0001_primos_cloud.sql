@@ -94,13 +94,23 @@ create trigger trg_primos_saves_touch
 -- the player to accept an update (a green deploy is not "players are on it"),
 -- and rows already published never rewrite themselves.
 --
--- anon_display_name MUST STAY BYTE-IDENTICAL to anonName() in
+-- primos_anon_display_name MUST STAY BYTE-IDENTICAL to anonName() in
 -- js/leaderboard.js — the server substitutes this exact string, so any drift
 -- shows the player one name in the game and the board another. The self-check
 -- at the bottom of this file refuses to apply on drift; dev/cloud-test.html
 -- asserts the same case from the client side.
+--
+-- PREFIXED, and that is not cosmetic. This project shares a Supabase project
+-- with Viva Maya and Turbo Maze, and Viva Maya already owns an unprefixed
+-- public.anon_display_name(p_user uuid) from its own migration 0017. Two games
+-- sharing one mutable function means either one changing its anonymous-name
+-- format silently rewrites the other's live board. Postgres also refuses to
+-- `create or replace` across a renamed parameter (42P13: cannot change name of
+-- input parameter), so the unprefixed version would have failed this migration
+-- outright. Every other object in this file was already prefixed; this one had
+-- been missed.
 -- ==========================================
-create or replace function public.anon_display_name(uid uuid)
+create or replace function public.primos_anon_display_name(uid uuid)
 returns text language sql immutable as $$
     select 'Player ' || upper(substr(replace(uid::text, '-', ''), 1, 4));
 $$;
@@ -125,7 +135,7 @@ begin
     select lower(split_part(u.email, '@', 1)) into email_local
       from auth.users u where u.id = uid;
     if email_local is not null and email_local <> '' and lower(clean) = email_local then
-        return public.anon_display_name(uid);
+        return public.primos_anon_display_name(uid);
     end if;
     return clean;
 end;
@@ -415,8 +425,8 @@ begin
         raise exception 'primos_week_of_day is sensitive to the session timezone — it must not be';
     end if;
 
-    if public.anon_display_name('7f3a91b2-0000-4000-8000-000000000000') <> 'Player 7F3A' then
-        raise exception 'anon_display_name drifted from js/leaderboard.js anonName — players would see two different names';
+    if public.primos_anon_display_name('7f3a91b2-0000-4000-8000-000000000000') <> 'Player 7F3A' then
+        raise exception 'primos_anon_display_name drifted from js/leaderboard.js anonName — players would see two different names';
     end if;
 
     raise notice 'day/week keys and the anonymous name agree with the game client across all checked cases.';

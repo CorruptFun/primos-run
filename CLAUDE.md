@@ -102,7 +102,11 @@ Three things that will bite otherwise:
 - **`js/raceday.js` and `js/leaderboard.js`'s `anonName` have byte-identical
   twins in the migration**, which validates every submission and *refuses to
   apply* if they drift. Change one side and you must change the other, plus the
-  cases in `dev/cloud-test.html`.
+  cases in `dev/cloud-test.html`. The SQL side is
+  `public.primos_anon_display_name` — **prefixed on purpose**: this project
+  shares a Supabase project with Viva Maya and Turbo Maze, and Viva Maya owns an
+  unprefixed `anon_display_name`. Every object this migration creates is
+  `primos_`-prefixed; keep it that way.
 - **A display name may never be derived from the email.** Enforced in the
   client, again in the guard trigger, and once more by a backfill — because
   cached PWA clients keep submitting for days after a deploy.

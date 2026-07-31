@@ -82,7 +82,7 @@ eq(weekOfDay('2026-01-04'), '2026-W01', 'W01 tail');
 eq(weekOfDay('2026-01-05'), '2026-W02', 'W02 head');
 eq(weekKey(new Date('2026-08-02T23:00:00Z')), '2026-W31', 'weekKey composes dayKey');
 
-group('anonymous name — must match anon_display_name()');
+group('anonymous name — must match primos_anon_display_name()');
 eq(anonName('7f3a91b2-0000-4000-8000-000000000000'), 'Player 7F3A', 'the shared case the migration asserts');
 eq(anonName(null), 'player', 'no user id degrades, never throws');
 

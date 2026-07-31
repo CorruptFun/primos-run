@@ -49,7 +49,7 @@ export function sanitizeName(raw) {
  * so it discloses nothing that reading the board did not. Four hex digits keep
  * the board legible; twenty rows of "player" tells a reader nothing.
  *
- * MUST STAY BYTE-IDENTICAL to public.anon_display_name in
+ * MUST STAY BYTE-IDENTICAL to public.primos_anon_display_name in
  * supabase/migrations/0001_primos_cloud.sql. The server substitutes that exact
  * string when a submission would publish an email name, so any drift shows the
  * player one name in the game and the board another. The migration self-checks
