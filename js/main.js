@@ -26,6 +26,10 @@ import * as wallet from './wallet.js';
 import {
   openShop, offerContinue, closeContinue, continueCost, loadoutFor, paintWallet,
 } from './tiendita.js';
+import { bootstrapCloud } from './cloud.js';
+import { pruneDays, recordDay } from './raceday.js';
+import { initBoards, refreshBoards, relangBoards, showRunStanding } from './boards.js';
+import { initAccount, refreshAccount, relangAccount, releaseAccount } from './account.js';
 
 /**
  * i18n for this module, with the picker's strings layered over the shared
@@ -277,8 +281,32 @@ attachInput(canvas, {
 
 // ----------------------------------------------------------------- screens
 
+// LA TABLA and CUENTA sit outside the game's state machine — they are opened
+// from the menu and return to it. They are still `.screen`s, whose backgrounds
+// are translucent so they can sit over the canvas; two visible at once would
+// show through each other, so exactly one screen is ever un-hidden.
+const overlays = {
+  boards: $('screen-boards'),
+  account: $('screen-account'),
+};
+
+function showOverlay(name) {
+  screens.menu.classList.add('hidden');
+  overlays[name].classList.remove('hidden');
+}
+
+/** Dismiss both overlays. `backToMenu` restores the menu behind them. */
+function hideOverlays(backToMenu) {
+  for (const el of Object.values(overlays)) el.classList.add('hidden');
+  releaseAccount();
+  if (backToMenu) screens.menu.classList.remove('hidden');
+}
+
 function showScreen(state) {
   for (const el of Object.values(screens)) el.classList.add('hidden');
+  // A state change has to dismiss the overlays or they would linger over the run
+  // that just started. `false`, because the branches below decide what shows.
+  hideOverlays(false);
   if (state === STATE.MENU) {
     screens.menu.classList.remove('hidden');
     refreshStats();
@@ -326,6 +354,12 @@ function declineContinue() {
 }
 
 function fillGameOver() {
+  // Re-read rather than trusting the module-level copy: a cloud sync that landed
+  // mid-run has already merged and persisted a newer save, and writing this
+  // run's result on top of a stale object would throw that away. Cheap, and it
+  // closes the one path in the game that can lose progress.
+  saved = store.load();
+
   const isPB = game.score > saved.best;
   saved.best = Math.max(saved.best, game.score);
   saved.bestBeers = Math.max(saved.bestBeers, game.beers);
@@ -334,7 +368,12 @@ function fillGameOver() {
   // Bank the takings BEFORE store.save(), which restores the wallet fields
   // from disk over whatever `saved` is holding — see ECON_KEYS in store.js.
   wallet.deposit(game.beers);
-  store.save(saved);
+  // Today's board takes the day's BEST, not the last run — recordDay keeps the
+  // max. pruneDays stops the map growing forever, since it rides every cloud
+  // push; days older than the cutoff are already immutable on the server.
+  recordDay(saved, game.score);
+  pruneDays(saved);
+  store.save(saved);   // the store listener debounce-pushes this, boards included
   paintWallet();
 
   $('over-reason').textContent = tRaw(game.gameOverReason);
@@ -343,6 +382,8 @@ function fillGameOver() {
   $('over-tacos').textContent = game.tacos;
   $('over-dist').textContent = Math.floor(game.distance);
   $('over-pb').classList.toggle('hidden', !isPB);
+  // Fire-and-forget: it reveals itself only once it has a real rank to show.
+  void showRunStanding();
 }
 
 // ------------------------------------------------------------------ language
@@ -389,6 +430,11 @@ function applyLang() {
   status('');
   // A run that ended in the other language must not keep its old headline.
   if (game.gameOverReason) $('over-reason').textContent = tRaw(game.gameOverReason);
+  // Both overlays compose their text from live state — names, ranks, the board
+  // key, the signed-in email — so the data-i18n sweep above cannot reach any of
+  // it. Each is a no-op unless its screen is actually up.
+  relangBoards();
+  relangAccount();
 }
 
 onLangChange(() => {
@@ -862,6 +908,25 @@ $('btn-shop-over').addEventListener('click', () => {
   openShop(() => screens.over.classList.remove('hidden'));
 });
 
+$('btn-boards').addEventListener('click', () => {
+  sfx.uiClick();
+  showOverlay('boards');
+  refreshBoards();
+});
+$('btn-boards-back').addEventListener('click', () => { sfx.uiClick(); hideOverlays(true); });
+
+$('btn-account').addEventListener('click', () => {
+  sfx.uiClick();
+  showOverlay('account');
+  refreshAccount();
+});
+$('btn-account-back').addEventListener('click', () => {
+  sfx.uiClick();
+  hideOverlays(true);
+  saved = store.load();   // a restore may have replaced everything behind the screen
+  refreshStats();
+});
+
 $('btn-resume').addEventListener('click', () => { sfx.uiClick(); game.resume(); });
 $('btn-quit').addEventListener('click', () => {
   sfx.uiClick();
@@ -965,9 +1030,25 @@ function boot() {
   // Restore a previously claimed Primo in the background.
   restoreClaim();
 
+  initBoards();
+  initAccount();
+
   showScreen(STATE.MENU);
   // Not named `t` — that is the translator in this module now.
   requestAnimationFrame((now) => { last = now; frame(now); });
+
+  // Cloud reconciliation runs AFTER the menu is up, not before it.
+  //
+  // Awaiting it here would hold first paint for up to its timeout on a slow
+  // network, to fix a case the game already handles: fillGameOver() re-reads the
+  // save before writing, so a sync that lands mid-run cannot be clobbered. It
+  // no-ops instantly when cloud-config.js is empty, which is how this ships.
+  void bootstrapCloud().then(() => {
+    saved = store.load();          // adopt whatever the merge decided
+    refreshStats();
+    const i = roster.findIndex((c) => c.id === saved.character);
+    if (i >= 0 && i !== selectedIdx) selectCrew(i);
+  });
 }
 
 boot();

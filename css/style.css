@@ -1148,3 +1148,212 @@ h2 {
   }
   .cont-price b { font-size: 23px; }
 }
+
+/* ------------------------------------------------- cuenta + la tabla */
+
+/* Two ghost buttons side by side under CORRE. `.btn` carries its own top
+   margin, so the row zeroes it and owns the spacing itself. */
+.row-2 {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.row-2 .btn { flex: 1; margin-top: 0; }
+
+/* Small-caps section heading — the gold counterpart to `.hint`. */
+.sec {
+  margin: 0 0 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.sec.sep {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* --- board tabs --- */
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.tab {
+  flex: 1;
+  padding: 9px 8px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.tab:hover { color: var(--ink); }
+.tab:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+.tab.on {
+  color: #2a1a06;
+  border-color: transparent;
+  background: linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-lo));
+}
+
+/* Which board you are looking at. Without it a daily board reads as a broken
+   all-time board every midnight. */
+/* Tracking is tight here because the Spanish string is the long one —
+   "se reinicia a medianoche UTC" orphans the UTC onto its own line at 0.18em. */
+.board-key {
+  margin: 0 0 10px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+/* --- the rows --- */
+
+.board {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 46vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.board li {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border-radius: 10px;
+  font-size: 13px;
+  animation: rise 0.24s var(--ease-out) backwards;
+}
+
+.board li + li { margin-top: 3px; }
+
+.board .r {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The podium reads at a glance, so it does not need the number to be legible. */
+.board li:nth-child(1) .r { color: var(--gold); }
+.board li:nth-child(2) .r { color: #cfd6e0; }
+.board li:nth-child(3) .r { color: #d69a62; }
+
+/* `.sheet` centres its text, which is right for everything else on it and wrong
+   for a ranked list: centred names leave the column edge ragged and give the eye
+   nothing to run down. */
+.board .r { text-align: left; }
+
+.board .n {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  color: var(--ink);
+}
+
+.board .v {
+  text-align: right;
+  font-weight: 800;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Your own row — the first thing anyone looks for. */
+.board li.you {
+  background: rgba(255, 201, 60, 0.13);
+  box-shadow: inset 0 0 0 1px rgba(255, 201, 60, 0.34);
+}
+
+.board li.you .n { font-weight: 800; }
+
+/* Pinned own-rank readout, for when you are outside the top rows — otherwise
+   the board is a wall of strangers and says nothing about you. */
+.board-me {
+  margin: 10px 0 0;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: rgba(255, 201, 60, 0.11);
+  border-left: 2px solid var(--gold);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.board-me.hidden, .board-empty.hidden { display: none; }
+
+/* Signed out, unconfigured, offline and genuinely-empty all land here. */
+.board-empty {
+  margin: 18px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-dim);
+  text-align: center;
+}
+
+/* --- game-over standing --- */
+
+.rank-line {
+  margin: 10px 0 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--teal);
+  animation: rise 0.34s var(--ease-out) both;
+}
+
+.rank-line.hidden { display: none; }
+
+/* --- account --- */
+
+#acct-auth .hint { margin-bottom: 10px; }
+#acct-name.hidden { display: none; }
+
+.backup-out {
+  width: 100%;
+  margin: 8px 0 0;
+  padding: 9px 11px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.34);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.4);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  word-break: break-all;
+  resize: vertical;
+}
+
+.backup-out.hidden { display: none; }
+
+#acct-status:not(:empty) {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-left: 2px solid var(--teal);
+  color: var(--ink);
+  animation: rise 0.24s var(--ease-out) both;
+}
+
+#acct-status.bad:not(:empty) { border-left-color: var(--red); }

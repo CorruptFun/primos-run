@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cloud-test — pure logic for saves &amp; boards</title>
+<style>
+  body { margin: 0; padding: 24px; background: #1a1024; color: #fdf6e6;
+         font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  h1 { font-size: 16px; letter-spacing: 0.14em; color: #ffc93c; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; color: rgba(253,246,230,0.5); font-size: 12px; }
+  h2 { font-size: 12px; letter-spacing: 0.16em; color: rgba(253,246,230,0.62);
+       margin: 20px 0 6px; text-transform: uppercase; }
+  .ok { color: #9ee34f; }
+  .bad { color: #ff6b6b; }
+  .row { padding: 2px 0; }
+  .row small { color: rgba(253,246,230,0.38); }
+  #total { margin-top: 24px; padding: 12px 14px; border-radius: 10px; font-weight: 700; }
+  #total.pass { background: rgba(158,227,79,0.14); border-left: 3px solid #9ee34f; }
+  #total.fail { background: rgba(255,107,107,0.14); border-left: 3px solid #ff6b6b; }
+</style>
+</head>
+<body>
+<h1>CLOUD-TEST</h1>
+<p class="sub">
+  The pure half of the cloud layer — no network, no auth. Open this file over the dev server
+  (<code>dev/cloud-test.html</code>) after touching raceday.js, merge.js or store.js.
+</p>
+<div id="out"></div>
+<div id="total"></div>
+
+<script type="module">
+import { dayKey, previousDayKey, weekOfDay, weekKey, bestForDay, recordDay, pruneDays, formatWeekStanding }
+  from '../js/raceday.js';
+import { mergeSaves } from '../js/merge.js';
+import { anonName, sanitizeName } from '../js/leaderboard.js';
+
+const out = document.getElementById('out');
+let pass = 0, fail = 0;
+
+function group(title) {
+  const h = document.createElement('h2');
+  h.textContent = title;
+  out.append(h);
+}
+function eq(got, want, label) {
+  const ok = JSON.stringify(got) === JSON.stringify(want);
+  ok ? pass++ : fail++;
+  const d = document.createElement('div');
+  d.className = 'row ' + (ok ? 'ok' : 'bad');
+  d.innerHTML = (ok ? '✓ ' : '✗ ') + label +
+    (ok ? '' : ` <small>got ${JSON.stringify(got)} · want ${JSON.stringify(want)}</small>`);
+  out.append(d);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// These cases are DUPLICATED, deliberately, in the self-check at the bottom of
+// supabase/migrations/0001_primos_cloud.sql. The server validates every
+// submission's day key, so if the two implementations drift the database starts
+// rejecting honest scores and the board silently goes empty. Change one side and
+// you must change the other.
+// ─────────────────────────────────────────────────────────────────────────────
+group('day keys — must match primos_day_key()');
+eq(dayKey(new Date('2026-07-29T00:00:00Z')), '2026-07-29', 'the moment the board opens');
+eq(dayKey(new Date('2026-07-29T23:59:59Z')), '2026-07-29', 'last second of the same board');
+eq(dayKey(new Date('2026-07-30T00:00:00Z')), '2026-07-30', 'the rollover, exactly');
+eq(dayKey(new Date('2026-01-01T12:00:00Z')), '2026-01-01', 'year seam');
+eq(dayKey(new Date('2026-03-01T00:00:00Z')), '2026-03-01', 'month seam, non-leap February');
+eq(previousDayKey(new Date('2026-01-01T00:30:00Z')), '2025-12-31', 'yesterday across a year seam');
+
+group('ISO weeks — must match primos_week_of_day()');
+eq(weekOfDay('2026-07-27'), '2026-W31', 'Monday: the season opens');
+eq(weekOfDay('2026-08-02'), '2026-W31', 'Sunday: still the same season');
+eq(weekOfDay('2026-08-03'), '2026-W32', 'next Monday: a new one');
+eq(weekOfDay('2025-12-29'), '2026-W01', 'ISO year seam: W01 starts in December');
+eq(weekOfDay('2026-01-04'), '2026-W01', 'W01 tail');
+eq(weekOfDay('2026-01-05'), '2026-W02', 'W02 head');
+eq(weekKey(new Date('2026-08-02T23:00:00Z')), '2026-W31', 'weekKey composes dayKey');
+
+group('anonymous name — must match anon_display_name()');
+eq(anonName('7f3a91b2-0000-4000-8000-000000000000'), 'Player 7F3A', 'the shared case the migration asserts');
+eq(anonName(null), 'player', 'no user id degrades, never throws');
+
+group('name sanitising — the privacy invariant');
+eq(sanitizeName('jane.doe@gmail.com'), 'jane.doe', 'an email is cut at the @, never published whole');
+eq(sanitizeName('  <script>  '), 'script', 'markup characters are stripped');
+eq(sanitizeName(''), 'player', 'empty falls back');
+eq(sanitizeName('Ñoño Güero'), 'Ñoño Güero', 'accented letters survive — ASCII-only would mangle names');
+eq(sanitizeName('x'.repeat(40)).length, 24, 'capped at 24');
+
+group('day records');
+{
+  const s = { days: {} };
+  recordDay(s, 500, new Date('2026-07-29T10:00:00Z'));
+  recordDay(s, 300, new Date('2026-07-29T11:00:00Z'));
+  eq(bestForDay(s, '2026-07-29'), 500, 'keeps the day BEST, not the last run');
+  recordDay(s, 900, new Date('2026-07-29T12:00:00Z'));
+  eq(bestForDay(s, '2026-07-29'), 900, 'a better run raises it');
+  eq(bestForDay({ days: { x: NaN } }, 'x'), 0, 'a corrupt entry degrades to 0, never NaN');
+  eq(bestForDay({}, '2026-07-29'), 0, 'a save with no days map is fine');
+
+  s.days['2026-01-01'] = 1;
+  pruneDays(s, 60, new Date('2026-07-29T00:00:00Z'));
+  eq(Object.keys(s.days).sort(), ['2026-07-29'], 'days beyond the window are dropped');
+}
+
+group('merge — the one function that can destroy progress');
+{
+  const local = { best: 900, bestBeers: 3, runs: 10, totalBeers: 40, character: 'chuy',
+                  days: { '2026-07-29': 900 }, handle: 'local', handleSetAt: 100 };
+  const cloud = { best: 500, bestBeers: 9, runs: 4, totalBeers: 80, character: 'flaca',
+                  days: { '2026-07-28': 500 }, handle: 'cloud', handleSetAt: 200 };
+  const m = mergeSaves(local, cloud);
+
+  eq(m.best, 900, 'best is maxed');
+  eq(m.bestBeers, 9, 'a record only the LOSING side holds still survives');
+  eq(m.totalBeers, 80, 'lifetime counters are maxed, not taken from the winner');
+  eq(m.runs, 10, 'runs maxed');
+  eq(m.character, 'chuy', 'preferences come from the progress winner');
+  eq(m.days, { '2026-07-29': 900, '2026-07-28': 500 },
+     'both devices’ boards survive — picking a side would delete one');
+  eq(m.handle, 'cloud', 'the newer NAME wins even though the other side had the better run');
+  eq(mergeSaves(local, local).handle, 'local', 'a dead tie prefers local');
+  eq(mergeSaves(local, cloud).best, mergeSaves(cloud, local).best, 'best is order-independent');
+
+  const cleared = { best: 0, bestBeers: 0, runs: 0, totalBeers: 0, days: {}, handle: null, handleSetAt: 0 };
+  eq(mergeSaves(cleared, cloud).handle, 'cloud', 'a cleared browser adopts the cloud’s name');
+  eq(mergeSaves(cleared, cloud).best, 500, 'and its progress');
+}
+
+group('formatting');
+eq(formatWeekStanding(18204, 5), '18,204 · 5d', 'the total, then the turnout that explains it');
+
+const total = document.getElementById('total');
+total.className = fail === 0 ? 'pass' : 'fail';
+total.textContent = fail === 0 ? `ALL ${pass} CHECKS PASS` : `${fail} FAILED · ${pass} passed`;
+</script>
+</body>
+</html>

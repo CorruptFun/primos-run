@@ -17,7 +17,7 @@
 */
 
 // 👉 CUSTOMIZE: rename to your app, and bump CACHE_VERSION per deploy (e.g. a build stamp).
-const CACHE_VERSION = "v10-pace";
+const CACHE_VERSION = "v11-account";
 const CACHE_NAME    = `primos-run-${CACHE_VERSION}`;
 
 // 👉 CUSTOMIZE: the offline shell, precached at install. Relative paths (resolved against
@@ -52,6 +52,18 @@ const PRECACHE = [
   "./js/haptics.js",
   "./js/tutorial.js",
   "./js/intro.js",
+  // Cloud save + boards. Same-origin only — supabase-js itself is loaded from a
+  // CDN at runtime and is deliberately NOT listed: the fetch handler below never
+  // touches cross-origin GETs, so offline it simply fails and the game carries
+  // on local-only, which is the correct behaviour. Precaching it would also mean
+  // shipping it to players on a build where cloud-config.js is still empty.
+  "./js/cloud.js",
+  "./js/cloud-config.js",
+  "./js/leaderboard.js",
+  "./js/raceday.js",
+  "./js/merge.js",
+  "./js/boards.js",
+  "./js/account.js",
   "./js/art/palette.js",
   "./js/art/runner.js",
   "./js/art/head-back.js",

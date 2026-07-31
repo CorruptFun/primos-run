@@ -1,4 +1,10 @@
 // localStorage, defensively — private mode and locked-down browsers throw.
+//
+// This stays the AUTHORITATIVE copy of a player's progress even once cloud save
+// is on. The cloud is a mirror: js/cloud.js pulls it at boot, merges, writes the
+// winner back through here, and pushes from here afterwards. Losing the network
+// therefore loses freshness and nothing else, and the game runs identically with
+// the cloud switched off entirely.
 
 const KEY = 'primos-run.v1';
 
@@ -35,6 +41,10 @@ const DEFAULTS = {
   // i18n fall back to the device language. Once the player touches the switch
   // this holds their choice and the device is never consulted again.
   lang: null,
+  // --- cloud/leaderboard fields ---------------------------------------------
+  days: {},            // { 'YYYY-MM-DD': best score that day } — the daily board's source
+  handle: null,        // chosen race name; null means "show the anonymous one"
+  handleSetAt: 0,      // when it was chosen — the merge tiebreak (see js/merge.js)
 };
 
 function read() {
@@ -48,16 +58,59 @@ function read() {
   }
 }
 
+/**
+ * Force a restored blob into the expected SHAPE.
+ *
+ * Everything here arrives from storage, a pasted backup code, or another
+ * device's cloud row, so none of it can be trusted to be well-formed — a
+ * truncated code or a hand-edited entry must degrade to defaults rather than
+ * put a NaN into a leaderboard submission. Unknown keys are preserved so a save
+ * written by a NEWER build survives a round-trip through an older one.
+ *
+ * `trainedAt` and `lang` are deliberately NOT coerced: LEGACY is -1, which the
+ * positive-number rule below would flatten to 0 and replay the training for
+ * every grandfathered player.
+ */
+export function coerce(raw) {
+  const out = { ...DEFAULTS, ...(raw && typeof raw === 'object' ? raw : {}) };
+  for (const k of ['best', 'bestBeers', 'runs', 'totalBeers', 'handleSetAt']) {
+    const n = Number(out[k]);
+    out[k] = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+  out.muted = !!out.muted;
+  out.handle = typeof out.handle === 'string' && out.handle.trim() !== '' ? out.handle : null;
+  const days = {};
+  if (out.days && typeof out.days === 'object') {
+    for (const [key, v] of Object.entries(out.days)) {
+      const n = Number(v);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(key) && Number.isFinite(n) && n > 0) days[key] = Math.floor(n);
+    }
+  }
+  out.days = days;
+  return out;
+}
+
 export function load() {
   const blob = read();
-  if (!blob) return { ...DEFAULTS };
+  if (!blob) return coerce(null);
   // Grandfather clause. A save written before the tutorial shipped has no
   // `trainedAt` at all. If it has runs on the clock the player already knows
   // the alley, and being sat down for training would read as a bug — so they
   // are stamped trained on sight. A save with no runs (someone who picked a
   // Primo and closed the tab) is treated as fresh and still gets taught.
   if (blob.trainedAt == null && (blob.runs > 0 || blob.best > 0)) blob.trainedAt = LEGACY;
-  return { ...DEFAULTS, ...blob };
+  return coerce(blob);
+}
+
+// Persist subscribers. js/cloud.js registers one at boot so every existing
+// store.save() call site debounce-pushes to the cloud without any of them
+// having to know the cloud exists.
+const listeners = new Set();
+
+/** Subscribe to persists. Returns an unsubscribe fn. */
+export function onSave(cb) {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
 }
 
 export function save(data) {
@@ -86,6 +139,42 @@ export function save(data) {
     localStorage.setItem(KEY, JSON.stringify(out));
   } catch {
     /* out of quota or blocked — the run still plays, it just won't persist */
+  }
+  // Notified even when the write above failed: a blocked localStorage is exactly
+  // the case where getting the save into the cloud matters most. Each listener
+  // is isolated so one throwing can never break a persist.
+  for (const l of listeners) {
+    try { l(data); } catch { /* a listener must not cascade into the game */ }
+  }
+}
+
+// --- device backup ----------------------------------------------------------
+// Deliberately independent of sign-in. A file in Downloads survives clearing
+// site data, which is the exact event that loses everything else, and it is the
+// only durability on offer before the cloud is configured at all.
+
+/** The whole save as a paste-able code, or '' if it can't be produced. */
+export function exportSave() {
+  try {
+    // The unescape/encodeURIComponent sandwich is not decoration: plain btoa
+    // throws on any non-Latin-1 character, and player-chosen race names contain
+    // them constantly.
+    return btoa(unescape(encodeURIComponent(JSON.stringify(load()))));
+  } catch {
+    return '';
+  }
+}
+
+/** Restore from a code. Returns false (and changes nothing) if it isn't one. */
+export function importSave(code) {
+  try {
+    const json = decodeURIComponent(escape(atob(String(code).trim())));
+    const data = coerce(JSON.parse(json));
+    if (!data || typeof data !== 'object') return false;
+    save(data);
+    return true;
+  } catch {
+    return false;
   }
 }
 

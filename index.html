@@ -70,6 +70,11 @@
         <span data-i18n="shop.open">CORNER STORE</span><b class="wallet-chip" data-wallet>0</b>
       </button>
 
+      <div class="row-2">
+        <button class="btn btn-ghost btn-small" id="btn-boards" data-i18n="menu.boards">LA TABLA</button>
+        <button class="btn btn-ghost btn-small" id="btn-account" data-i18n="menu.account">CUENTA</button>
+      </div>
+
       <div class="stats">
         <div><b id="stat-best">0</b><span data-i18n="stat.best">BEST</span></div>
         <div><b id="stat-beers">0</b><span data-i18n="stat.chelas">BEERS</span></div>
@@ -154,6 +159,10 @@
       <p class="final-label" data-i18n="over.scoreLabel">SCORE</p>
       <p class="final" id="over-score">0</p>
       <p class="pb hidden" id="over-pb" data-i18n="over.pb">NICE! NEW BEST!</p>
+      <!-- Today's standing, composed from live state, so js/boards.js writes it
+           rather than data-i18n. Stays hidden until the board answers — an empty
+           rank line reads as a failure. -->
+      <p class="rank-line hidden" id="over-rank"></p>
       <div class="stats">
         <div><b id="over-beers">0</b><span data-i18n="over.chelas">BEERS</span></div>
         <div><b id="over-tacos">0</b><span data-i18n="over.tacos">TACOS</span></div>
@@ -227,6 +236,64 @@
       <div class="shop-list" id="shop-list"></div>
       <p class="shop-note" id="shop-note"></p>
       <button class="btn btn-primary" id="btn-shop-back" data-i18n="shop.back">BACK TO IT</button>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- la tabla -->
+  <!-- Two boards, one list. Populated by js/boards.js; every failure state
+       (signed out, unconfigured, offline, genuinely empty) renders the same
+       invitation rather than an error. -->
+  <section id="screen-boards" class="screen hidden">
+    <div class="sheet sheet-small">
+      <h2 data-i18n="board.title">LA TABLA</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab on" id="tab-daily" role="tab" aria-selected="true" data-i18n="board.daily">HOY</button>
+        <button class="tab" id="tab-weekly" role="tab" aria-selected="false" data-i18n="board.weekly">SEMANA</button>
+      </div>
+      <p class="board-key" id="board-key"></p>
+      <ol class="board" id="board-list"></ol>
+      <p class="board-me hidden" id="board-me"></p>
+      <button class="btn btn-ghost" id="btn-boards-back" data-i18n="board.back">ATRÁS</button>
+    </div>
+  </section>
+
+  <!-- ----------------------------------------------------------- cuenta -->
+  <!-- Sign-in, race name and device backup. The backup block works with no
+       account at all, so this screen is useful even before the cloud is
+       configured — which is the state the game ships in. -->
+  <section id="screen-account" class="screen hidden">
+    <div class="sheet sheet-small">
+      <h2 data-i18n="acct.title">CUENTA</h2>
+
+      <div id="acct-auth"></div>
+
+      <div id="acct-name" class="hidden">
+        <p class="sec" data-i18n="acct.nameTitle">Nombre de corredor</p>
+        <p class="hint" id="name-copy"></p>
+        <div class="url-row">
+          <input type="text" id="name-input" maxlength="24" autocomplete="off"
+                 data-i18n-ph="acct.namePh" aria-label="Race name">
+          <button class="btn btn-small" id="btn-name" data-i18n="acct.nameSave">GUARDAR</button>
+        </div>
+        <p class="hint" id="name-preview"></p>
+      </div>
+
+      <p class="sec sep" data-i18n="acct.backupTitle">Respaldo en este aparato</p>
+      <p class="hint" data-i18n="acct.backupCopy"></p>
+      <button class="btn btn-ghost btn-small wide" id="btn-backup-file" data-i18n="acct.backupFile">BAJAR RESPALDO</button>
+      <button class="btn btn-ghost btn-small wide" id="btn-backup-copy" data-i18n="acct.backupCode">COPIAR CÓDIGO</button>
+      <textarea id="backup-out" class="backup-out hidden" readonly rows="3"></textarea>
+      <label class="file-btn">
+        <span data-i18n="acct.restoreFile">Restaurar desde un archivo</span>
+        <input type="file" id="restore-file" accept="text/plain,.txt" hidden>
+      </label>
+      <div class="url-row">
+        <input type="text" id="restore-code" data-i18n-ph="acct.restorePh" spellcheck="false">
+        <button class="btn btn-small" id="btn-restore" data-i18n="acct.restore">CARGAR</button>
+      </div>
+      <p class="hint" id="acct-status"></p>
+
+      <button class="btn btn-ghost" id="btn-account-back" data-i18n="acct.back">ATRÁS</button>
     </div>
   </section>
 

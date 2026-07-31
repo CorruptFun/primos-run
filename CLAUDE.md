@@ -75,8 +75,44 @@ worker (`primos-run-v1`) when testing there.
 | `js/art/primo-head.js` | PFP → head sprite (crop, mask, palette, lighting) |
 | `js/art/scenery.js` | sky + alley walls |
 | `js/art/sprites.js` | painted cut-out rig (unused for the body) + prop sprites |
+| `js/store.js` | localStorage + backup code — the AUTHORITATIVE save |
+| `js/cloud.js` | Google sign-in, cloud save pull/merge/push |
+| `js/leaderboard.js` | board submit/read + the race-name rules |
+| `js/merge.js`, `js/raceday.js` | pure: save reconciliation, day/week keys |
+| `js/account.js`, `js/boards.js` | the CUENTA and LA TABLA screens |
 | `scripts/gen_art.py` | Gemini art generation + chroma key |
 | `scripts/make-icons.js` | PWA icons, zero dependencies |
+| `scripts/verify-rls.sh` | RLS audit — run after any migration |
+
+## Cloud save, sign-in and the boards
+
+**It ships DORMANT.** `js/cloud-config.js` is empty, so sign-in, sync and the
+boards all no-op and the game runs local-only — supabase-js is never even
+fetched. Filling in the URL + anon key is what turns the whole layer on. Device
+backup/restore in CUENTA works either way, on purpose.
+
+Use the **`cloud-saves-and-leaderboards` skill** before changing anything
+score-, board-, sign-in- or name-related. It is the distilled version of this
+exact stack and most of what looks fussy in these files is a scar it explains.
+`references/rollout.md` has the Google OAuth checklist — the redirect URI goes
+to the *Supabase* callback, not the game's URL, which is the usual mistake.
+
+Three things that will bite otherwise:
+
+- **`js/raceday.js` and `js/leaderboard.js`'s `anonName` have byte-identical
+  twins in the migration**, which validates every submission and *refuses to
+  apply* if they drift. Change one side and you must change the other, plus the
+  cases in `dev/cloud-test.html`.
+- **A display name may never be derived from the email.** Enforced in the
+  client, again in the guard trigger, and once more by a backfill — because
+  cached PWA clients keep submitting for days after a deploy.
+- **The guard skips its day check when the score doesn't rise.** That is what
+  lets a rename reach closed boards. Restore the check on every write and
+  scrubbing a name from history silently stops working.
+
+Migrations are applied by hand; CI never applies them. So applying to production
+and merging to `main` are two separate acts, and *the repo does not describe
+production until both have happened*.
 
 ## Checks
 
@@ -85,5 +121,9 @@ ES modules, so `node --check` needs an `.mjs` copy:
 ```bash
 for f in js/*.js js/art/*.js; do cp "$f" /tmp/x.mjs; node --check /tmp/x.mjs || echo "FAIL $f"; done
 ```
+
+`dev/cloud-test.html` asserts the pure half of the cloud layer — day/week keys,
+the merge, name sanitising — in the browser. Open it after touching
+`raceday.js`, `merge.js`, `store.js` or `leaderboard.js`.
 
 **Bump `CACHE_VERSION` in `sw.js` on every deploy** or players keep stale JS.

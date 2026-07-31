@@ -331,6 +331,92 @@ const STR = {
   'tut.tile.copcar':      { en: 'ICE CRUISER', es: 'LA PATRULLA' },
   'tut.tile.no.n':        { en: 'GO AROUND', es: 'NO SE SALTA' },
 
+  // --------------------------------------------- the board / la tabla
+  // The board is the one screen where players read each other's names, so the
+  // copy stays as flat as the rest: it states the rule and gets out of the way.
+  'menu.boards':      { en: 'LEADERBOARD', es: 'LA TABLA' },
+  'menu.account':     { en: 'ACCOUNT', es: 'CUENTA' },
+  'board.title':      { en: 'LEADERBOARD', es: 'LA TABLA' },
+  'board.daily':      { en: 'TODAY', es: 'HOY' },
+  'board.weekly':     { en: 'WEEK', es: 'SEMANA' },
+  'board.back':       { en: 'BACK', es: 'ATRÁS' },
+  'board.loading':    { en: 'Loading…', es: 'Cargando…' },
+  // %k is the day or week key, filled at the call site.
+  'board.keyDaily':   { en: '%k · resets at midnight UTC',
+                        es: '%k · se reinicia a medianoche UTC' },
+  'board.keyWeekly':  { en: '%k · the sum of your daily bests',
+                        es: '%k · la suma de tus mejores del día' },
+  'board.offBuild':   { en: 'The board is not switched on in this build.',
+                        es: 'La tabla todavía no está encendida en esta versión.' },
+  'board.signedOut':  { en: 'Sign in from ACCOUNT and your run goes on the board.',
+                        es: 'Entra desde CUENTA y tu corrida sale en la tabla.' },
+  'board.nobody':     { en: 'Nobody has run this one yet. Be the first.',
+                        es: 'Nadie ha corrido esta todavía. Sé el primero.' },
+  'board.you':        { en: 'YOU', es: 'TÚ' },
+  // %n is the rank. The game-over line, under the score.
+  'over.rankFirst':   { en: "#1 ON TODAY'S BOARD", es: '#1 EN LA TABLA DE HOY' },
+  'over.rank':        { en: "#%n ON TODAY'S BOARD", es: '#%n EN LA TABLA DE HOY' },
+
+  // -------------------------------------------------- the account / cuenta
+  'acct.title':       { en: 'ACCOUNT', es: 'CUENTA' },
+  'acct.back':        { en: 'BACK', es: 'ATRÁS' },
+  'acct.offBuild':    { en: 'The cloud is not switched on in this build — but your run is saved '
+                          + 'on this phone, and you can back it up below.',
+                        es: 'La nube todavía no está encendida en esta versión — pero tu corrida está '
+                          + 'guardada en este teléfono, y aquí abajo la puedes respaldar.' },
+  // %s is the email.
+  'acct.signedInAs':  { en: 'Signed in as %s — your progress syncs on its own.',
+                        es: 'Entraste como %s — tu progreso se sincroniza solo.' },
+  'acct.signedIn':    { en: 'Signed in — your progress syncs on its own.',
+                        es: 'Ya entraste — tu progreso se sincroniza solo.' },
+  'acct.signOut':     { en: 'SIGN OUT', es: 'CERRAR SESIÓN' },
+  'acct.signingOut':  { en: 'SIGNING OUT…', es: 'CERRANDO…' },
+  'acct.pitch':       { en: 'Sign in with Google and your run follows you — another phone, another '
+                          + 'browser, even after you clear everything.',
+                        es: 'Entra con Google y tu corrida te sigue — otro teléfono, otro navegador, '
+                          + 'aunque borres todo.' },
+  'acct.signIn':      { en: 'SIGN IN WITH GOOGLE', es: 'ENTRAR CON GOOGLE' },
+  'acct.continuing':  { en: 'CONTINUING…', es: 'CONTINUANDO…' },
+  'acct.signInFail':  { en: 'Could not open Google. Try again.',
+                        es: 'No se pudo abrir Google. Inténtalo otra vez.' },
+
+  'acct.nameTitle':   { en: 'Runner name', es: 'Nombre de corredor' },
+  'acct.nameCopyIn':  { en: 'It shows next to your score on the board. Nobody sees your email. '
+                          + 'Changing it also updates every board you are already on.',
+                        es: 'Sale junto a tu score en la tabla. Tu correo no lo ve nadie. '
+                          + 'Si lo cambias, se actualiza también en las tablas donde ya saliste.' },
+  'acct.nameCopyOut': { en: 'It shows next to your score once you sign in. Nobody sees your email.',
+                        es: 'Sale junto a tu score una vez que entres. Tu correo no lo ve nadie.' },
+  'acct.namePh':      { en: 'e.g. neonghost', es: 'ej. neonghost' },
+  'acct.nameSave':    { en: 'SAVE', es: 'GUARDAR' },
+  // %s is the sanitized handle, or the anonymous name.
+  'acct.nameShows':   { en: 'On the board: %s', es: 'En la tabla: %s' },
+  'acct.nameAnon':    { en: 'No name — the board calls you: %s',
+                        es: 'Sin nombre — la tabla te pone: %s' },
+  'acct.nameNone':    { en: 'No name yet.', es: 'Sin nombre todavía.' },
+  'acct.nameSet':     { en: 'You are %s now.', es: 'Quedaste como %s.' },
+  'acct.nameCleared': { en: 'Name cleared.', es: 'Nombre borrado.' },
+
+  'acct.backupTitle': { en: 'Backup on this device', es: 'Respaldo en este aparato' },
+  'acct.backupCopy':  { en: 'Download a backup file — it survives clearing your browser, '
+                          + 'and you load it back on any device.',
+                        es: 'Baja un archivo de respaldo — aguanta aunque borres el navegador, '
+                          + 'y lo cargas de vuelta en cualquier aparato.' },
+  'acct.backupFile':  { en: 'DOWNLOAD BACKUP', es: 'BAJAR RESPALDO' },
+  'acct.backupCode':  { en: 'COPY CODE', es: 'COPIAR CÓDIGO' },
+  'acct.restoreFile': { en: 'Restore from a file', es: 'Restaurar desde un archivo' },
+  'acct.restorePh':   { en: 'Or paste a backup code', es: 'O pega un código de respaldo' },
+  'acct.restore':     { en: 'LOAD', es: 'CARGAR' },
+  'acct.savedFile':   { en: 'Backup downloaded. Put it somewhere safe.',
+                        es: 'Respaldo bajado. Guárdalo en buen lugar.' },
+  'acct.copied':      { en: 'Code copied.', es: 'Código copiado.' },
+  'acct.copyManual':  { en: 'Copy the code above.', es: 'Copia el código de arriba.' },
+  'acct.noDownload':  { en: 'No downloads here — use the code.',
+                        es: 'Aquí no se puede bajar — usa el código.' },
+  'acct.needCode':    { en: 'Paste a code first.', es: 'Primero pega un código.' },
+  'acct.badCode':     { en: 'That code did not work.', es: 'Ese código no jaló.' },
+  'acct.badBackup':   { en: 'That file did not work.', es: 'Ese archivo no jaló.' },
+
   // ----------------------------------------------- the shop / la tiendita
   // `en` calls it the corner store, `es` calls it la tiendita. Corrupt is
   // doing you a favour and would like you to know it.
