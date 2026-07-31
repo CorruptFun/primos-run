@@ -10,7 +10,27 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="icon" href="icon-192.png">
+<link rel="icon" href="favicon.png" sizes="64x64">
+<link rel="icon" href="icon-192.png" sizes="192x192">
+
+<!-- Share cards. Absolute URLs on purpose: Slack, Discord, iMessage and X all
+     resolve og:image against their own host, not the page's, so a relative path
+     silently yields no preview at all. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Primos: Barrio Run">
+<meta property="og:title" content="Primos: Barrio Run">
+<meta property="og:description" content="An endless run through Los Angeles alleyways. Grab chelas, eat tacos, dodge the checkpoints, outrun La Migra.">
+<meta property="og:url" content="https://corruptfun.github.io/primos-run/">
+<meta property="og:image" content="https://corruptfun.github.io/primos-run/icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="The Primos mark — a face in shades and a bandana.">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Primos: Barrio Run">
+<meta name="twitter:description" content="An endless run through Los Angeles alleyways. Grab chelas, eat tacos, dodge the checkpoints, outrun La Migra.">
+<meta name="twitter:image" content="https://corruptfun.github.io/primos-run/icon-512.png">
+<link rel="canonical" href="https://corruptfun.github.io/primos-run/">
+
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>

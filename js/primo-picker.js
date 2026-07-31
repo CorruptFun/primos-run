@@ -246,40 +246,42 @@ export async function claimStatus(token) {
 // These belong in js/i18n.js next to the other 131 keys and should be folded
 // in once the concurrent language work settles — they live here only so this
 // feature does not collide with another session inside that one shared table.
-// Same contract as i18n: every key carries EN and ES, and the voice is the
-// same deadpan Spanish-forward register on both sides.
+// Same contract as i18n, INCLUDING its voice rule: the cultural vocabulary
+// (PRIMO, BARRIO, CORRE …) is Spanish on both sides, and everything structural
+// — buttons, status lines, verdicts — is English in `en` and Spanish in `es`.
+// An English toggle that answers in Spanish reads as a broken toggle.
 
 const EXTRA = {
-  'primo.hintFind':   { en: '¿Eres holder? Busca tu número. The art loads live from IPFS — nothing is kept here.',
+  'primo.hintFind':   { en: 'Holder? Look up your number. The art loads live from IPFS — nothing is kept here.',
                         es: '¿Eres holder? Busca tu número. El arte se carga en vivo desde IPFS — aquí no se guarda nada.' },
-  'primo.find':       { en: 'BUSCAR', es: 'BUSCAR' },
-  'primo.claim':      { en: 'RECLÁMALO', es: 'RECLÁMALO' },
-  'primo.claimed':    { en: 'YA ES TUYO', es: 'YA ES TUYO' },
-  'primo.previewAlt': { en: 'El Primo que buscaste', es: 'El Primo que buscaste' },
+  'primo.find':       { en: 'FIND', es: 'BUSCAR' },
+  'primo.claim':      { en: 'CLAIM IT', es: 'RECLÁMALO' },
+  'primo.claimed':    { en: "IT'S YOURS", es: 'YA ES TUYO' },
+  'primo.previewAlt': { en: 'The Primo you looked up', es: 'El Primo que buscaste' },
 
-  'status.searching': { en: 'Buscando el #%n…', es: 'Buscando el #%n…' },
-  'status.found':     { en: 'Ahí está. Reclámalo and it runs with you.',
+  'status.searching': { en: 'Looking for #%n…', es: 'Buscando el #%n…' },
+  'status.found':     { en: 'There it is. Claim it and it runs with you.',
                         es: 'Ahí está. Reclámalo y corre contigo.' },
-  'status.claimedNum':{ en: 'Primo #%n es tuyo. Nobody is arguing.',
+  'status.claimedNum':{ en: 'Primo #%n is yours. Nobody is arguing.',
                         es: 'El Primo #%n es tuyo. Nadie está discutiendo.' },
-  'status.outOfRange':{ en: 'La colección va del 0 al 3,068. Ese no existe.',
+  'status.outOfRange':{ en: 'The collection runs 0 to 3,068. That one does not exist.',
                         es: 'La colección va del 0 al 3,068. Ese no existe.' },
-  'status.gatewayOut':{ en: 'El #%n existe, but no gateway answered. Try again in a moment.',
+  'status.gatewayOut':{ en: '#%n exists, but no gateway answered. Try again in a moment.',
                         es: 'El #%n existe, pero ningún gateway contestó. Inténtalo en un momento.' },
 
   // The claim verdict, under the found card.
-  'claim.checking':   { en: 'Preguntando por ahí…', es: 'Preguntando por ahí…' },
-  'claim.free':       { en: 'Libre. Nadie lo ha pedido.', es: 'Libre. Nadie lo ha pedido.' },
-  'claim.assigned':   { en: 'Ese primo ya tiene dueño. Escoge otro.',
+  'claim.checking':   { en: 'Asking around…', es: 'Preguntando por ahí…' },
+  'claim.free':       { en: 'Free. Nobody has asked for it.', es: 'Libre. Nadie lo ha pedido.' },
+  'claim.assigned':   { en: 'That primo already has an owner. Pick another.',
                         es: 'Ese primo ya tiene dueño. Escoge otro.' },
-  'claim.assignedTo': { en: 'Ese primo ya tiene dueño: %h. Escoge otro.',
+  'claim.assignedTo': { en: 'That primo already has an owner: %h. Pick another.',
                         es: 'Ese primo ya tiene dueño: %h. Escoge otro.' },
-  'claim.blocked':    { en: 'Ese no se reclama. Cosas del barrio.',
+  'claim.blocked':    { en: "That one is not up for claiming. Barrio business.",
                         es: 'Ese no se reclama. Cosas del barrio.' },
-  'claim.mine':       { en: 'Ya es tuyo. Corre.', es: 'Ya es tuyo. Corre.' },
+  'claim.mine':       { en: 'Already yours. Corre.', es: 'Ya es tuyo. Corre.' },
 
   // The owner reassigned a Primo out from under whoever was wearing it.
-  'status.reassigned':{ en: 'El #%n ya tenía dueño. Se lo devolvimos. Busca otro.',
+  'status.reassigned':{ en: '#%n already had an owner. We gave it back. Find another.',
                         es: 'El #%n ya tenía dueño. Se lo devolvimos. Busca otro.' },
 };
 

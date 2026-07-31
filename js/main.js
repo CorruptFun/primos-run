@@ -258,6 +258,10 @@ function applyLang() {
   // from live state rather than sat in the markup.
   $('btn-mute').textContent = t(sfx.isMuted() ? 'pause.soundOff' : 'pause.soundOn');
   labelCrew();
+  // The empty custom tile draws "MY / PRIMO" into its own canvas, which no
+  // data-i18n attribute can reach. It used to read "MI" in both languages, so
+  // skipping this was invisible; it is not any more. Five 132px tiles.
+  paintCrew();
   // The found card is state, not markup, so data-i18n cannot reach it — but it
   // is on screen mid-claim and must not be left half in the old language.
   if (found) {
@@ -358,7 +362,17 @@ function labelCrew() {
   const num = custom ? saved.primoNumber : crewNums.get(c.id);
   const tag = CREW_TAG[c.id];
 
-  $('crew-name').textContent = num ? t('crew.primoNum') + num : c.name;
+  // The four drawn characters are people and keep their names in any language.
+  // The empty custom slot is not a person, it is the words "my Primo", so that
+  // one is translated — runner.js hardcodes the Spanish and is read-only here.
+  const name = num ? t('crew.primoNum') + num
+    : custom ? t('crew.customName')
+      : c.name;
+
+  $('crew-name').textContent = name;
+  // Set here rather than in selectCrew so a language switch refreshes it too —
+  // the intro titles the run with this, and it has to agree with the picker.
+  game.displayName = name;
   $('crew-tag').textContent = custom && !customRig
     ? t('crew.tag.load')
     : custom ? t('crew.tag.barrio')
@@ -370,15 +384,14 @@ function selectCrew(i) {
   selectedIdx = i;
   const c = roster[i];
   const custom = c.id === CUSTOM_ID;
-  const num = custom ? saved.primoNumber : crewNums.get(c.id);
+  // labelCrew writes game.displayName as well, so the intro always agrees with
+  // the picker — a slot showing real art is that Primo, not the stand-in whose
+  // name it inherited.
   labelCrew();
 
   const rig = custom ? customRig : crewRigs.get(c.id);
   const art = custom ? customImg : crewImgs.get(c.id);
   game.setCharacter(c, rig, art || null);
-  // The intro titles the run, and it must agree with the picker — a slot
-  // showing real art is that Primo, not the stand-in whose name it inherited.
-  game.displayName = num ? t('crew.primoNum') + num : c.name;
   saved.character = c.id;
   store.save(saved);
   paintCrew();

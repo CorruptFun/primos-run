@@ -17,7 +17,7 @@
 */
 
 // 👉 CUSTOMIZE: rename to your app, and bump CACHE_VERSION per deploy (e.g. a build stamp).
-const CACHE_VERSION = "v6-claim";
+const CACHE_VERSION = "v7-icons";
 const CACHE_NAME    = `primos-run-${CACHE_VERSION}`;
 
 // 👉 CUSTOMIZE: the offline shell, precached at install. Relative paths (resolved against
@@ -26,8 +26,10 @@ const CACHE_NAME    = `primos-run-${CACHE_VERSION}`;
 const PRECACHE = [
   "./",                 // start_url → index.html
   "./manifest.json",
+  "./favicon.png",
   "./icon-192.png",
   "./icon-512.png",
+  "./icon-maskable-512.png",
   "./apple-touch-icon.png",
   "./css/style.css",
   "./pwa-register.js",
