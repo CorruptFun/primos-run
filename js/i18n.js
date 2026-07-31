@@ -104,8 +104,11 @@ const STR = {
 
   // ------------------------------------------------------------ game over
   // The one line the whole run ends on. Deadpan is the entire point: nobody in
-  // this alley is surprised about who it was.
-  'over.reason.migra':{ en: 'OF COURSE. LA MIGRA.', es: 'CLARO. LA MIGRA.' },
+  // this alley is surprised about who it was. Spanish on both sides because
+  // the Spanish is the joke — and because .bust animates its letter-spacing in
+  // from 0.36em, and a longer line reflows off two lines onto one mid-entrance
+  // at 320px. Sixteen characters clears that at full tracking.
+  'over.reason.migra':{ en: 'CLARO. LA MIGRA.', es: 'CLARO. LA MIGRA.' },
   'over.scoreLabel':  { en: 'PUNTOS', es: 'PUNTOS' },
   'over.pb':          { en: '¡ÓRALE, RÉCORD!', es: '¡ÓRALE, RÉCORD!' },
   'over.chelas':      { en: 'CHELAS', es: 'CHELAS' },

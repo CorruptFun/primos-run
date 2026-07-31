@@ -5,7 +5,10 @@ import { PAL, roundRect } from './art/palette.js';
 import { drawPrimoPortrait } from './art/runner.js';
 import { drawLogo } from './art/logo.js';
 import { POWER, STAMINA, CHASE, SCORE } from './config.js';
-import { t } from './i18n.js';
+// Aliased for the same reason tutorial.js and intro.js do it: `t` is the
+// animation clock in this codebase's drawing layer (see fx.t and drawToasts),
+// and one future local named `t` would silently shadow the translator.
+import { t as tr } from './i18n.js';
 
 // Power pill captions come from here rather than POWER[key].label, so they can
 // switch language. Baked as a lookup because drawPowerPills runs every frame
@@ -332,7 +335,7 @@ function drawChaseMeter(ctx, g, W, y, s) {
   ctx.textAlign = 'center';
   const hot = a > 0.02;
   const flash = hot && Math.floor(fx.t * 6) % 2 === 0;
-  label(ctx, t('hud.migra'), W / 2, y + 10 * s, 10 * s,
+  label(ctx, tr('hud.migra'), W / 2, y + 10 * s, 10 * s,
     flash ? '#ffe3e3' : hot ? '#ff9a9a' : 'rgba(244,236,224,0.82)',
     { spacing: 1.4 * s, weight: 900, glow: hot ? '#ff2b2b' : null, glowSize: 10 * s });
   ctx.restore();
@@ -552,7 +555,7 @@ function drawStamina(ctx, g, x, y, s, H) {
   if (empty) {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    label(ctx, t('hud.sinGas'), x + w + 7 * s, y + h * 0.5, 11 * s, '#ff8080',
+    label(ctx, tr('hud.sinGas'), x + w + 7 * s, y + h * 0.5, 11 * s, '#ff8080',
       { weight: 900, spacing: 0.8 * s, glow: '#ff2b2b', glowSize: 12 * s });
   }
   ctx.restore();
@@ -715,7 +718,7 @@ function drawPowerPills(ctx, g, x, bottom, s) {
 
     // shrink the label rather than let a long power name run into the timer
     ctx.textAlign = 'left';
-    const name = t(POWER_LABEL[key]);
+    const name = tr(POWER_LABEL[key]);
     const avail = w - 26 * s - tw - 16 * s;
     let fs = 10.5 * s;
     ctx.font = `900 ${Math.round(fs)}px ${FONT}`;

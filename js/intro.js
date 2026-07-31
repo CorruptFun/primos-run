@@ -169,7 +169,7 @@ function drawHero(ctx, W, H, turn, heroK) {
 
 /**
  * La Migra, closing in. These are the same pursuers the whole game is about —
- * the chase meter is labelled LA MIGRA, the run ends "CAUGHT BY LA MIGRA", and
+ * the chase meter is labelled LA MIGRA, the run ends "CLARO. LA MIGRA.", and
  * the obstacles are checkpoints and border walls — so the opening shows who is
  * actually chasing you rather than an unrelated crew.
  *

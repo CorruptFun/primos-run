@@ -805,6 +805,7 @@ function drawTile(ctx, type, x, y, w, artH, sharedU, s, t) {
 
 function drawGuide(ctx, g, x, ground, w, u, s) {
   const gy = ground - g.y * u;
+  const text = tr(g.text);
   ctx.save();
   const a0 = ctx.globalAlpha;
   DASH[0] = 5 * s;
@@ -820,7 +821,7 @@ function drawGuide(ctx, g, x, ground, w, u, s) {
   ctx.setLineDash(NODASH);
 
   ctx.font = `900 ${Math.round(8 * s)}px ${FONT}`;
-  const tw = ctx.measureText(g.text).width + 10 * s;
+  const tw = ctx.measureText(text).width + 10 * s;
   const th = 12 * s;
   ctx.globalAlpha = a0;
   ctx.fillStyle = 'rgba(10,5,18,0.9)';
@@ -834,7 +835,7 @@ function drawGuide(ctx, g, x, ground, w, u, s) {
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  label(ctx, g.text, x + w - tw / 2, gy + 0.5 * s, 8 * s, g.color, { weight: 900, halo: 0 });
+  label(ctx, text, x + w - tw / 2, gy + 0.5 * s, 8 * s, g.color, { weight: 900, halo: 0 });
   ctx.textBaseline = 'alphabetic';
 }
 
@@ -848,7 +849,7 @@ function drawMeters(ctx, x, y, w, h, s, t) {
 
   // ---- La Migra: horizontal, blue through purple to red, same as the HUD.
   ctx.textAlign = 'left';
-  label(ctx, 'LA MIGRA', x, y + 10 * s, 9.5 * s, '#ff9a9a',
+  label(ctx, tr('tut.meter.migra'), x, y + 10 * s, 9.5 * s, '#ff9a9a',
     { weight: 900, spacing: 1.3 * s, halo: 2.4 * s });
 
   const bh = 11 * s;
@@ -870,9 +871,9 @@ function drawMeters(ctx, x, y, w, h, s, t) {
   gloss(ctx, x, by, fw, bh, bh / 2);
   bevel(ctx, x, by, leftW, bh, bh / 2, s);
 
-  label(ctx, 'CADA GOLPE LA SUBE.', x, by + bh + 15 * s, 10 * s, 'rgba(253,246,230,0.8)',
+  label(ctx, tr('tut.meter.hit'), x, by + bh + 15 * s, 10 * s, 'rgba(253,246,230,0.8)',
     { weight: 800, halo: 2.4 * s });
-  label(ctx, 'LLENA = TE AGARRARON', x, by + bh + 29 * s, 10 * s, 'rgba(253,246,230,0.55)',
+  label(ctx, tr('tut.meter.full'), x, by + bh + 29 * s, 10 * s, 'rgba(253,246,230,0.55)',
     { weight: 800, halo: 2.4 * s });
 
   // ---- gasolina: vertical, exactly where it lives on the real HUD.
@@ -914,7 +915,7 @@ function drawMeters(ctx, x, y, w, h, s, t) {
   ctx.restore();
 
   ctx.textAlign = 'center';
-  label(ctx, 'GAS', gx + gw / 2, gy - 4 * s, 9.5 * s, PAL.lime,
+  label(ctx, tr('tut.meter.gas'), gx + gw / 2, gy - 4 * s, 9.5 * s, PAL.lime,
     { weight: 900, spacing: 1.1 * s, halo: 2.4 * s });
   label(ctx, TACO_TEXT, gx + gw / 2, gy + gh + 13 * s, 9 * s,
     'rgba(253,246,230,0.62)', { weight: 900, halo: 2.4 * s });
@@ -1037,16 +1038,16 @@ function drawCue(ctx, step, x, y, w, h, s, t) {
 
   // ---- caption + keyboard fallback
   ctx.textAlign = 'center';
-  const cue = verb === 'jump' ? 'SWIPE  ↑'
-    : verb === 'slide' ? 'SWIPE  ↓'
-      : both ? 'SWIPE  ←   O   →'
-        : want < 0 ? 'SWIPE  ←' : 'SWIPE  →';
-  label(ctx, T.cleared ? '¡ESO!' : cue, cxp, padY + padH + 17 * s, 13 * s,
+  const cue = verb === 'jump' ? 'tut.cue.up'
+    : verb === 'slide' ? 'tut.cue.down'
+      : both ? 'tut.cue.both'
+        : want < 0 ? 'tut.cue.left' : 'tut.cue.right';
+  label(ctx, tr(T.cleared ? 'tut.cue.done' : cue), cxp, padY + padH + 17 * s, 13 * s,
     T.cleared ? PAL.lime : '#fffdf3',
     { weight: 900, spacing: 1.6 * s, halo: 3.4 * s, glow: tone, glowSize: 12 * s });
 
   if (step.keys) {
-    label(ctx, step.keys, cxp, padY + padH + 31 * s, 8.6 * s, 'rgba(253,246,230,0.42)',
+    label(ctx, tr(step.keys), cxp, padY + padH + 31 * s, 8.6 * s, 'rgba(253,246,230,0.42)',
       { weight: 800, spacing: 1 * s, halo: 2.2 * s });
   }
 
@@ -1072,7 +1073,7 @@ function drawCue(ctx, step, x, y, w, h, s, t) {
   if (!T.cleared && T.t > NUDGE_AT) {
     ctx.save();
     ctx.globalAlpha *= Math.min(1, (T.t - NUDGE_AT) / 0.8);
-    label(ctx, 'TAP PARA SALTAR ESTE PASO', cxp, padY + padH + 56 * s, 8.6 * s,
+    label(ctx, tr('tut.cue.skipStep'), cxp, padY + padH + 56 * s, 8.6 * s,
       'rgba(253,246,230,0.5)', { weight: 800, spacing: 1 * s, halo: 2.2 * s });
     ctx.restore();
   }
@@ -1082,7 +1083,7 @@ function drawCue(ctx, step, x, y, w, h, s, t) {
 
 function drawSkip(ctx, W, bottom, h, s) {
   ctx.font = `900 ${Math.round(10.5 * s)}px ${FONT}`;
-  const text = 'SALTAR ENTRENAMIENTO';
+  const text = tr('tut.skip');
   const w = ctx.measureText(text).width + 34 * s;
   const x = (W - w) / 2;
   const y = bottom - h;
@@ -1121,9 +1122,9 @@ function drawGo(ctx, step, W, H, s) {
   ctx.scale(sc, sc);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  label(ctx, step.title, 0, 0, 46 * s, '#fffdf3',
+  label(ctx, tr(step.title), 0, 0, 46 * s, '#fffdf3',
     { weight: 900, halo: 7 * s, glow: PAL.gold, glowSize: 26 * s });
-  label(ctx, step.body, 0, 34 * s, 14 * s, PAL.gold,
+  label(ctx, tr(step.body), 0, 34 * s, 14 * s, PAL.gold,
     { weight: 900, spacing: 2.4 * s, halo: 3.4 * s });
   ctx.restore();
   ctx.textBaseline = 'alphabetic';

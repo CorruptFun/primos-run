@@ -17,7 +17,7 @@
 */
 
 // 👉 CUSTOMIZE: rename to your app, and bump CACHE_VERSION per deploy (e.g. a build stamp).
-const CACHE_VERSION = "v4-trainer";
+const CACHE_VERSION = "v5-lang";
 const CACHE_NAME    = `primos-run-${CACHE_VERSION}`;
 
 // 👉 CUSTOMIZE: the offline shell, precached at install. Relative paths (resolved against
@@ -41,8 +41,8 @@ const PRECACHE = [
   "./js/input.js",
   "./js/audio.js",
   "./js/store.js",
-  "./js/particles.js",
   "./js/i18n.js",
+  "./js/particles.js",
   "./js/tutorial.js",
   "./js/intro.js",
   "./js/art/palette.js",

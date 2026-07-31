@@ -110,7 +110,9 @@
   <!-- --------------------------------------------------------- game over -->
   <section id="screen-over" class="screen hidden">
     <div class="sheet sheet-small">
-      <p class="bust" id="over-reason">OF COURSE. LA MIGRA.</p>
+      <!-- Replaced by fillGameOver() before this screen is ever shown; here so
+           the markup is not empty. Driven through tRaw(), not data-i18n. -->
+      <p class="bust" id="over-reason">CLARO. LA MIGRA.</p>
       <p class="final-label" data-i18n="over.scoreLabel">PUNTOS</p>
       <p class="final" id="over-score">0</p>
       <p class="pb hidden" id="over-pb" data-i18n="over.pb">¡ÓRALE, RÉCORD!</p>

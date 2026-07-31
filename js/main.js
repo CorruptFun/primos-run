@@ -255,6 +255,10 @@ function applyLang() {
   // from live state rather than sat in the markup.
   $('btn-mute').textContent = t(sfx.isMuted() ? 'pause.soundOff' : 'pause.soundOn');
   labelCrew();
+  // Transient feedback about an action taken in the OTHER language. Clearing
+  // it beats leaving a stale sentence in the wrong one; the styling hides an
+  // empty status line entirely.
+  status('');
   // A run that ended in the other language must not keep its old headline.
   if (game.gameOverReason) $('over-reason').textContent = tRaw(game.gameOverReason);
 }
@@ -598,7 +602,8 @@ function boot() {
   }
 
   showScreen(STATE.MENU);
-  requestAnimationFrame((t) => { last = t; frame(t); });
+  // Not named `t` — that is the translator in this module now.
+  requestAnimationFrame((now) => { last = now; frame(now); });
 }
 
 boot();
