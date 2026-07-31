@@ -248,7 +248,7 @@ function drawPlayer(ctx, g, t) {
 
   // lowrider board under the feet
   if (g.power.lowrider > 0) {
-    drawBoard(ctx, at.x, at.y, u, t);
+    drawBoard(ctx, at.x, at.y, u);
   }
 
   const pose = {
@@ -291,25 +291,130 @@ function drawPlayer(ctx, g, t) {
   }
 }
 
-function drawBoard(ctx, sx, sy, u, t) {
+// The board's own colours. props.js owns the originals — these mirror them the
+// same way DEFAULT_Y above mirrors PROP_SPEC, so the pickup you grabbed and the
+// thing that appears under your feet are visibly the same object.
+const DECK_KEY = '#0d0718';
+const DECK_BODY = '#e04a2b';
+const DECK_SUN = '#ffe9c0';
+const DECK_GRIP = 'rgba(14,7,24,0.5)';
+const TRUCK = '#9ba3b6';
+const WHEEL = '#ffd24d';
+
+/**
+ * Trace a foreshortened plank: near edge (half-width `hw0` at `y0`) receding to
+ * the far edge (`hw1` at `y1`). Trace only — the caller owns beginPath/fill, so
+ * the deck, the kicks, the trucks and the wheels can share one keyline pass
+ * instead of six.
+ */
+function plank(ctx, hw0, y0, hw1, y1) {
+  ctx.moveTo(-hw0, y0);
+  ctx.lineTo(hw0, y0);
+  ctx.lineTo(hw1, y1);
+  ctx.lineTo(-hw1, y1);
+  ctx.closePath();
+}
+
+/**
+ * The board you are riding, seen from behind — deck, both kicks, two trucks,
+ * four wheels. It exists to match drawSkateboard() in art/props.js, which is
+ * what the powerup on the ground now looks like; the maroon ellipse that used to
+ * be here was a lowrider, from back when the pickup was a car.
+ *
+ * The proportions are cheated WIDER than a real deck and the wheels are pushed
+ * proud of its edge, both deliberately. Honest perspective on a 0.85u plank
+ * pointing away from the camera collapses it into a sliver about twenty pixels
+ * across — the kicks cancel out almost exactly, because moving back down the
+ * alley and rising off the ground push a point in opposite screen directions at
+ * this camera pitch. So the read is carried by three flat things instead: a
+ * plate, a bright band at each end where a kick catches the sunset, and wheels
+ * that clear the sides.
+ *
+ * Hot path — runs every frame for the length of the powerup. No allocation: no
+ * arrays to iterate, no objects, nothing but path ops and numbers.
+ */
+function drawBoard(ctx, sx, sy, u) {
+  const k = Math.max(1, u * 0.014);      // keyline thickness
+
+  // deck: near (tail) edge receding to the far (nose) edge
+  const hwN = u * 0.26, yN = u * 0.055;
+  const hwF = u * 0.205, yF = -u * 0.115;
+  // the kicks, past each end of the flat
+  const hwTail = u * 0.243, yTail = u * 0.105;
+  const hwNose = u * 0.185, yNose = -u * 0.163;
+  // Axles + wheels. The rear axle is deliberately dropped clear of the tail so
+  // the hanger and most of the wheel show under it — geometrically the deck
+  // hides both from this angle, and a board with no visible truck is a plank.
+  const wxN = u * 0.275, wyN = u * 0.112, wrN = u * 0.05;
+  const wxF = u * 0.212, wyF = -u * 0.082, wrF = u * 0.042;
+
   ctx.save();
-  ctx.translate(sx, sy + u * 0.04);
-  ctx.fillStyle = 'rgba(77,216,255,0.35)';
+  // No contact shadow of its own: the runner's already sits on the asphalt in
+  // drawPlayer, and one attached to the board would take off with it on a jump.
+  ctx.translate(sx, sy + u * 0.02);
+
+  // One keyline under the whole assembly. Three segments, not one tail-to-nose
+  // trapezoid: the flat is WIDER than either kick, so a single straight taper
+  // cuts inside the deck's own edge and leaves its widest point unlined. Same
+  // winding on all three, so the fill unions them without a seam.
+  ctx.fillStyle = DECK_KEY;
   ctx.beginPath();
-  ctx.ellipse(0, u * 0.06, u * 0.6, u * 0.16, 0, 0, Math.PI * 2);
+  plank(ctx, hwTail + k, yTail + k, hwN + k, yN);
+  plank(ctx, hwN + k, yN, hwF + k, yF);
+  plank(ctx, hwF + k, yF, hwNose + k, yNose - k);
+  ctx.moveTo(-wxN + wrN + k, wyN);
+  ctx.arc(-wxN, wyN, wrN + k, 0, Math.PI * 2);
+  ctx.moveTo(wxN + wrN + k, wyN);
+  ctx.arc(wxN, wyN, wrN + k, 0, Math.PI * 2);
+  ctx.moveTo(-wxF + wrF + k, wyF);
+  ctx.arc(-wxF, wyF, wrF + k, 0, Math.PI * 2);
+  ctx.moveTo(wxF + wrF + k, wyF);
+  ctx.arc(wxF, wyF, wrF + k, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#8a1f3d';
+
+  // Wheels before the deck: the deck is above them, so it should eat their
+  // inner halves and leave four bright corners poking out.
+  ctx.fillStyle = WHEEL;
   ctx.beginPath();
-  ctx.ellipse(0, 0, u * 0.46, u * 0.12, 0, 0, Math.PI * 2);
+  ctx.moveTo(-wxF + wrF, wyF);
+  ctx.arc(-wxF, wyF, wrF, 0, Math.PI * 2);
+  ctx.moveTo(wxF + wrF, wyF);
+  ctx.arc(wxF, wyF, wrF, 0, Math.PI * 2);
+  ctx.moveTo(-wxN + wrN, wyN);
+  ctx.arc(-wxN, wyN, wrN, 0, Math.PI * 2);
+  ctx.moveTo(wxN + wrN, wyN);
+  ctx.arc(wxN, wyN, wrN, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#f4e6c8';
-  ctx.fillRect(-u * 0.46, -u * 0.02, u * 0.92, u * 0.03);
-  ctx.fillStyle = PAL.gold;
-  for (const wx of [-u * 0.3, u * 0.3]) {
-    ctx.beginPath();
-    ctx.arc(wx, u * 0.09, u * 0.07, 0, Math.PI * 2);
-    ctx.fill();
-  }
+
+  // Two trucks, as the axle bars they are from this angle.
+  ctx.fillStyle = TRUCK;
+  ctx.beginPath();
+  ctx.rect(-wxN, wyN - u * 0.026, wxN * 2, u * 0.04);
+  ctx.rect(-wxF, wyF - u * 0.022, wxF * 2, u * 0.034);
+  ctx.fill();
+
+  // The kicks, then the flat over them: a bright band at each end is what says
+  // the plank turns up rather than running off into the road.
+  ctx.fillStyle = DECK_SUN;
+  ctx.beginPath();
+  plank(ctx, hwTail, yTail, hwN, yN);
+  plank(ctx, hwF, yF, hwNose, yNose);
+  ctx.fill();
+
+  ctx.fillStyle = DECK_BODY;
+  ctx.beginPath();
+  plank(ctx, hwN, yN, hwF, yF);
+  ctx.fill();
+
+  // Griptape, as a seam rather than a surface. Standing on the board you are
+  // looking at grip, so the honest fill is a black slab over the middle — and it
+  // turned the deck into a tray. The pickup reads orange, so this one does too,
+  // and the dark line is left only where the flat bends up into the tail.
+  ctx.fillStyle = DECK_GRIP;
+  ctx.beginPath();
+  plank(ctx, hwN, yN, hwN * 0.99, yN - u * 0.022);
+  ctx.fill();
+
   ctx.restore();
 }
 

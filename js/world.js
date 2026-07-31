@@ -1,8 +1,43 @@
 // Procedural alley generator. Hand-authored chunks keep every pattern fair —
 // each one always leaves at least one survivable line through it.
 
-import { LANE_W, DRAW_DIST, HITBOX } from './config.js';
+import { LANE_W, DRAW_DIST, HITBOX, RUN, PACING } from './config.js';
 import { PROP_SPEC, DECOR_HIT_W } from './art/props.js';
+
+// ------------------------------------------------------------- the run clock
+//
+// game.js only ever hands the world a DISTANCE, and distance is the wrong
+// clock for difficulty because it accelerates: gating tiers on metres made
+// them arrive roughly three times faster than the speed curve did.
+//
+// Nothing needs plumbing through game.js to fix that, because RUN's
+// acceleration is constant in time, which makes v² = v0² + 2·a·d exact. Both
+// the nominal speed and the nominal seconds survived therefore fall straight
+// out of distance in closed form.
+//
+// "Nominal" is doing real work in that sentence: this is the clock of a player
+// who never gets gassed. Anyone who does crawls at RUN.gassedSpeed, covers
+// less ground per second than the curve assumes, and so reaches each tier
+// LATER in wall-clock terms than these numbers say. The error is always in the
+// player's favour, which is the only direction it is allowed to be.
+const V0 = RUN.startSpeed;
+const VMAX = RUN.maxSpeed;
+const ACC = RUN.accel;
+const D_TOP = (VMAX * VMAX - V0 * V0) / (2 * ACC);   // 3600u before speed caps
+const T_TOP = (VMAX - V0) / ACC;                     // 150s before speed caps
+
+/** Nominal speed, u/s, after `distance` units. */
+export function speedAt(distance) {
+  const d = distance > 0 ? distance : 0;
+  return Math.min(VMAX, Math.sqrt(V0 * V0 + 2 * ACC * d));
+}
+
+/** Nominal seconds survived after `distance` units. */
+export function secondsAt(distance) {
+  const d = distance > 0 ? distance : 0;
+  if (d <= D_TOP) return (speedAt(d) - V0) / ACC;
+  return T_TOP + (d - D_TOP) / VMAX;
+}
 
 /**
  * Chunks are authored in local space: `dz` is metres from the chunk start,
@@ -17,8 +52,14 @@ import { PROP_SPEC, DECOR_HIT_W } from './art/props.js';
  *     `slide` props. It may never put a jump and a slide in the SAME lane at
  *     the same dz, because you cannot do both.
  *   * Rows sit at least 8 units apart, and at least 9 when the verb changes
- *     between them. At top speed 8 units is a quarter of a second, which is
- *     about two lane changes' worth of room and no more.
+ *     between them.
+ *
+ * Those dz values are authored at STARTING speed and stretched from there —
+ * placeChunk multiplies every dz by a factor that tracks how fast the runner
+ * is going, so 8 authored units stays about half a second of reaction time all
+ * the way up instead of decaying to a quarter of one. Authoring in the units
+ * of the slowest moment of the run is what makes that safe: the multiplier is
+ * never below 1, so no pattern can ever come out tighter than it was written.
  *
  * `density` shapes the gap AFTER the chunk (see placeChunk), so the run
  * breathes instead of droning: a gauntlet is followed by open alley.
@@ -167,13 +208,15 @@ const CHUNKS = [
     ],
   },
   {
-    id: 'cone-slalom', tier: 1, len: 26, weight: 3, density: 'mid',
+    // Rows were 6u apart, the tightest anywhere in the table and the only
+    // place that broke the 8u house minimum. Opened to 8u.
+    id: 'cone-slalom', tier: 1, len: 30, weight: 3, density: 'mid',
     items: [
       { t: 'cones', lane: -1, dz: 7 },
-      { t: 'cones', lane: 0, dz: 13 },
-      { t: 'cones', lane: 1, dz: 19 },
-      { t: 'beer', lane: 0, dz: 7 }, { t: 'beer', lane: 1, dz: 13 },
-      { t: 'beer', lane: -1, dz: 19 },
+      { t: 'cones', lane: 0, dz: 15 },
+      { t: 'cones', lane: 1, dz: 23 },
+      { t: 'beer', lane: 0, dz: 7 }, { t: 'beer', lane: 1, dz: 15 },
+      { t: 'beer', lane: -1, dz: 23 },
     ],
   },
   {
@@ -392,17 +435,19 @@ const CHUNKS = [
 
   // ---- tier 3: no mercy ---------------------------------------------------
   {
-    id: 'the-corridor', tier: 3, len: 40, weight: 4, density: 'dense',
+    // The wall->duck step was 7u, under the house minimum and with a verb
+    // change across it. Every row here is 8u apart now.
+    id: 'the-corridor', tier: 3, len: 41, weight: 4, density: 'dense',
     items: [
       { t: 'border', lane: -1, dz: 8 }, { t: 'border', lane: 0, dz: 8 },
-      { t: 'clothesline', lane: 1, dz: 15 },
-      { t: 'checkpoint', lane: 1, dz: 23 }, { t: 'checkpoint', lane: 0, dz: 23 },
-      { t: 'dumpster', lane: -1, dz: 31 }, { t: 'dumpster', lane: 0, dz: 31 },
-      { t: 'dumpster', lane: 1, dz: 31 },
-      { t: 'beer', lane: 1, dz: 8 }, { t: 'beer', lane: 1, dz: 14.6, y: 0.42 },
-      { t: 'beer', lane: -1, dz: 23 }, { t: 'beer', lane: -1, dz: 24.6 },
-      { t: 'beer', lane: -1, dz: 30, y: 1.1 }, { t: 'beer', lane: -1, dz: 31.4, y: 1.5 },
-      { t: 'taco', lane: 0, dz: 37 },
+      { t: 'clothesline', lane: 1, dz: 16 },
+      { t: 'checkpoint', lane: 1, dz: 24 }, { t: 'checkpoint', lane: 0, dz: 24 },
+      { t: 'dumpster', lane: -1, dz: 32 }, { t: 'dumpster', lane: 0, dz: 32 },
+      { t: 'dumpster', lane: 1, dz: 32 },
+      { t: 'beer', lane: 1, dz: 8 }, { t: 'beer', lane: 1, dz: 15.6, y: 0.42 },
+      { t: 'beer', lane: -1, dz: 24 }, { t: 'beer', lane: -1, dz: 25.6 },
+      { t: 'beer', lane: -1, dz: 31, y: 1.1 }, { t: 'beer', lane: -1, dz: 32.4, y: 1.5 },
+      { t: 'taco', lane: 0, dz: 38 },
     ],
   },
   {
@@ -575,48 +620,72 @@ export class World {
     this.recent = [];           // last few chunk ids, to stop patterns repeating
     this.sincePower = 0;
     this.sinceTaco = 0;
-    this.wasDense = false;
+    this.sinceDense = 99;       // non-dense chunks since the last gauntlet
+    this.stretch = 1;           // z scale for the current speed (see stretchFor)
+    this.tierAge = 0;           // nominal seconds since the current tier opened
     // Dressing starts almost under the camera so the menu alley is never bare.
     this.decorZ = 4;
     this.decorSideZ = [4, 4];   // last placed z, per wall: [left, right]
   }
 
-  /** Difficulty tier from distance travelled. */
+  /**
+   * Difficulty tier from distance travelled — but gated on the TIME that
+   * distance implies, not the distance itself. See PACING in config.js: metres
+   * are a clock that speeds up, so the old metre gates outran the player.
+   */
   tierFor(distance) {
-    if (distance < 320) return 0;
-    if (distance < 900) return 1;
-    if (distance < 1900) return 2;
-    return 3;
+    const t = secondsAt(distance);
+    const gates = PACING.tierSeconds;
+    let tier = 0;
+    for (let i = 1; i < gates.length; i++) if (t >= gates[i]) tier = i;
+    return tier;
+  }
+
+  /**
+   * How far the alley is stretched along z right now. 1 at starting speed and
+   * rising with it, so a pattern authored at 15 u/s keeps most of its reaction
+   * time at 33. Clamped below at 1: stretching may only ever add room.
+   */
+  stretchFor(distance) {
+    const k = speedAt(distance) / V0;
+    const s = 1 + (k - 1) * PACING.speedComp;
+    return Math.min(PACING.maxStretch, Math.max(1, s));
   }
 
   /** Keep roughly DRAW_DIST of alley authored ahead of the runner. */
   ensureAhead(playerZ, distance) {
     const tier = this.tierFor(distance);
+    this.stretch = this.stretchFor(distance);
+    this.tierAge = secondsAt(distance) - PACING.tierSeconds[tier];
     let guard = 0;
     while (this.zCursor < playerZ + DRAW_DIST + 30 && guard++ < 12) {
       this.placeChunk(tier);
     }
   }
 
-  placeChunk(tier) {
+  placeChunk(tier, stretch = this.stretch) {
     const chunk = this.pickChunk(tier);
     this.remember(chunk.id);
 
     const base = this.zCursor;
     let hadTaco = false;
     for (const it of chunk.items) {
-      this.spawn(it.t, it.lane, base + it.dz, it.y);
+      this.spawn(it.t, it.lane, base + it.dz * stretch, it.y);
       if (it.t === 'taco') hadTaco = true;
     }
 
-    // Breathing room between chunks, tighter as things speed up — but pulsed,
-    // not constant. A gauntlet earns a long empty stretch behind it, and that
-    // stretch is where the alley itself gets to be the thing you look at.
+    // Breathing room between chunks — pulsed, not constant. A gauntlet earns a
+    // long empty stretch behind it, and that stretch is where the alley itself
+    // gets to be the thing you look at.
+    //
+    // Numbers in PACING; the whole gap rides the same stretch as the chunk, so
+    // it holds a constant number of seconds rather than a constant distance.
     const dense = chunk.density === 'dense';
-    const pad = dense ? 6 : chunk.density === 'calm' ? -1.5 : 0;
-    const gap = Math.max(4, 10 - tier * 1.6 + pad + Math.random() * 3);
-    this.zCursor = base + chunk.len + gap;
-    this.wasDense = dense;
+    const pad = dense ? PACING.gapDense : chunk.density === 'calm' ? PACING.gapCalm : 0;
+    const gap = Math.max(PACING.gapMin,
+      PACING.gapBase - tier * PACING.gapTier + pad + Math.random() * PACING.gapJitter) * stretch;
+    this.zCursor = base + chunk.len * stretch + gap;
+    this.sinceDense = dense ? 0 : this.sinceDense + 1;
 
     // Stamina safety valve: never let three chunks pass without food, or a
     // fast run starves out through no fault of the player.
@@ -635,30 +704,46 @@ export class World {
       this.spawn(type, lane, this.zCursor - gap * 0.5);
     }
 
-    this.streamDecor(this.zCursor + DECOR_LEAD);
+    this.streamDecor(this.zCursor + DECOR_LEAD * stretch, stretch);
   }
 
   /**
-   * Weighted pick that avoids the last few chunks outright and never runs two
-   * gauntlets back to back. Remembering one id was enough when there were
-   * seventeen chunks; with twice that many, a short memory is what turns
-   * "more content" into "you stop recognising the alley".
+   * Weighted pick. Three jobs, and the last two are the pacing ones:
+   *
+   *   * avoid the last few chunk ids outright, so patterns stay unfamiliar;
+   *   * keep gauntlets apart — PACING.denseSpacing normal chunks have to pass
+   *     before another dense one is eligible. The old rule only forbade two in
+   *     a row, which still let tier 3 alternate gauntlet/normal indefinitely;
+   *   * PHASE IN the newest tier instead of unlocking it. Reaching a tier used
+   *     to hand its chunks a flat weight bonus, so the boundary opened every
+   *     hard pattern at full rate the instant it was crossed. Now the newest
+   *     tier starts as a rare guest and grows into the headliner over
+   *     PACING.tierPhaseIn seconds.
    */
   pickChunk(tier) {
-    let pool = CHUNKS.filter(c => c.tier <= tier
-      && !this.recent.includes(c.id)
-      && !(this.wasDense && c.density === 'dense'));
-    // Relax, in order, until something is left. Tier 0 only has so many chunks.
-    if (!pool.length) pool = CHUNKS.filter(c => c.tier <= tier && !this.recent.includes(c.id));
+    const fresh = (c) => !this.recent.includes(c.id);
+    const spaced = (c) => c.density !== 'dense' || this.sinceDense >= PACING.denseSpacing;
+    let pool = CHUNKS.filter(c => c.tier <= tier && fresh(c) && spaced(c));
+    // Relax, in order, until something is left. Tier 0 only has so many chunks,
+    // and the dense rule is the first thing to give — but never all the way to
+    // back-to-back gauntlets while any alternative exists.
+    if (!pool.length) pool = CHUNKS.filter(c => c.tier <= tier && fresh(c)
+      && (c.density !== 'dense' || this.sinceDense >= 1));
+    if (!pool.length) pool = CHUNKS.filter(c => c.tier <= tier && fresh(c));
     if (!pool.length) pool = CHUNKS.filter(c => c.tier <= tier && c.id !== this.recent[0]);
     if (!pool.length) pool = CHUNKS.filter(c => c.tier <= tier);
 
-    // Bias toward the newest tier so the run keeps escalating.
+    const [wLo, wHi] = PACING.newTierWeight;
+    const frac = Math.max(0, Math.min(1, this.tierAge / PACING.tierPhaseIn));
+    const mul = wLo + (wHi - wLo) * frac;
+    const weightOf = (c) => c.weight
+      * (c.tier === tier ? mul : Math.pow(PACING.tierFade, tier - c.tier));
+
     let total = 0;
-    for (const c of pool) total += c.tier === tier ? c.weight + 2 : c.weight;
+    for (const c of pool) total += weightOf(c);
     let roll = Math.random() * total;
     for (const c of pool) {
-      roll -= c.tier === tier ? c.weight + 2 : c.weight;
+      roll -= weightOf(c);
       if (roll <= 0) return c;
     }
     return pool[pool.length - 1] || CHUNKS[0];
@@ -694,8 +779,14 @@ export class World {
    * onto the rhythm and stops seeing the objects. A knot of four things and
    * then twelve metres of nothing reads as a place, and it also means the
    * quiet stretches after a gauntlet are quiet to look at as well as to play.
+   *
+   * The gaps ride the same `stretch` as the chunks, for the same reason: a
+   * fixed z spacing means the gutters stream past twice as fast at top speed
+   * as at the start, and that flicker is a large part of what reads as "too
+   * fast" long before any of it is actually unfair. `pitch` is deliberately
+   * NOT stretched — it is the art's own footprint, not a rhythm.
    */
-  streamDecor(toZ) {
+  streamDecor(toZ, stretch = this.stretch) {
     let guard = 0;
     while (this.decorZ < toZ && guard++ < 240) {
       const clump = 1 + Math.floor(Math.random() * 3.4);
@@ -704,7 +795,7 @@ export class World {
         const d = DECOR_BAG[Math.floor(Math.random() * DECOR_BAG.length)];
         const side = Math.random() < 0.5 ? -1 : 1;
         const si = side < 0 ? 0 : 1;
-        let z = this.decorZ + i * (0.9 + Math.random() * 1.5);
+        let z = this.decorZ + i * (0.9 + Math.random() * 1.5) * stretch;
         // Keep neighbours on the same wall from telescoping into one blob.
         if (z - this.decorSideZ[si] < d.pitch) z = this.decorSideZ[si] + d.pitch;
         this.decorSideZ[si] = z;
@@ -712,10 +803,10 @@ export class World {
         if (z > reach) reach = z;
       }
       // Skewed gap: usually a short breath, occasionally a long clean run.
-      // Lands at roughly one piece every four units, so something is entering
-      // frame about six times a second at cruising speed without the prop
+      // Lands at roughly one piece every four units at starting speed, so
+      // something is entering frame about six times a second without the prop
       // count inside DRAW_DIST running away from the fill budget.
-      this.decorZ = reach + 3.2 + Math.random() * Math.random() * 15;
+      this.decorZ = reach + (3.2 + Math.random() * Math.random() * 15) * stretch;
     }
     if (this.decorZ < toZ) this.decorZ = toZ;
   }

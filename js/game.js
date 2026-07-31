@@ -10,6 +10,12 @@ import { resetCamera, updateCamera, addShake } from './camera.js';
 import { burst, dust, updateParticles, resetParticles } from './particles.js';
 import { startIntro, updateIntro, stopIntro } from './intro.js';
 import * as sfx from './audio.js';
+// Paired with sfx one-for-one, deliberately: every buzz sits on the same line as
+// the sound it belongs to, so the two can never drift apart and there is no
+// second list of "moments" to keep in step. Gated by the sound toggle from
+// main.js — someone playing silently wants silence, not buzz — and a no-op on
+// every device without navigator.vibrate, which includes all of iOS Safari.
+import { hap } from './haptics.js';
 
 export const STATE = {
   MENU: 'menu',
@@ -170,11 +176,15 @@ export class Game {
     const next = Math.max(-1, Math.min(1, this.player.lane + dir));
     if (next === this.player.lane) {
       this.player.lean = dir * 0.5;   // little body-check into the wall
+      // The input WAS read — it just had nowhere to go. Without this a swipe
+      // into the wall is indistinguishable from a swipe the game missed.
+      hap.blocked();
       return;
     }
     this.player.lane = next;
     this.player.lean = dir;
     sfx.swipe();
+    hap.lane();
   }
 
   jump() {
@@ -186,6 +196,7 @@ export class Game {
     p.sliding = false;
     p.slideT = 0;
     sfx.jump();
+    hap.jump();
   }
 
   slide() {
@@ -198,6 +209,7 @@ export class Game {
     p.sliding = true;
     p.slideT = RUN.slideTime;
     sfx.slide();
+    hap.slide();
   }
 
   // ------------------------------------------------------------------ update
@@ -413,12 +425,14 @@ export class Game {
         this.score += SCORE.beer * this.multiplier;
         burst(o.x, o.y, o.z, 7, '#ffc93c', { spread: 1.6, life: 0.4, size: 0.07 });
         sfx.beer(Math.min(12, this.combo));
+        hap.beer();
         break;
       case 'taco':
         this.tacos++;
         this.stamina = Math.min(STAMINA.max, this.stamina + STAMINA.taco);
         burst(o.x, o.y, o.z, 10, '#9ee34f', { spread: 1.9, life: 0.5, size: 0.08 });
         sfx.taco();
+        hap.taco();
         this.hooks.onToast?.('¡TACO! +STAMINA', '#9ee34f');
         break;
       default: {
@@ -427,6 +441,7 @@ export class Game {
         this.power[o.type] = def.time;
         burst(o.x, o.y, o.z, 18, def.color, { spread: 2.6, life: 0.7, size: 0.1 });
         sfx.powerUp();
+        hap.power();
         this.hooks.onToast?.(def.label, def.color);
       }
     }
@@ -439,6 +454,7 @@ export class Game {
       burst(o.x, 0.8, o.z, 20, '#ffcf3d', { spread: 3.4, life: 0.6, size: 0.13 });
       addShake(0.35);
       sfx.smash();
+      hap.smash();
       this.score += 25 * this.multiplier;
       return;
     }
@@ -452,6 +468,7 @@ export class Game {
       burst(o.x, 0.7, o.z, 22, '#4dd8ff', { spread: 3.2, life: 0.7, size: 0.12 });
       addShake(0.5);
       sfx.crash();
+      hap.hit();
       this.hooks.onToast?.('LOWRIDER TOTALED', '#4dd8ff');
       return;
     }
@@ -466,6 +483,7 @@ export class Game {
     addShake(0.8);
     burst(this.player.x, 0.9, this.player.z, 16, '#ff6b6b', { spread: 2.8, life: 0.55 });
     sfx.crash();
+    hap.hit();
 
     if (this.chase >= CHASE.max) this.end('CAUGHT BY LA MIGRA');
   }
@@ -481,6 +499,7 @@ export class Game {
       this.freeLives--;
       this.reprieve();
       sfx.powerUp();
+      hap.power();
       this.hooks.onToast?.('CORRUPT LOOKED AWAY', '#ff6b6b');
       return;
     }
@@ -490,6 +509,7 @@ export class Game {
     this.score = Math.floor(this.score);
     sfx.stopMusic();
     sfx.bust();
+    hap.bust();
     addShake(1.1);
     this.hooks.onStateChange?.(this.state);
   }

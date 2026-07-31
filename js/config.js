@@ -22,12 +22,22 @@ export const CAM = {
 };
 
 export const DRAW_DIST = 95;         // units of alley kept on screen
-export const FOG_START = 42;         // haze begins eating colour here
+// Where haze begins eating colour. This is a READABILITY number, not a look
+// one: at 33 u/s, 42u of clear alley is 1.27 seconds of warning about what is
+// coming, and players reported obstacles being hard to see in time. 50u buys
+// about a fifth of a second more. It costs nothing to draw — props are drawn
+// out to DRAW_DIST either way, this only changes the alpha they get there.
+export const FOG_START = 50;
 
 export const RUN = {
   startSpeed: 15.0,                  // units/sec
   maxSpeed: 33.0,
-  accel: 0.135,                      // units/sec added per second survived
+  // Units/sec added per second survived. Was 0.135, which put you at top speed
+  // 133s in; 0.12 makes that 150s. Nothing else moves with it — the tier
+  // schedule in PACING is gated on time, and the chunk stretch is a function
+  // of speed, so this changes ONLY how long the climb takes. It is the one
+  // knob to turn back first if the run ever reads as sluggish.
+  accel: 0.12,
   gassedSpeed: 8.5,                  // crawl once stamina is gone
   laneSnap: 11.0,                    // how fast you slide between lanes
   gravity: -52.0,
@@ -37,6 +47,70 @@ export const RUN = {
   boardJumpV: 15.0,
   slideTime: 0.62,
   stumbleTime: 0.55,
+};
+
+// ------------------------------------------------------------------- pacing
+// How the run gets harder. Everything here exists because of one mistake made
+// twice: the world used to measure the run in METRES while the runner's
+// metres-per-second keeps climbing, so every metre-denominated rule tightened
+// itself behind your back.
+//
+//   * Tiers were gated on distance. Distance accelerates, so the tiers arrived
+//     about three times faster than the speed curve did — the gauntlets landed
+//     90s in, while top speed is 133s away, and tier 0 was over in 20s.
+//     `tierSeconds` gates on TIME survived instead. world.js derives that from
+//     distance in closed form, so nothing outside world.js has to change.
+//   * Chunk spacing was authored in fixed world units, and a fixed distance is
+//     a SHRINKING reaction time: 9u is 0.60s at 15 u/s and 0.27s at 33 u/s,
+//     which is below human reaction time — the only way to survive it was to
+//     have memorised the pattern. `speedComp` stretches every chunk along z as
+//     the run speeds up, so the SECONDS between rows stay roughly flat.
+//
+// The useful consequence of stretching in proportion to speed is that a chunk
+// takes a constant amount of TIME to run through, whatever the speed. Tacos,
+// powerups and stamina are all metered per chunk, so they stay in step for
+// free.
+export const PACING = {
+  // Seconds survived at which each tier opens. Deliberately widening — 45s,
+  // then 65, then 85 — so each tier is longer than the last and competence has
+  // room to catch up with the alley.
+  tierSeconds: [0, 35, 90, 160],
+  // Seconds a freshly opened tier takes to reach its full share of the pick
+  // table. Without this, crossing a boundary unlocks every hard pattern at
+  // once and the step reads as a wall rather than a ramp. Longer than the
+  // narrowest tier on purpose, so the phase-ins overlap and the curve has no
+  // corners in it.
+  tierPhaseIn: 45,
+  // Weight multiplier on the newest tier's chunks: start of phase-in -> end.
+  // Ends above 1 so the run still escalates once the tier has settled in.
+  newTierWeight: [0.2, 2.6],
+  // ...and every tier BELOW the current one is multiplied by this per step
+  // down. Without it the ten tier-0 chunks keep full weight forever and a
+  // five-minute run still spends a third of itself in the tutorial, which is
+  // its own kind of bad pacing. Kept well above zero so the calm patterns
+  // survive as breathers.
+  tierFade: 0.62,
+  // Fraction of the speed increase paid back as extra spacing. 1.0 would hold
+  // reaction time perfectly constant and make speed pure spectacle; a little
+  // under that lets the alley still tighten as the run goes on.
+  speedComp: 0.68,
+  maxStretch: 2.4,          // ceiling, so a future maxSpeed can't run away
+  // Non-dense chunks required after a gauntlet before another may be picked.
+  // The old rule only blocked two dense chunks back to back, which still let
+  // tier 3 alternate gauntlet/normal forever.
+  denseSpacing: 2,
+
+  // The quiet after a chunk, in world units at starting speed — placeChunk
+  // multiplies the lot by the same stretch as the chunk itself, so it is
+  // really a number of SECONDS. `gapTier` used to be 1.6, which slammed the
+  // gap shut at exactly the tiers whose patterns were nastiest; it is a light
+  // touch now and the escalation is carried by which chunks get picked.
+  gapBase: 10,
+  gapTier: 1.2,
+  gapJitter: 3,
+  gapMin: 4.5,
+  gapDense: 4,              // a gauntlet earns extra open alley behind it
+  gapCalm: -1.5,
 };
 
 export const STAMINA = {

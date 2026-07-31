@@ -718,6 +718,64 @@ html, body {
   color: var(--ink-faint);
 }
 
+/* ------------------------------------------------------------------ help */
+
+/* Same rows as the menu's `how` list, minus the disclosure triangle — this
+   sheet IS the disclosure, so nothing here should need a second tap. */
+.help-list {
+  margin: 0 0 4px;
+  padding-left: 18px;
+  text-align: left;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-dim);
+}
+
+.help-list li { padding-left: 2px; }
+.help-list li::marker { color: rgba(255, 201, 60, 0.55); }
+.help-list b { color: var(--ink); font-weight: 800; }
+
+/* The rule that gets new players killed, pulled out of the bullets and given a
+   red box of its own. As a sixth bullet it read as trivia; the players who most
+   need it are the ones who skim. */
+.help-rule {
+  margin: 14px 0 4px;
+  padding: 11px 13px;
+  text-align: left;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 107, 107, 0.34);
+  border-left: 3px solid var(--red);
+  background: linear-gradient(180deg, rgba(255, 107, 107, 0.12), rgba(255, 107, 107, 0.04));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.help-rule-tag {
+  margin: 0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
+  color: rgba(255, 107, 107, 0.85);
+}
+
+.help-rule-title {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.help-rule-body {
+  margin: 5px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+#btn-help-back { margin-top: 16px; }
+
 /* ------------------------------------------------------------- game over */
 
 .bust {
@@ -831,6 +889,12 @@ h2 {
   .stats { margin-top: 12px; }
   .btn { min-height: 48px; margin-top: 8px; }
   .final { font-size: clamp(42px, 14vw, 54px); }
+  /* At 320x568 in Spanish this sheet is the tallest thing in the game and was
+     pushing GOT IT off the bottom by about the height of one line. */
+  .help-list { font-size: 12px; line-height: 1.55; }
+  .help-rule { margin-top: 10px; padding: 9px 11px; }
+  .help-rule-body { margin-top: 4px; font-size: 11px; line-height: 1.45; }
+  #btn-help-back { margin-top: 12px; }
 }
 
 @media (min-width: 760px) {

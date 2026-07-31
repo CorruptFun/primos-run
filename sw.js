@@ -17,7 +17,7 @@
 */
 
 // 👉 CUSTOMIZE: rename to your app, and bump CACHE_VERSION per deploy (e.g. a build stamp).
-const CACHE_VERSION = "v9-ice";
+const CACHE_VERSION = "v10-pace";
 const CACHE_NAME    = `primos-run-${CACHE_VERSION}`;
 
 // 👉 CUSTOMIZE: the offline shell, precached at install. Relative paths (resolved against
@@ -48,6 +48,8 @@ const PRECACHE = [
   "./js/wallet.js",
   "./js/primo-picker.js",
   "./js/particles.js",
+  "./js/perf.js",
+  "./js/haptics.js",
   "./js/tutorial.js",
   "./js/intro.js",
   "./js/art/palette.js",

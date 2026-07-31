@@ -164,6 +164,30 @@ const STR = {
   'pause.soundOff':   { en: 'SOUND: OFF', es: 'SONIDO: NO' },
   'pause.quit':       { en: 'QUIT TO MENU', es: 'SALIR AL MENÚ' },
 
+  // ----------------------------------------------------------------- help
+  // The menu's `how` list is only reachable from the menu, which is no use to
+  // the player who is already dead and does not know why. This is the same
+  // material, reachable mid-run from pause and again from the game over sheet,
+  // with the rule that actually kills new players pulled out of the list and
+  // given its own box — buried in a bullet it was read as trivia.
+  //
+  // Rows are drawn `<b>k</b> <span>v</span>` and have to read as one sentence
+  // across the gap, same contract as `how.*` above, which this reuses for the
+  // three swipes and the tacos.
+  'help.open':        { en: 'HOW TO PLAY', es: 'CÓMO SE JUEGA' },
+  'help.title':       { en: 'HOW TO PLAY', es: 'CÓMO SE JUEGA' },
+  'help.tap.k':       { en: 'Tap anywhere', es: 'Toca donde sea' },
+  'help.tap.v':       { en: '— jump. Same as swiping up.', es: '— brinca. Igual que deslizar hacia arriba.' },
+  'help.rule.tag':    { en: 'THE ONE THAT GETS YOU', es: 'LO QUE TE AGARRA' },
+  'help.rule.title':  { en: 'THESE DO NOT GET JUMPED', es: 'ESTO NO SE SALTA' },
+  'help.rule.body':   { en: 'Checkpoints, the wall, the ICE cruiser. Every one of them is taller '
+                          + 'than your jump, and always has been. Jumping one is a hit, every '
+                          + 'single time. Change lanes instead.',
+                        es: 'Retenes, el muro, la patrulla. Todos son más altos que tu salto, y '
+                          + 'siempre lo han sido. Saltarlos es golpe seguro, cada vez. Mejor '
+                          + 'cámbiate de carril.' },
+  'help.back':        { en: 'GOT IT', es: 'ENTENDIDO' },
+
   // ------------------------------------------------------------ game over
   // The one line the whole run ends on, and the best joke in the game. Deadpan
   // is the entire point: nobody in this alley is surprised about who it was.

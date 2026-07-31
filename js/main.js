@@ -10,6 +10,9 @@ import { headFromCharacter } from './art/primo-head.js';
 import { loadSprites, loadProps } from './art/sprites.js';
 import * as store from './store.js';
 import * as sfx from './audio.js';
+import { setHaptics } from './haptics.js';
+import { sceneScale, sampleFrame, perfStats, resetPerf } from './perf.js';
+import { MOBILE } from './config.js';
 import { t as tBase, tRaw, initLang, setLang, getLang, onLangChange } from './i18n.js';
 import {
   getIndex, indexReady, cidFor, drawTokens, loadPrimoArt, loadPrimoUrl,
@@ -38,6 +41,15 @@ function t(key) {
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d', { alpha: false });
 
+// The scene buffer. Everything expensive — sky, walls, road, props, the runner —
+// is painted in here at a resolution the device can actually afford, then
+// stretched onto the display canvas in one drawImage. The HUD and the tutorial
+// are drawn AFTER that blit, straight onto the display canvas at its own full
+// resolution, so the score and the stamina bar stay sharp however far the scene
+// scale drops. See the header of js/perf.js for why the two are split.
+const scene = document.createElement('canvas');
+const sctx = scene.getContext('2d', { alpha: false });
+
 const $ = (id) => document.getElementById(id);
 const screens = {
   menu: $('screen-menu'),
@@ -47,6 +59,9 @@ const screens = {
   // of them up over the alley — continuing a run has to clear the offer.
   continue: $('screen-continue'),
   shop: $('screen-shop'),
+  // Same reason: help is opened OVER pause or game over, so a state change
+  // arriving while it is up has to take it down with everything else.
+  help: $('screen-help'),
 };
 
 let saved = store.load();
@@ -75,17 +90,50 @@ const game = new Game({
 
 // ------------------------------------------------------------------ canvas
 
+let viewW = 0;
+let viewH = 0;
+
 function resize() {
+  // The display buffer keeps the full device ratio it always had: this is the
+  // surface the HUD text lands on, and text is the one thing on screen that is
+  // read rather than looked at. MOBILE.dprCap deliberately does NOT apply here —
+  // it applies to the scene, which is where the fill rate actually goes.
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  canvas.style.width = w + 'px';
-  canvas.style.height = h + 'px';
-  canvas.width = Math.floor(w * dpr);
-  canvas.height = Math.floor(h * dpr);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  canvas.style.width = viewW + 'px';
+  canvas.style.height = viewH + 'px';
+  canvas.width = Math.floor(viewW * dpr);
+  canvas.height = Math.floor(viewH * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  resizeCamera(w, h);
+  // A stretched scene buffer wants a smooth stretch — a softer picture is the
+  // whole bargain being struck, and nearest-neighbour would trade it for jaggies.
+  ctx.imageSmoothingEnabled = true;
+  // A rotation or a window drag changes the pixel count outright, so whatever
+  // the scale had settled on was measured against a different screen.
+  resetPerf();
+  resizeScene();
+  resizeCamera(viewW, viewH);
   safe = readSafeInsets();
+}
+
+/**
+ * Size the scene buffer to `dprCap * sceneScale()`. Called on every resize and
+ * again whenever perf.js moves the scale — which it does at most once every
+ * MOBILE.settleMs, because reallocating a canvas backing store is itself a hitch.
+ *
+ * The transform means renderScene() still draws in CSS pixels and never learns
+ * that it is being scaled at all.
+ */
+function resizeScene() {
+  const sdpr = Math.min(MOBILE.dprCap, window.devicePixelRatio || 1) * sceneScale();
+  const w = Math.max(1, Math.floor(viewW * sdpr));
+  const h = Math.max(1, Math.floor(viewH * sdpr));
+  if (scene.width === w && scene.height === h) return;
+  scene.width = w;
+  scene.height = h;
+  // Resizing a canvas resets its context, so the transform goes back on after.
+  sctx.setTransform(sdpr, 0, 0, sdpr, 0, 0);
 }
 
 // One probe, both insets. Notch at the top, home indicator at the bottom — the
@@ -111,12 +159,32 @@ window.addEventListener('orientationchange', () => setTimeout(resize, 120));
 
 let last = performance.now();
 
+/**
+ * One frame, timed. The number handed to sampleFrame is OUR OWN WORK, measured
+ * around update+render and nothing else — not the rAF delta, which is pinned to
+ * the display refresh and reads a flat 16.7ms right up until the moment the
+ * budget is already blown. See the header of js/perf.js.
+ *
+ * Wrapping rather than timing inline keeps the early returns below intact: a
+ * tutorial frame is still a frame and still costs what it costs.
+ */
 function step(dt) {
-  if (game.state !== STATE.PAUSED) game.update(dt);
-  renderScene(ctx, game);
+  const t0 = performance.now();
+  drawFrame(dt);
+  const ms = performance.now() - t0;
+  if (sampleFrame(ms, t0 + ms)) resizeScene();
+}
 
-  const W = window.innerWidth;
-  const H = window.innerHeight;
+function drawFrame(dt) {
+  if (game.state !== STATE.PAUSED) game.update(dt);
+
+  // Scene into the buffer, buffer onto the screen. The blit is opaque and
+  // covers the viewport, so the display canvas needs no clear of its own.
+  renderScene(sctx, game);
+  ctx.drawImage(scene, 0, 0, viewW, viewH);
+
+  const W = viewW;
+  const H = viewH;
 
   // The course runs with the game parked in MENU, so the alley keeps scrolling
   // behind the cards instead of the lesson playing over a frozen frame.
@@ -152,6 +220,12 @@ window.__step = (n = 1, dt = 1 / 60) => {
   return { z: Math.round(game.player.z), state: game.state };
 };
 window.__game = game;
+// Read-only: scene scale, the 80th-percentile work time it was decided on, and
+// the buffer that scale currently implies.
+window.__perf = () => {
+  const s = perfStats();
+  return { scale: s.scale, p80: s.p80, avg: s.avg, w: scene.width, h: scene.height };
+};
 
 // ------------------------------------------------------------------- input
 
@@ -796,6 +870,40 @@ $('btn-quit').addEventListener('click', () => {
   game.reset();
   showScreen(STATE.MENU);
 });
+
+// -------------------------------------------------------------------- help
+//
+// The controls have always been on the menu, inside a collapsed `how` list —
+// which is behind the menu, which is exactly where a player who is mid-run or
+// freshly busted cannot get to. So the same material is reachable from both
+// places they actually are when the question comes up.
+//
+// Opening it touches NO game state: the run stays paused and the game over
+// sheet keeps its numbers, so reading the rules can never cost a run. It goes
+// straight back to the sheet it was opened from rather than through
+// showScreen(), which for game over would re-open Corrupt's continue offer and
+// bank the run a second time.
+
+let helpBack = null;
+
+function openHelp(back) {
+  sfx.uiClick();
+  helpBack = back;
+  back.classList.add('hidden');
+  screens.help.classList.remove('hidden');
+}
+
+function closeHelp() {
+  sfx.uiClick();
+  screens.help.classList.add('hidden');
+  (helpBack || screens.menu).classList.remove('hidden');
+  helpBack = null;
+}
+
+$('btn-help-pause').addEventListener('click', () => openHelp(screens.pause));
+$('btn-help-over').addEventListener('click', () => openHelp(screens.over));
+$('btn-help-back').addEventListener('click', closeHelp);
+
 $('btn-again').addEventListener('click', () => { sfx.uiClick(); startRun(); });
 $('btn-menu').addEventListener('click', () => {
   sfx.uiClick();
@@ -804,9 +912,16 @@ $('btn-menu').addEventListener('click', () => {
   showScreen(STATE.MENU);
 });
 
+/**
+ * One switch, both channels. Vibration rides the sound toggle rather than
+ * getting a control of its own: a player who has silenced the game is asking for
+ * it to shut up, and a phone buzzing in a quiet room is louder than the audio
+ * they just turned off.
+ */
 function toggleMute() {
   const m = !sfx.isMuted();
   sfx.setMuted(m);
+  setHaptics(!m);
   saved.muted = m;
   store.save(saved);
   $('btn-mute').textContent = t(m ? 'pause.soundOff' : 'pause.soundOn');
@@ -838,6 +953,7 @@ function boot() {
   buildCrew();
 
   sfx.setMuted(!!saved.muted);
+  setHaptics(!saved.muted);
 
   const idx = roster.findIndex((c) => c.id === saved.character);
   selectCrew(idx >= 0 ? idx : 0);

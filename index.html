@@ -134,6 +134,7 @@
       <span class="logo-mark mark-sm" aria-hidden="true"></span>
       <h2 data-i18n="pause.title">PAUSED</h2>
       <button class="btn btn-primary" id="btn-resume" data-i18n="pause.resume">KEEP GOING</button>
+      <button class="btn btn-ghost" id="btn-help-pause" data-i18n="help.open">HOW TO PLAY</button>
       <button class="btn btn-ghost" id="btn-mute">SONIDO: SÍ</button>
       <button class="btn btn-ghost" id="btn-quit" data-i18n="pause.quit">QUIT TO MENU</button>
 
@@ -162,7 +163,36 @@
       <button class="btn btn-ghost" id="btn-shop-over">
         <span data-i18n="shop.open">CORNER STORE</span><b class="wallet-chip" data-wallet>0</b>
       </button>
+      <!-- Here as well as on pause: this sheet is where a new player is sitting
+           at the exact moment they want to know what killed them. -->
+      <button class="btn btn-ghost" id="btn-help-over" data-i18n="help.open">HOW TO PLAY</button>
       <button class="btn btn-ghost" id="btn-menu" data-i18n="over.menu">MENU</button>
+    </div>
+  </section>
+
+  <!-- -------------------------------------------------------------- help -->
+  <!-- Opened over pause or over game over, and closed straight back to
+       whichever it came from — see openHelp() in js/main.js. -->
+  <section id="screen-help" class="screen hidden">
+    <div class="sheet sheet-small">
+      <span class="logo-mark mark-sm" aria-hidden="true"></span>
+      <h2 data-i18n="help.title">HOW TO PLAY</h2>
+
+      <ul class="help-list">
+        <li><b data-i18n="how.lane.k">Swipe ← →</b> <span data-i18n="how.lane.v">/ arrows — change lanes</span></li>
+        <li><b data-i18n="how.jump.k">Swipe ↑</b> <span data-i18n="how.jump.v">/ space — jump the trash</span></li>
+        <li><b data-i18n="how.slide.k">Swipe ↓</b> <span data-i18n="how.slide.v">/ down — duck under the neighbour's laundry</span></li>
+        <li><b data-i18n="help.tap.k">Tap anywhere</b> <span data-i18n="help.tap.v">— jump. Same as swiping up.</span></li>
+        <li><b data-i18n="how.taco.k">Tacos</b> <span data-i18n="how.taco.v">are fuel. Run out and ICE takes you.</span></li>
+      </ul>
+
+      <div class="help-rule">
+        <p class="help-rule-tag" data-i18n="help.rule.tag">THE ONE THAT GETS YOU</p>
+        <p class="help-rule-title" data-i18n="help.rule.title">THESE DO NOT GET JUMPED</p>
+        <p class="help-rule-body" data-i18n="help.rule.body">Checkpoints, the wall, the ICE cruiser. Every one of them is taller than your jump, and always has been. Jumping one is a hit, every single time. Change lanes instead.</p>
+      </div>
+
+      <button class="btn btn-primary" id="btn-help-back" data-i18n="help.back">GOT IT</button>
     </div>
   </section>
 
