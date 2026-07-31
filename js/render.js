@@ -9,6 +9,7 @@ import { drawRunner } from './art/runner.js';
 import { drawParticles } from './particles.js';
 import { propSprite, drawPropSprite } from './art/sprites.js';
 import { drawWetReflection, drawPuddles } from './art/wet.js';
+import { introOwnsRunner, drawIntro } from './intro.js';
 
 const SEG = 4;
 
@@ -69,7 +70,9 @@ export function renderScene(ctx, g) {
   drawPuddles(ctx, projectClamped, cam.z, t);
 
   drawProps(ctx, g, t);
-  drawPlayer(ctx, g, t);
+  // During the opening hero shot the runner is drawn front-on by intro.js, so
+  // the normal back view would double them up.
+  if (!introOwnsRunner()) drawPlayer(ctx, g, t);
   drawTheChaser(ctx, g, t);
   drawParticles(ctx, project);
 
@@ -78,6 +81,8 @@ export function renderScene(ctx, g) {
   if (rolled) ctx.restore();
 
   drawPostFX(ctx, g, W, H, horizon);
+  // Last, so the hero shot and its vignette sit over the alley's own grading.
+  drawIntro(ctx, W, H);
 }
 
 // -------------------------------------------------------------------- ground

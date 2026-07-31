@@ -25,9 +25,27 @@ const MASK = { cx: 128, cy: 132, rx: 96, ry: 104, feather: 12 };
 const SHIRT_BAND = { x0: 0.17, x1: 0.83, y0: 0.79, y1: 0.97, skipMid: 0.10 };
 const SKIN_PTS = [[0.68, 0.58], [0.63, 0.66], [0.36, 0.60], [0.70, 0.50], [0.34, 0.52]];
 // Crown of the head. Whatever sits here — hair, a cap, a bandana, a hood — is
-// what the back of the head should be made of, so it is sampled without trying
-// to decide which of those it is.
-const HAIR_PTS = [[0.50, 0.14], [0.42, 0.16], [0.58, 0.16], [0.46, 0.11], [0.54, 0.11]];
+// what the TOP of the head should be made of, so it is sampled without trying to
+// decide which of those it is.
+//
+// These used to sit at y 0.11-0.16, which is ABOVE the head in the collection's
+// composition: it was sampling the grainy shop photo these PFPs are pasted onto,
+// which is why so many runners came out wearing a muddy brown that appears
+// nowhere on their Primo. The head starts around y 0.20.
+const CROWN_PTS = [[0.50, 0.24], [0.44, 0.26], [0.56, 0.26], [0.50, 0.30], [0.46, 0.22]];
+// The composition is not fixed across the collection and the backdrop is a
+// different photo every time, so the backdrop is measured rather than assumed
+// and any sample that lands on it is thrown away.
+const BG_PTS = [[0.03, 0.05], [0.97, 0.05], [0.05, 0.28], [0.95, 0.28]];
+
+// A second sample beside the face, to tell a cap apart from the hair under it,
+// was tried across the collection and abandoned. Framing varies enough Primo to
+// Primo that the side points land on hair, on a shoulder or on the backdrop
+// roughly at random, and one bad sample is worse than none: #4 came back with a
+// pale grey "hair" that rendered as a blindfold across the head. The crown is
+// the one point that is reliably ON the character, so it is the only one taken,
+// and head-back.js pushes the cap and the hair apart by VALUE instead of asking
+// the image a question it cannot answer.
 
 function canvas2d(w, h) {
   const c = document.createElement('canvas');
@@ -130,6 +148,7 @@ export function headFromCharacter(ch) {
     hair: ch.hair,
     hairDark: ch.hairDark || null,
     hairLight: ch.hairLight || null,
+    cap: ch.cap || null,
     hairStyle: ch.hairStyle,
     bandana: ch.bandana,
     beanie: ch.beanie,
@@ -145,6 +164,7 @@ function samplePalette(img, sw, sh) {
     shirt: '#3c5f9e', shirtDark: '#28406d',
     skin: '#b9784e', skinDark: '#96593a',
     hair: '#221a1e', hairDark: '#150f12', hairLight: '#3d2f34',
+    cap: '#1b1b24',
     hairStyle: 'messy',
   };
   try {
@@ -152,7 +172,15 @@ function samplePalette(img, sw, sh) {
     ctx.drawImage(img, 0, 0);
     let shirt = medianBand(ctx, sw, sh, SHIRT_BAND);
     const skin = averageAt(ctx, sw, sh, SKIN_PTS, isSkinLike);
-    const hair = averageAt(ctx, sw, sh, HAIR_PTS, null);
+
+    // Backdrop first, then reject anything that looks like it. The PFPs sit on
+    // photographs, and a sample that lands on one is worse than no sample: it
+    // gives a plausible-looking colour that belongs to a shop shelf.
+    const bg = averageAt(ctx, sw, sh, BG_PTS, null);
+    const notBg = bg ? (r, g, b) => dist(r, g, b, bg) > 46 : null;
+    const crown = medianAt(ctx, sw, sh, CROWN_PTS, notBg);
+    const hair = crown;
+    const cap = crown;
     // A near-grey sample means we landed on a white tee or a washed plaid, not
     // the shirt's actual colour — a grey runner reads as a smudge in game.
     if (shirt) {
@@ -169,6 +197,7 @@ function samplePalette(img, sw, sh) {
       // Clamped up rather than scaled: near-black hair scaled by 1.5 is still
       // near-black, and the crown sheen would never show.
       hairLight: hair ? rgb(lift(hair, 46)) : fallback.hairLight,
+      cap: cap ? rgb(cap) : fallback.cap,
       hairStyle: 'messy',
     };
   } catch {
@@ -211,6 +240,34 @@ function medianBand(ctx, sw, sh, band) {
     return a[a.length >> 1];
   };
   return [mid(rs), mid(gs), mid(bs)];
+}
+
+/**
+ * Median colour over a handful of points, rejecting whatever `accept` turns
+ * down. Median rather than mean because these points straddle edges — one
+ * sample landing on a highlight or an outline drags an average somewhere the
+ * colour never actually was.
+ */
+function medianAt(ctx, sw, sh, points, accept) {
+  const rs = [], gs = [], bs = [];
+  for (const [fx, fy] of points) {
+    const px = Math.min(sw - 3, Math.max(0, Math.floor(fx * sw)));
+    const py = Math.min(sh - 3, Math.max(0, Math.floor(fy * sh)));
+    const d = ctx.getImageData(px, py, 3, 3).data;
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+    const k = d.length / 4;
+    r /= k; g /= k; b /= k;
+    if (accept && !accept(r, g, b)) continue;
+    rs.push(r); gs.push(g); bs.push(b);
+  }
+  if (!rs.length) return null;
+  const mid = (a) => a.slice().sort((x, y) => x - y)[a.length >> 1];
+  return [mid(rs), mid(gs), mid(bs)];
+}
+
+function dist(r, g, b, c) {
+  return Math.hypot(r - c[0], g - c[1], b - c[2]);
 }
 
 function averageAt(ctx, sw, sh, points, accept) {

@@ -4,28 +4,43 @@
 <meta charset="utf-8">
 <title>Rig test — Primos Barrio Run</title>
 <style>
-  body { margin: 0; background: #241d2a; color: #fdf6e6;
-         font: 13px ui-rounded, system-ui, sans-serif; padding: 12px; }
-  h2 { font-size: 13px; letter-spacing: .16em; margin: 16px 0 6px; color: #ffc93c; }
-  canvas { background: linear-gradient(180deg, #4a3a52, #2a2230); border-radius: 8px;
+  body { margin: 0; background: #241d2a; color: #fdf6e6; overflow: hidden;
+         font: 12px ui-rounded, system-ui, sans-serif; padding: 6px 8px; }
+  h2 { font-size: 10px; letter-spacing: .16em; margin: 8px 0 3px; color: #ffc93c; }
+  canvas { background: linear-gradient(180deg, #4a3a52, #2a2230); border-radius: 6px;
            display: block; }
-  .row { display: flex; flex-wrap: wrap; gap: 6px; }
-  .cell { text-align: center; font-size: 10px; color: rgba(253,246,230,.55); }
-  .controls { margin: 10px 0; display: flex; gap: 12px; align-items: center; }
+  canvas.scene { background: none; }
+  .row { display: flex; flex-wrap: nowrap; gap: 5px; align-items: flex-end; }
+  .cell { text-align: center; font-size: 9px; color: rgba(253,246,230,.5); }
+  .controls { display: flex; gap: 10px; align-items: center; font-size: 11px; }
 </style>
 </head>
 <body>
 <div class="controls">
   <label>head: <select id="who"></select></label>
-  <label>speed: <input id="speed" type="range" min="0" max="1" step="0.05" value="0.5"></label>
+  <label>speed: <input id="speed" type="range" min="0" max="1" step="0.05" value="0.5"
+         style="width:90px"></label>
   <label><input id="anim" type="checkbox" checked> animate</label>
+  <span id="note"></span>
+</div>
+
+<!-- Judge the character in the GAME row: it is the only one drawn at the size
+     and against the colours a player actually sees. `?mag=1` doubles it (a
+     retina phone's real pixels, shown 1:1) for detail work. Everything else is
+     diagnostic. -->
+<div style="display:flex; gap:10px; align-items:flex-start">
+  <div>
+    <h2>GAMEPLAY SIZE — judge here</h2>
+    <div class="row" id="game"></div>
+  </div>
+  <div>
+    <h2>OVERSIZED</h2>
+    <div class="row" id="live"></div>
+  </div>
 </div>
 
 <h2>RUN CYCLE</h2>
 <div class="row" id="cycle"></div>
-
-<h2>LIVE</h2>
-<div class="row" id="live"></div>
 
 <h2>AIR &amp; SLIDE</h2>
 <div class="row" id="poses"></div>
@@ -35,11 +50,11 @@
 // Last-Modified, and the browser happily reuses a stale ES module across
 // reloads, which silently shows you the previous build.
 const V = `?t=${Date.now()}`;
-const { drawRunner, CREW, CUSTOM_TEMPLATE } = await import(`../js/art/runner.js${V}`);
+const { drawRunner, CREW } = await import(`../js/art/runner.js${V}`);
 const { headFromCharacter, loadHead } = await import(`../js/art/primo-head.js${V}`);
 
-const FRAMES = 8;
-const W = 150, H = 250, U = 96;   // px per world unit
+const Q = new URLSearchParams(location.search);
+const MAG = Q.get('mag') === '1';
 
 const rigs = new Map();
 for (const c of CREW) rigs.set(c.id, { ...headFromCharacter(c), pants: c.pants });
@@ -47,90 +62,139 @@ rigs.set('none', { shirt: '#3c5f9e', shirtDark: '#28406d', skin: '#b9784e',
                    skinDark: '#96593a', pants: '#2f3a52', head: null });
 
 const who = document.getElementById('who');
-for (const c of [...CREW, { id: 'none', name: 'no head sprite' }]) {
+for (const c of [...CREW, { id: 'none', name: 'no head' }]) {
   who.add(new Option(c.name, c.id));
 }
-// A real Primo, loaded live from IPFS, to check the cutout against real art.
-const REAL = 'https://ipfs.io/ipfs/QmXpHdEQSrnMrYoXFRsX9jD3w7LnmuHuACqxCPH2uiyM8D';
-loadHead(REAL).then((r) => {
-  if (!r) return;
-  rigs.set('real', { ...r.head, pants: '#2f3a52' });
-  who.add(new Option('REAL PRIMO #4', 'real'));
-  who.value = 'real';
-});
+// Real Primos off IPFS. More than one on purpose: the palette sampler is the
+// part most likely to blow up on an unusual Primo (red skin, cyan hair), and a
+// single sample hides that.
+const idx = await (await fetch('/data/primos-index.json')).json();
+const REALS = Object.keys(idx.images).slice(0, 6);
+let first = true;
+for (const id of REALS) {
+  loadHead(`https://ipfs.io/ipfs/${idx.images[id]}`).then((r) => {
+    if (!r) { document.getElementById('note').textContent = 'IPFS failed'; return; }
+    const name = `#${id}`;
+    rigs.set(name, { ...r.head, pants: '#2f3a52' });
+    who.add(new Option(name, name));
+    if (first) { first = false; who.value = name; }
+    note();
+    paintAll(lastT);
+  });
+}
+function note() {
+  const r = rig();
+  document.getElementById('note').textContent =
+    `skin ${r.skin} · hair ${r.hair} · cap ${r.cap}`;
+}
 
-function cell(parent, label) {
+function cell(parent, label, w, h, scene = false, mag = 1) {
   const d = document.createElement('div');
   d.className = 'cell';
   const c = document.createElement('canvas');
-  c.width = W * 2; c.height = H * 2;
-  c.style.width = W + 'px'; c.style.height = H + 'px';
+  c.width = w * 2; c.height = h * 2;
+  c.style.width = w * mag + 'px'; c.style.height = h * mag + 'px';
+  if (scene) c.className = 'scene';
   const x = c.getContext('2d');
   x.scale(2, 2);
   d.appendChild(c);
-  d.appendChild(document.createTextNode(label));
+  d.appendChild(document.createElement('div')).textContent = label;
   parent.appendChild(d);
   return x;
 }
 
+// --- gameplay-size strip -------------------------------------------------
+// The runner stands ~200px tall on a phone, on #3a3540 asphalt under a sunset
+// sky. Anything that only works at 3x is not a fix.
+const GW = 150, GH = 270, GU = 124;
+const GAME_POSES = MAG
+  ? [['0.00', { phase: 0 }], ['0.25', { phase: 0.25 }]]
+  : [['0.00', { phase: 0 }], ['0.25', { phase: 0.25 }], ['0.50', { phase: 0.5 }],
+     ['0.75', { phase: 0.75 }]];
+const gameCtx = GAME_POSES.map(([l]) =>
+  cell(document.getElementById('game'), l, GW, GH, true, MAG ? 2 : 1));
+
+function scene(x, w, h) {
+  const horizon = h * 0.28;
+  const sky = x.createLinearGradient(0, 0, 0, horizon);
+  sky.addColorStop(0, '#8d3b6b');
+  sky.addColorStop(0.6, '#e8663c');
+  sky.addColorStop(1, '#ffb35c');
+  x.fillStyle = sky;
+  x.fillRect(0, 0, w, horizon);
+  const road = x.createLinearGradient(0, horizon, 0, h);
+  road.addColorStop(0, '#5b5260');
+  road.addColorStop(1, '#3a3540');
+  x.fillStyle = road;
+  x.fillRect(0, horizon, w, h - horizon);
+}
+
+const BIG = cell(document.getElementById('live'), 'oversized', 220, 330, false, 1);
+const CW = 88, CH = 158, CU = 62;
+const FRAMES = 8;
 const cycleCtx = [];
 for (let i = 0; i < FRAMES; i++) {
-  cycleCtx.push(cell(document.getElementById('cycle'), (i / FRAMES).toFixed(3)));
+  cycleCtx.push(cell(document.getElementById('cycle'), (i / FRAMES).toFixed(2), CW, CH));
 }
-const liveCtx = [cell(document.getElementById('live'), 'running')];
-// Oversized inspection view — detail work is invisible at gameplay scale.
-const BIG = (() => {
-  const d = document.createElement('div');
-  d.className = 'cell';
-  const c = document.createElement('canvas');
-  c.width = 520; c.height = 760;
-  c.style.width = '260px'; c.style.height = '380px';
-  const x = c.getContext('2d');
-  x.scale(2, 2);
-  d.appendChild(c);
-  document.getElementById('live').appendChild(d);
-  return x;
-})();
-const poseCtx = [
-  cell(document.getElementById('poses'), 'jump up'),
-  cell(document.getElementById('poses'), 'apex'),
-  cell(document.getElementById('poses'), 'falling'),
-  cell(document.getElementById('poses'), 'slide'),
-];
+const poseCtx = ['jump up', 'apex', 'falling', 'slide', 'lean L', 'lean R']
+  .map((l) => cell(document.getElementById('poses'), l, CW, CH));
 
 function rig() { return rigs.get(who.value) || rigs.get('none'); }
 function speedK() { return Number(document.getElementById('speed').value); }
 
 function paint(x, o) {
-  x.clearRect(0, 0, W, H);
-  // ground line + shadow so the feet read against something
+  x.clearRect(0, 0, CW, CH);
   x.fillStyle = 'rgba(0,0,0,.28)';
   x.beginPath();
-  x.ellipse(W / 2, H - 40, 34, 9, 0, 0, Math.PI * 2);
+  x.ellipse(CW / 2, CH - 24, 20, 5, 0, 0, Math.PI * 2);
   x.fill();
-  x.strokeStyle = 'rgba(255,255,255,.12)';
-  x.beginPath(); x.moveTo(0, H - 40); x.lineTo(W, H - 40); x.stroke();
-  drawRunner(x, W / 2, H - 40, U, rig(), { speedK: speedK(), ...o });
+  drawRunner(x, CW / 2, CH - 24, CU, rig(), { speedK: speedK(), ...o });
 }
 
-let t = 0;
-function frame(now) {
-  t = now / 1000;
+function paintGame(x, o) {
+  x.clearRect(0, 0, GW, GH);
+  scene(x, GW, GH);
+  x.fillStyle = 'rgba(21,10,26,.42)';
+  x.beginPath();
+  x.ellipse(GW / 2, GH - 30, 36, 10, 0, 0, Math.PI * 2);
+  x.fill();
+  drawRunner(x, GW / 2, GH - 30, GU, rig(), { speedK: speedK(), ...o });
+}
+
+let lastT = 0;
+function paintAll(t) {
+  lastT = t;
   const animating = document.getElementById('anim').checked;
+  const ph = animating ? (t * 1.9) % 1 : 0;
+
+  GAME_POSES.forEach(([, o], i) => paintGame(gameCtx[i], o));
 
   for (let i = 0; i < FRAMES; i++) paint(cycleCtx[i], { phase: i / FRAMES });
-  paint(liveCtx[0], { phase: animating ? (t * 1.9) % 1 : 0 });
 
-  BIG.clearRect(0, 0, 260, 380);
+  BIG.clearRect(0, 0, 220, 330);
   BIG.fillStyle = 'rgba(0,0,0,.30)';
-  BIG.beginPath(); BIG.ellipse(130, 350, 60, 14, 0, 0, Math.PI * 2); BIG.fill();
-  drawRunner(BIG, 130, 350, 200, rig(),
-    { speedK: speedK(), phase: animating ? (t * 1.9) % 1 : 0 });
+  BIG.beginPath(); BIG.ellipse(110, 306, 50, 12, 0, 0, Math.PI * 2); BIG.fill();
+  drawRunner(BIG, 110, 306, 176, rig(), { speedK: speedK(), phase: ph });
+
   paint(poseCtx[0], { airborne: true, vy: 11, phase: 0.2 });
   paint(poseCtx[1], { airborne: true, vy: 0, phase: 0.4 });
   paint(poseCtx[2], { airborne: true, vy: -11, phase: 0.7 });
   paint(poseCtx[3], { sliding: true, slideK: 0.8 });
+  paint(poseCtx[4], { phase: 0.12, laneLean: -1 });
+  paint(poseCtx[5], { phase: 0.62, laneLean: 1 });
+}
 
+// The agent harness runs this page HIDDEN, where requestAnimationFrame never
+// fires — so paint once up front and expose a manual step. Without this the
+// page is simply black and every screenshot lies to you.
+window.step = (t = 0) => paintAll(t);
+paintAll(0);
+for (const el of [who, document.getElementById('speed'), document.getElementById('anim')]) {
+  el.addEventListener('input', () => { note(); paintAll(lastT); });
+}
+
+function frame(now) {
+  paintAll(now / 1000);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

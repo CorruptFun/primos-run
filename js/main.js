@@ -10,6 +10,11 @@ import { headFromCharacter, loadHead } from './art/primo-head.js';
 import { loadSprites, loadProps } from './art/sprites.js';
 import * as store from './store.js';
 import * as sfx from './audio.js';
+import { t, tRaw, initLang, setLang, getLang, onLangChange } from './i18n.js';
+import {
+  tutorialNeeded, startTutorial, updateTutorial, drawTutorial,
+  tutorialActive, tutorialInput, tutorialTap, finishTutorial,
+} from './tutorial.js';
 
 // Public gateways, tried in order. The first that answers wins.
 const GATEWAYS = [
@@ -29,17 +34,31 @@ const screens = {
 };
 
 let saved = store.load();
+// Before anything paints. A save with no `lang` has never been asked, so the
+// device decides; after that the saved choice wins forever.
+initLang(saved.lang);
+
 let customImg = null;      // source image for the HUD badge + menu tile
 let customRig = null;      // baked head sprite + sampled outfit palette
 let safe = { top: 0, bottom: 0 };
 let primoIndex = null;     // { images: { "1921": "Qm…" } }
 
 const roster = [...CREW, CUSTOM_TEMPLATE];
-// Head sprites for the code-drawn crew, baked once at boot.
+// Head sprites for the crew. Seeded at boot with the code-drawn approximations
+// so the menu is never empty, then REPLACED with real collection art as it
+// arrives from IPFS — see loadRealCrew().
 const crewRigs = new Map();
+const crewImgs = new Map();   // id -> the real PFP Image, once loaded
+const crewNums = new Map();   // id -> token number, once loaded
+
+// The four the crew slots become. Fixed rather than random so a player's roster
+// is the same every launch, and so the picker doesn't reshuffle under them.
+const CREW_TOKENS = [4, 34, 56, 96];
 
 const game = new Game({
-  onToast: (text, color) => pushToast(text, color),
+  // game.js is read-only from the language work, so its handful of literals get
+  // translated on the way to the screen rather than at the source.
+  onToast: (text, color) => pushToast(tRaw(text), color),
   onStateChange: (s) => showScreen(s),
 });
 
@@ -84,8 +103,24 @@ let last = performance.now();
 function step(dt) {
   if (game.state !== STATE.PAUSED) game.update(dt);
   renderScene(ctx, game);
+
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+
+  // The course runs with the game parked in MENU, so the alley keeps scrolling
+  // behind the cards instead of the lesson playing over a frozen frame.
+  if (tutorialActive()) {
+    if (updateTutorial(dt, game)) {
+      drawTutorial(ctx, W, H, Math.min(W, H) / 420, safe.top, safe.bottom);
+    } else {
+      finishTutorial();
+      game.start();
+    }
+    return;
+  }
+
   if (game.state === STATE.PLAYING || game.state === STATE.PAUSED) {
-    drawHUD(ctx, game, window.innerWidth, window.innerHeight, dt, safe.top, safe.bottom);
+    drawHUD(ctx, game, W, H, dt, safe.top, safe.bottom);
   }
 }
 
@@ -113,6 +148,12 @@ let suppressTap = false;
 
 canvas.addEventListener('pointerdown', (e) => {
   sfx.resume();
+  // SKIP pill, same convention as the pause button: consume the tap so it does
+  // not also fire a jump underneath.
+  if (tutorialActive()) {
+    suppressTap = tutorialTap(e.clientX, e.clientY);
+    return;
+  }
   if (game.state !== STATE.PLAYING) { suppressTap = false; return; }
   const r = pauseRect;
   const inPause = e.clientX >= r.x - 6 && e.clientX <= r.x + r.w + 6 &&
@@ -121,13 +162,30 @@ canvas.addEventListener('pointerdown', (e) => {
   if (inPause) game.pause();
 });
 
+// Any input during the opening cuts straight to the run. A player who has seen
+// the sequence once must never be made to sit through it again.
+const skipIntroFirst = () => {
+  if (game.state !== STATE.INTRO) return false;
+  game.skipIntro();
+  return true;
+};
+
 attachInput(canvas, {
-  lane: (d) => game.moveLane(d),
+  // During the course every verb is a lesson answer, never a move — the game is
+  // parked in MENU underneath, so routing them on would do nothing anyway.
+  lane: (d) => {
+    if (tutorialActive()) { tutorialInput('lane', d); return; }
+    if (!skipIntroFirst()) game.moveLane(d);
+  },
   jump: () => {
     if (suppressTap) { suppressTap = false; return; }
-    game.jump();
+    if (tutorialActive()) { tutorialInput('jump'); return; }
+    if (!skipIntroFirst()) game.jump();
   },
-  slide: () => game.slide(),
+  slide: () => {
+    if (tutorialActive()) { tutorialInput('slide'); return; }
+    if (!skipIntroFirst()) game.slide();
+  },
   pause: () => (game.state === STATE.PAUSED ? game.resume() : game.pause()),
   mute: () => toggleMute(),
 });
@@ -161,12 +219,58 @@ function fillGameOver() {
   saved.totalBeers += game.beers;
   store.save(saved);
 
-  $('over-reason').textContent = game.gameOverReason;
+  $('over-reason').textContent = tRaw(game.gameOverReason);
   $('over-score').textContent = Math.floor(game.score).toLocaleString();
   $('over-beers').textContent = game.beers;
   $('over-tacos').textContent = game.tacos;
   $('over-dist').textContent = Math.floor(game.distance);
   $('over-pb').classList.toggle('hidden', !isPB);
+}
+
+// ------------------------------------------------------------------ language
+
+/**
+ * Repaint every word the DOM owns. Cheap enough to run on every switch — the
+ * menu is a few dozen nodes — and it means there is exactly one place that
+ * knows how a screen gets its text, whichever screen happens to be up.
+ *
+ * The canvas needs nothing here: drawHUD and drawTutorial call t() as they
+ * draw, so they pick the new language up on the very next frame by themselves.
+ */
+function applyLang() {
+  const lang = getLang();
+  document.documentElement.lang = lang;
+
+  for (const el of document.querySelectorAll('[data-i18n]')) {
+    el.textContent = t(el.dataset.i18n);
+  }
+  for (const el of document.querySelectorAll('[data-i18n-ph]')) {
+    el.placeholder = t(el.dataset.i18nPh);
+  }
+  for (const btn of document.querySelectorAll('.lang button[data-lang]')) {
+    btn.setAttribute('aria-pressed', String(btn.dataset.lang === lang));
+  }
+
+  // The rest is text the DOM cannot carry an attribute for: it is composed
+  // from live state rather than sat in the markup.
+  $('btn-mute').textContent = t(sfx.isMuted() ? 'pause.soundOff' : 'pause.soundOn');
+  labelCrew();
+  // A run that ended in the other language must not keep its old headline.
+  if (game.gameOverReason) $('over-reason').textContent = tRaw(game.gameOverReason);
+}
+
+onLangChange(() => {
+  saved.lang = getLang();
+  store.save(saved);
+  applyLang();
+});
+
+for (const btn of document.querySelectorAll('.lang button[data-lang]')) {
+  btn.addEventListener('click', () => {
+    sfx.resume();
+    sfx.uiClick();
+    setLang(btn.dataset.lang);
+  });
 }
 
 // -------------------------------------------------------------- crew picker
@@ -208,29 +312,60 @@ function paintCrew() {
       c2.fillStyle = 'rgba(253,246,230,0.5)';
       c2.font = '800 15px ui-rounded, system-ui, sans-serif';
       c2.textAlign = 'center';
-      c2.fillText('MI', 66, 62);
-      c2.fillText('PRIMO', 66, 80);
+      c2.fillText(t('crew.tileMi'), 66, 62);
+      c2.fillText(t('crew.tilePrimo'), 66, 80);
       c2.font = '700 30px system-ui, sans-serif';
       c2.fillText('+', 66, 40);
     } else {
-      drawPrimoPortrait(c2, 66, 84, 112, c, { img: isCustom ? customImg : null });
+      // Real collection art once it has landed; the drawn stand-in until then.
+      const art = isCustom ? customImg : crewImgs.get(c.id);
+      drawPrimoPortrait(c2, 66, 84, 112, c, { img: art || null });
     }
     cv.classList.toggle('on', i === selectedIdx);
   });
+}
+
+// The drawn crew's outfit blurbs. Keyed by character id rather than read off
+// the roster, because runner.js owns the English original and this is the one
+// place that decides which language it comes out in.
+const CREW_TAG = {
+  chuy: 'crew.tag.chuy',
+  lupe: 'crew.tag.lupe',
+  rosa: 'crew.tag.rosa',
+  beto: 'crew.tag.beto',
+};
+
+/** Name + blurb under the tiles. Split out so a language switch can redo it. */
+function labelCrew() {
+  const c = roster[selectedIdx];
+  if (!c) return;
+  const custom = c.id === CUSTOM_ID;
+  // Once a slot is showing real art it is that Primo, not the stand-in — so it
+  // is named for its token rather than keeping the placeholder's name.
+  const num = custom ? saved.primoNumber : crewNums.get(c.id);
+  const tag = CREW_TAG[c.id];
+
+  $('crew-name').textContent = num ? t('crew.primoNum') + num : c.name;
+  $('crew-tag').textContent = custom && !customRig
+    ? t('crew.tag.load')
+    : custom ? t('crew.tag.barrio')
+      : num ? t('crew.tag.collection')
+        : tag ? t(tag) : c.tagline;   // an unknown id keeps runner.js's own line
 }
 
 function selectCrew(i) {
   selectedIdx = i;
   const c = roster[i];
   const custom = c.id === CUSTOM_ID;
-  $('crew-name').textContent = custom && saved.primoNumber
-    ? `PRIMO #${saved.primoNumber}` : c.name;
-  $('crew-tag').textContent = custom && !customRig
-    ? 'Load one from the collection below'
-    : custom ? 'Straight from the barrio' : c.tagline;
+  const num = custom ? saved.primoNumber : crewNums.get(c.id);
+  labelCrew();
 
   const rig = custom ? customRig : crewRigs.get(c.id);
-  game.setCharacter(c, rig, custom ? customImg : null);
+  const art = custom ? customImg : crewImgs.get(c.id);
+  game.setCharacter(c, rig, art || null);
+  // The intro titles the run, and it must agree with the picker — a slot
+  // showing real art is that Primo, not the stand-in whose name it inherited.
+  game.displayName = num ? t('crew.primoNum') + num : c.name;
   saved.character = c.id;
   store.save(saved);
   paintCrew();
@@ -252,16 +387,57 @@ async function getIndex() {
 const status = (msg) => { $('primo-status').textContent = msg; };
 
 /**
+ * Swap the code-drawn crew for real collection art.
+ *
+ * The four built-in characters were hand-coded cartoons standing in for Primos,
+ * and next to the actual art they read as exactly that. The whole pipeline for
+ * using the real thing already existed for the "MI PRIMO" slot — this just
+ * points the default roster at it too.
+ *
+ * Deliberately non-blocking and best-effort: the drawn heads are already in
+ * place, so a slow gateway, a rate-limit or being offline costs nothing but the
+ * upgrade. Nothing here is stored in the repo — the index holds CIDs, and the
+ * pixels live in the player's browser.
+ */
+async function loadRealCrew() {
+  const idx = await getIndex();
+  const nums = Object.keys(idx.images);
+  if (!nums.length) return;
+
+  await Promise.all(CREW.map(async (c, i) => {
+    // Fall back to any indexed token if a chosen one is missing.
+    const want = String(CREW_TOKENS[i]);
+    const num = idx.images[want] ? want : nums[(i * 97) % nums.length];
+    const cid = idx.images[num];
+    if (!cid) return;
+
+    for (const gw of GATEWAYS) {
+      const result = await loadHead(gw + cid);
+      if (!result) continue;
+      // Keep the character's own trousers; everything above comes from the art.
+      crewRigs.set(c.id, { ...result.head, pants: c.pants });
+      crewImgs.set(c.id, result.img);
+      crewNums.set(c.id, num);
+      paintCrew();
+      // If this one is already on screen, re-select so the rig and the badge
+      // pick up the real art immediately rather than on the next tap.
+      if (roster[selectedIdx].id === c.id) selectCrew(selectedIdx);
+      return;
+    }
+  }));
+}
+
+/**
  * Bake a head sprite from an image source and switch to the custom slot.
  * @param {string} src   image URL or data URL
  * @param {string} label shown in the status line
  * @param {number|null} number Primo number, when we know it
  */
 async function usePrimo(src, label, number) {
-  status(`Loading ${label}…`);
+  status(t('status.loading').replace('%s', label));
   const result = await loadHead(src);
   if (!result) {
-    status("Couldn't load that image. Use a direct .png/.jpg link, or pick a file.");
+    status(t('status.badImage'));
     return false;
   }
   customRig = { ...result.head, pants: '#2f3a52' };
@@ -269,7 +445,7 @@ async function usePrimo(src, label, number) {
   saved.customImage = src;
   saved.primoNumber = number || null;
   store.save(saved);
-  status(`${label} is ready to run.`);
+  status(t('status.ready').replace('%s', label));
   selectCrew(roster.length - 1);
   return true;
 }
@@ -280,12 +456,11 @@ async function usePrimoByNumber(n) {
   const cid = idx.images[String(n)];
   if (!cid) {
     const have = Object.keys(idx.images).length;
-    status(`Primo #${n} isn't in the offline index (${have} of 3,069 are). ` +
-           'Paste its image URL below and it will work.');
+    status(t('status.notIndexed').replace('%n', n).replace('%h', have));
     return;
   }
   for (const gw of GATEWAYS) {
-    if (await usePrimo(gw + cid, `Primo #${n}`, n)) return;
+    if (await usePrimo(gw + cid, t('label.primoNum') + n, n)) return;
   }
 }
 
@@ -304,7 +479,7 @@ $('btn-random').addEventListener('click', async () => {
   sfx.uiClick();
   const idx = await getIndex();
   const keys = Object.keys(idx.images);
-  if (!keys.length) { status('Index unavailable.'); return; }
+  if (!keys.length) { status(t('status.noIndex')); return; }
   const n = keys[Math.floor(Math.random() * keys.length)];
   $('primo-num').value = n;
   usePrimoByNumber(Number(n));
@@ -315,7 +490,7 @@ $('primo-file').addEventListener('change', (e) => {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => usePrimo(String(reader.result), file.name, null);
-  reader.onerror = () => status("Couldn't read that file.");
+  reader.onerror = () => status(t('status.badFile'));
   reader.readAsDataURL(file);
 });
 
@@ -323,7 +498,7 @@ $('btn-url').addEventListener('click', () => {
   const url = $('primo-url').value.trim();
   if (!url) return;
   sfx.uiClick();
-  usePrimo(url, 'Your Primo', null);
+  usePrimo(url, t('label.yourPrimo'), null);
 });
 
 $('btn-clear-primo').addEventListener('click', () => {
@@ -332,7 +507,7 @@ $('btn-clear-primo').addEventListener('click', () => {
   saved.customImage = null;
   saved.primoNumber = null;
   store.save(saved);
-  status('Custom Primo cleared.');
+  status(t('status.cleared'));
   if (roster[selectedIdx].id === CUSTOM_ID) selectCrew(0);
   else paintCrew();
 });
@@ -343,6 +518,13 @@ $('btn-play').addEventListener('click', () => {
   sfx.resume();
   sfx.uiClick();
   clearToasts();
+  // First run: teach before the first round. The game stays in MENU so the
+  // alley scrolls behind the course; step() calls game.start() when it ends.
+  if (tutorialNeeded()) {
+    for (const el of Object.values(screens)) el.classList.add('hidden');
+    startTutorial();
+    return;
+  }
   game.start();
 });
 
@@ -367,7 +549,7 @@ function toggleMute() {
   sfx.setMuted(m);
   saved.muted = m;
   store.save(saved);
-  $('btn-mute').textContent = `SOUND: ${m ? 'OFF' : 'ON'}`;
+  $('btn-mute').textContent = t(m ? 'pause.soundOff' : 'pause.soundOn');
 }
 $('btn-mute').addEventListener('click', () => { sfx.resume(); toggleMute(); });
 
@@ -389,15 +571,20 @@ function boot() {
   // Bake head sprites for the drawn crew so the in-game head is always a
   // sprite, whether it came from code or from the collection.
   for (const c of CREW) crewRigs.set(c.id, { ...headFromCharacter(c), pants: c.pants });
+  // Upgrade the roster to real collection art in the background.
+  loadRealCrew();
   crewRigs.set(CUSTOM_ID, { ...headFromCharacter(CUSTOM_TEMPLATE), pants: CUSTOM_TEMPLATE.pants });
 
   buildCrew();
 
   sfx.setMuted(!!saved.muted);
-  $('btn-mute').textContent = `SOUND: ${saved.muted ? 'OFF' : 'ON'}`;
 
   const idx = roster.findIndex((c) => c.id === saved.character);
   selectCrew(idx >= 0 ? idx : 0);
+
+  // After selectCrew, so the crew labels it just wrote are the ones that get
+  // localised — and it is what fills in the mute button too.
+  applyLang();
 
   // Restore a previously chosen Primo in the background.
   if (saved.customImage) {

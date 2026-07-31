@@ -5,9 +5,21 @@ import { PAL, roundRect } from './art/palette.js';
 import { drawPrimoPortrait } from './art/runner.js';
 import { drawLogo } from './art/logo.js';
 import { POWER, STAMINA, CHASE, SCORE } from './config.js';
+import { t } from './i18n.js';
 
-const FONT = 'ui-rounded, "SF Pro Rounded", system-ui, sans-serif';
-const INK = '#fdf6e6';
+// Power pill captions come from here rather than POWER[key].label, so they can
+// switch language. Baked as a lookup because drawPowerPills runs every frame
+// and `'power.' + key` would allocate a string per pill per frame.
+const POWER_LABEL = {
+  magnet: 'power.magnet',
+  chancla: 'power.chancla',
+  lowrider: 'power.lowrider',
+};
+
+// Exported so the tutorial overlay draws in the same voice as the HUD by
+// construction rather than by copy-paste — see js/tutorial.js.
+export const FONT = 'ui-rounded, "SF Pro Rounded", system-ui, sans-serif';
+export const INK = '#fdf6e6';
 
 const toasts = [];
 
@@ -102,7 +114,7 @@ export function drawHUD(ctx, g, W, H, dt, safeTop = 0, safeBottom = 0) {
  * Light text over a bright sunset needs a dark halo *and* a soft shadow,
  * otherwise it dissolves into the smog gradient.
  */
-function label(ctx, str, x, y, size, fill, o = {}) {
+export function label(ctx, str, x, y, size, fill, o = {}) {
   const px = Math.max(7, Math.round(size));
   ctx.font = `${o.weight || 800} ${px}px ${FONT}`;
   if (o.spacing) ctx.letterSpacing = `${o.spacing}px`;
@@ -129,7 +141,7 @@ function label(ctx, str, x, y, size, fill, o = {}) {
 }
 
 /** Dark glass plate: drop shadow, vertical gradient, bevelled rim. */
-function panel(ctx, x, y, w, h, r, s) {
+export function panel(ctx, x, y, w, h, r, s) {
   const body = ctx.createLinearGradient(0, y, 0, y + h);
   body.addColorStop(0, 'rgba(58,37,78,0.80)');
   body.addColorStop(0.55, 'rgba(24,14,36,0.82)');
@@ -148,7 +160,7 @@ function panel(ctx, x, y, w, h, r, s) {
 }
 
 /** Rim that reads as lit from above: bright top edge fading to a dark base. */
-function bevel(ctx, x, y, w, h, r, s, tint) {
+export function bevel(ctx, x, y, w, h, r, s, tint) {
   const rim = ctx.createLinearGradient(0, y, 0, y + h);
   rim.addColorStop(0, tint || 'rgba(255,255,255,0.42)');
   rim.addColorStop(0.45, 'rgba(255,255,255,0.12)');
@@ -162,7 +174,7 @@ function bevel(ctx, x, y, w, h, r, s, tint) {
 }
 
 /** Recessed track for the meters — dark well with a shadow under the top lip. */
-function track(ctx, x, y, w, h, r, s) {
+export function track(ctx, x, y, w, h, r, s) {
   const well = ctx.createLinearGradient(0, y, 0, y + h);
   well.addColorStop(0, 'rgba(6,3,12,0.78)');
   well.addColorStop(1, 'rgba(30,20,44,0.62)');
@@ -201,7 +213,7 @@ function stripes(ctx, x, y, w, h, s, alpha, dir) {
 }
 
 /** Glass highlight along the top half of a filled bar. */
-function gloss(ctx, x, y, w, h, r) {
+export function gloss(ctx, x, y, w, h, r) {
   if (w <= 1) return;
   const g = ctx.createLinearGradient(0, y, 0, y + h);
   g.addColorStop(0, 'rgba(255,255,255,0.38)');
@@ -320,7 +332,7 @@ function drawChaseMeter(ctx, g, W, y, s) {
   ctx.textAlign = 'center';
   const hot = a > 0.02;
   const flash = hot && Math.floor(fx.t * 6) % 2 === 0;
-  label(ctx, 'LA MIGRA', W / 2, y + 10 * s, 10 * s,
+  label(ctx, t('hud.migra'), W / 2, y + 10 * s, 10 * s,
     flash ? '#ffe3e3' : hot ? '#ff9a9a' : 'rgba(244,236,224,0.82)',
     { spacing: 1.4 * s, weight: 900, glow: hot ? '#ff2b2b' : null, glowSize: 10 * s });
   ctx.restore();
@@ -540,7 +552,7 @@ function drawStamina(ctx, g, x, y, s, H) {
   if (empty) {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    label(ctx, 'SIN GAS', x + w + 7 * s, y + h * 0.5, 11 * s, '#ff8080',
+    label(ctx, t('hud.sinGas'), x + w + 7 * s, y + h * 0.5, 11 * s, '#ff8080',
       { weight: 900, spacing: 0.8 * s, glow: '#ff2b2b', glowSize: 12 * s });
   }
   ctx.restore();
@@ -703,14 +715,15 @@ function drawPowerPills(ctx, g, x, bottom, s) {
 
     // shrink the label rather than let a long power name run into the timer
     ctx.textAlign = 'left';
+    const name = t(POWER_LABEL[key]);
     const avail = w - 26 * s - tw - 16 * s;
     let fs = 10.5 * s;
     ctx.font = `900 ${Math.round(fs)}px ${FONT}`;
-    const lw = ctx.measureText(def.label).width;
+    const lw = ctx.measureText(name).width;
     if (lw > avail) fs *= avail / lw;
     // No tracking here — measureText above ignores letterSpacing, and the
-    // extra width would push PIÑATA MAGNET into the timer.
-    label(ctx, def.label, x + 27 * s, y + h * 0.5, fs, def.color,
+    // extra width would push IMÁN PIÑATA into the timer.
+    label(ctx, name, x + 27 * s, y + h * 0.5, fs, def.color,
       { weight: 900, halo: Math.max(2, fs * 0.3) });
 
     ctx.restore();

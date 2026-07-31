@@ -76,46 +76,201 @@ export function shadow(ctx, sx, sy, u, w) {
   ctx.fill();
 }
 
+// --------------------------------------------------------- affordance language
+//
+// A player has to read what a prop DEMANDS of them before they can read what it
+// IS, so every gameplay prop obeys one lighting rule keyed off `kind`:
+//
+//   'jump'   THE LIGHT IS ON TOP. The highest plane of the prop is the
+//            brightest thing on it (`litTop`) and the body ramps down to
+//            near-black where it meets the asphalt. The silhouette ends in a
+//            wide flat lit plane. Reads: the bright edge is the edge you clear.
+//
+//   'slide'  THE LIGHT IS ON THE BOTTOM. The same sentence inverted — a dark
+//            band with a lit hem under it (`litHem`), sitting exactly on the
+//            bottom of the hitbox, and nothing at all below it. Reads: the
+//            bright edge is the edge you duck under.
+//
+//   'dodge'  NO WARM LIGHT, AND NOWHERE TO LAND. Highlights are cold, the
+//            asphalt underneath carries a cold flasher spill (`coldSpill`) and
+//            a footing wider than the prop (`plinth`), and the silhouette
+//            terminates in lamps, masts and points — never in a flat plane.
+//            Warm rim = your body gets past this. Cold rim = it does not.
+//            These are the three props that kill a player who guesses.
+//
+//   pickup / power
+//            Bright core, halo and a dark keyline — a pure glow-and-colour read
+//            dissolves the instant the background goes from asphalt to sunlit
+//            stucco — plus a warm pool of spill on the asphalt directly below.
+//            At distance that pool is the only thing that says which LANE the
+//            item is in, and lane is the decision the player actually makes.
+//
+// It is a lighting rule rather than a badge or an arrow on purpose. The runner
+// is heading into a low sun, so a warm rim is only what the sun does and a cold
+// rim is only what a flasher does; this has to survive being looked at, not
+// just parsed. Set dressing sits deliberately outside the language — its
+// highlight (`SUN`, further down) is dimmer and less saturated than anything
+// here, which is what keeps the gutters from competing with the lane.
+
+const TAU = Math.PI * 2;
+
+const WARM_CAP = 'rgba(255,238,196,0.95)';  // sun landing flat on a top plane
+const WARM_LIP = 'rgba(255,172,84,0.92)';   // the round-over just under it
+const COLD_RIM = 'rgba(176,214,255,0.85)';  // flasher light, never the sun
+const HEM_LIT = 'rgba(255,226,168,0.92)';
+const HEM_DARK = 'rgba(11,4,18,0.66)';
+
+/**
+ * Jump rule. (x, y) is the top-left of the prop's highest plane, `w` its width,
+ * `th` how thick to paint it. Two bands and not one: the cream cap is the plane
+ * catching the sun and the amber lip under it is the round-over. Without that
+ * second band the cap reads as a sticker laid on top of the prop.
+ */
+export function litTop(ctx, x, y, w, th) {
+  ctx.fillStyle = WARM_CAP;
+  ctx.fillRect(x, y, w, th);
+  ctx.fillStyle = WARM_LIP;
+  ctx.fillRect(x, y + th, w, th * 0.8);
+}
+
+/**
+ * Slide rule. `y` is the BOTTOM of the hitbox — the exact line the player has
+ * to get under — so the dark band stacks above it and the lit hem sits on it.
+ */
+export function litHem(ctx, x, y, w, th) {
+  ctx.fillStyle = HEM_DARK;
+  ctx.fillRect(x, y - th * 3, w, th * 3);
+  ctx.fillStyle = HEM_LIT;
+  ctx.fillRect(x, y - th, w, th);
+}
+
+// Flasher spill on the asphalt, pre-baked: red beat, blue beat, and a steady
+// cold bounce for the one dodge prop with no lights of its own.
+const SPILL = ['rgba(255,72,72,0.22)', 'rgba(88,124,255,0.22)', 'rgba(126,166,224,0.15)'];
+
+/** Dodge rule, light half. Screen space, so call it before shadow(). */
+export function coldSpill(ctx, sx, sy, w, tone) {
+  ctx.fillStyle = SPILL[tone];
+  ctx.beginPath();
+  ctx.ellipse(sx, sy, w * 1.2, w * 0.34, 0, 0, TAU);
+  ctx.fill();
+}
+
+/**
+ * Dodge rule, mass half. A footing wider than the prop with a cold lip on it —
+ * the thing is bolted down and the base has to say so. Called in the prop's own
+ * translated space, so (0,0) is where it meets the road.
+ */
+export function plinth(ctx, u, w) {
+  const th = Math.max(2, u * 0.085);
+  ctx.fillStyle = '#17141f';
+  ctx.fillRect(-w * 0.62, -th, w * 1.24, th);
+  ctx.fillStyle = 'rgba(150,192,244,0.34)';
+  ctx.fillRect(-w * 0.62, -th, w * 1.24, th * 0.26);
+}
+
+/**
+ * Three flat discs instead of a createRadialGradient per pickup per frame. At
+ * the size a pickup is drawn the banding is invisible, and it costs three fills
+ * and no allocation at all.
+ */
+function halo(ctx, r, cols) {
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = cols[i];
+    ctx.beginPath();
+    ctx.arc(0, 0, r * (1 - i * 0.27), 0, TAU);
+    ctx.fill();
+  }
+}
+
+/**
+ * Four-point glint behind a pickup. One path, and it is what still says
+ * "collect me" at the distance where the shape itself has stopped being legible.
+ */
+function glint(ctx, r, col) {
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const a = i * (Math.PI / 4);
+    const q = i % 2 ? r * 0.13 : r;
+    ctx.lineTo(Math.cos(a) * q, Math.sin(a) * q);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+/** Warm spill on the asphalt under a floating pickup: which lane is it in? */
+function pool(ctx, sx, sy, r, col) {
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  ctx.ellipse(sx, sy, r, r * 0.3, 0, 0, TAU);
+  ctx.fill();
+}
+
+const HALO_BEER = ['rgba(255,178,40,0.14)', 'rgba(255,206,84,0.17)', 'rgba(255,238,176,0.24)'];
+const HALO_TACO = ['rgba(150,220,70,0.14)', 'rgba(198,238,98,0.17)', 'rgba(242,255,186,0.24)'];
+const POOL_BEER = 'rgba(255,196,86,0.20)';
+const POOL_TACO = 'rgba(176,232,96,0.20)';
+const GLINT_COL = 'rgba(255,244,210,0.5)';
+
 // ------------------------------------------------------------------- pickups
 
 export function drawBeer(ctx, sx, sy, u, t, seed = 0) {
   const s = PROP_SPEC.beer;
   const bob = Math.sin(t * 3.2 + seed) * 0.06 * u;
   const spin = Math.abs(Math.cos(t * 2.6 + seed));
-  const w = s.w * u * (0.42 + spin * 0.58);
+  // Squash floored at 0.66: below that the bottle turns into a stick, and it
+  // does it at exactly the moment the silhouette is all the player has.
+  const w = s.w * u * (0.66 + spin * 0.34);
   const h = s.h * u;
   const cy = sy - s.y * u + bob;
 
+  pool(ctx, sx, sy, s.w * u * 0.8, POOL_BEER);
+
   ctx.save();
   ctx.translate(sx, cy);
+  halo(ctx, h * 1.05, HALO_BEER);
+  ctx.save();
+  ctx.rotate(t * 0.45 + seed);
+  ctx.globalAlpha *= 0.55 + Math.sin(t * 4 + seed) * 0.25;
+  glint(ctx, h * 1.2, GLINT_COL);
+  ctx.restore();
 
-  // glow so beers pop against the asphalt
-  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, h * 1.1);
-  g.addColorStop(0, 'rgba(255,201,60,0.42)');
-  g.addColorStop(1, 'rgba(255,201,60,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(-h * 1.1, -h * 1.1, h * 2.2, h * 2.2);
+  // Dark keyline under everything, as one squared-off path so it costs a single
+  // fill. Only a pixel or two of it survives around the rounded shapes on top,
+  // which is the point: the bottle has to hold its edge against a SUNLIT wall
+  // as well as against asphalt, and glow alone only does the second one.
+  ctx.fillStyle = '#180a04';
+  ctx.beginPath();
+  ctx.rect(-w * 0.56, -h * 0.56, w * 1.12, h * 1.12);
+  ctx.rect(-w * 0.22, -h * 0.78, w * 0.44, h * 0.3);
+  ctx.rect(-w * 0.26, -h * 0.88, w * 0.52, h * 0.2);
+  ctx.fill();
 
   // amber bottle
   ctx.fillStyle = '#a9631a';
   roundRect(ctx, -w / 2, -h * 0.5, w, h, w * 0.28);
   ctx.fill();
-  ctx.fillStyle = '#d98b2a';
-  roundRect(ctx, -w * 0.34, -h * 0.42, w * 0.3, h * 0.7, w * 0.16);
+  ctx.fillStyle = '#e59a34';
+  roundRect(ctx, -w * 0.36, -h * 0.42, w * 0.3, h * 0.7, w * 0.16);
   ctx.fill();
   // neck + cap
   ctx.fillStyle = '#8d4f13';
   ctx.fillRect(-w * 0.16, -h * 0.72, w * 0.32, h * 0.26);
   ctx.fillStyle = PAL.gold;
-  roundRect(ctx, -w * 0.2, -h * 0.82, w * 0.4, h * 0.14, w * 0.06);
+  roundRect(ctx, -w * 0.2, -h * 0.84, w * 0.4, h * 0.16, w * 0.06);
   ctx.fill();
-  // label
-  ctx.fillStyle = '#f3e6cd';
-  ctx.fillRect(-w * 0.5, -h * 0.12, w, h * 0.32);
+  // Label: the brightest value on the prop and a full-width horizontal bar, so
+  // a distant beer is a pale dash on a dark stick rather than an amber smudge.
+  ctx.fillStyle = '#fbf3e2';
+  ctx.fillRect(-w * 0.5, -h * 0.16, w, h * 0.38);
   ctx.fillStyle = '#12782f';
-  ctx.fillRect(-w * 0.5, -h * 0.06, w, h * 0.06);
+  ctx.fillRect(-w * 0.5, -h * 0.08, w, h * 0.07);
   ctx.fillStyle = '#c1272d';
-  ctx.fillRect(-w * 0.5, h * 0.1, w, h * 0.06);
+  ctx.fillRect(-w * 0.5, h * 0.1, w, h * 0.07);
+  // sun catching the shoulder of the glass
+  ctx.fillStyle = WARM_CAP;
+  ctx.fillRect(-w * 0.5, -h * 0.5, w, h * 0.05);
 
   ctx.restore();
 }
@@ -126,15 +281,27 @@ export function drawTaco(ctx, sx, sy, u, t, seed = 0) {
   const w = s.w * u, h = s.h * u;
   const cy = sy - s.y * u + bob;
 
+  pool(ctx, sx, sy, s.w * u * 0.6, POOL_TACO);
+
   ctx.save();
   ctx.translate(sx, cy);
+  halo(ctx, w * 1.0, HALO_TACO);
+  ctx.save();
+  ctx.rotate(-t * 0.4 + seed);
+  ctx.globalAlpha *= 0.55 + Math.sin(t * 4.4 + seed) * 0.25;
+  glint(ctx, w * 1.15, GLINT_COL);
+  ctx.restore();
   ctx.rotate(Math.sin(t * 1.7 + seed) * 0.18);
 
-  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, w);
-  g.addColorStop(0, 'rgba(158,227,79,0.38)');
-  g.addColorStop(1, 'rgba(158,227,79,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(-w, -w, w * 2, w * 2);
+  // Keyline: an inflated copy of the shell wedge, drawn first. The shell is the
+  // whole silhouette, so one dark outline is the entire separation budget.
+  ctx.fillStyle = '#25110a';
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.56, -h * 0.38);
+  ctx.quadraticCurveTo(0, h * 0.96, w * 0.56, -h * 0.38);
+  ctx.quadraticCurveTo(0, h * 0.1, -w * 0.56, -h * 0.38);
+  ctx.closePath();
+  ctx.fill();
 
   // filling first so it pokes out of the shell
   ctx.fillStyle = '#7a3f1e';
@@ -148,20 +315,23 @@ export function drawTaco(ctx, sx, sy, u, t, seed = 0) {
   ctx.fillRect(w * 0.08, -h * 0.26, w * 0.1, h * 0.2);
 
   // folded shell
-  ctx.fillStyle = '#f0b33d';
+  ctx.fillStyle = '#f7bf49';
   ctx.beginPath();
   ctx.moveTo(-w * 0.5, -h * 0.3);
   ctx.quadraticCurveTo(0, h * 0.82, w * 0.5, -h * 0.3);
   ctx.quadraticCurveTo(0, h * 0.2, -w * 0.5, -h * 0.3);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = '#d1932a';
+  ctx.fillStyle = '#b9741f';
   ctx.beginPath();
   ctx.moveTo(-w * 0.5, -h * 0.3);
   ctx.quadraticCurveTo(0, h * 0.82, w * 0.5, -h * 0.3);
   ctx.quadraticCurveTo(0, h * 0.52, -w * 0.5, -h * 0.3);
   ctx.closePath();
   ctx.fill();
+  // sun on the top fold — a bright rail across the widest part of the shape
+  ctx.fillStyle = WARM_CAP;
+  ctx.fillRect(-w * 0.46, -h * 0.36, w * 0.92, h * 0.07);
 
   ctx.restore();
 }
@@ -174,22 +344,34 @@ export function drawPowerup(ctx, sx, sy, u, type, t, seed = 0) {
   const cy = sy - s.y * u + bob;
   const w = s.w * u, h = s.h * u;
   const tint = type === 'magnet' ? PAL.hotPink : type === 'chancla' ? PAL.gold : '#4dd8ff';
+  const spill = type === 'magnet' ? 'rgba(255,77,157,0.20)'
+    : type === 'chancla' ? 'rgba(255,201,60,0.20)' : 'rgba(77,216,255,0.20)';
+
+  pool(ctx, sx, sy, w * 0.95, spill);
 
   ctx.save();
   ctx.translate(sx, cy);
 
+  // Dark plate first. A powerup is the one thing on screen that has to read
+  // against BOTH the asphalt and a sunlit stucco wall, and a coloured disc only
+  // wins the first of those — the keyline behind it wins the second.
+  ctx.fillStyle = 'rgba(16,7,24,0.55)';
+  ctx.beginPath();
+  ctx.arc(0, 0, w * 1.06, 0, TAU);
+  ctx.fill();
+
   // Flat disc of colour behind the icon. A ring alone leaves the shape fighting
   // the alley for contrast; a solid plate wins that fight at any distance.
-  ctx.globalAlpha = 0.22 + Math.sin(t * 6 + seed) * 0.06;
+  ctx.globalAlpha = 0.3 + Math.sin(t * 6 + seed) * 0.08;
   ctx.fillStyle = tint;
   ctx.beginPath();
-  ctx.arc(0, 0, w * 1.02, 0, Math.PI * 2);
+  ctx.arc(0, 0, w * 1.02, 0, TAU);
   ctx.fill();
-  ctx.globalAlpha = 0.75 + Math.sin(t * 6 + seed) * 0.2;
+  ctx.globalAlpha = 0.8 + Math.sin(t * 6 + seed) * 0.2;
   ctx.strokeStyle = tint;
   ctx.lineWidth = Math.max(1.8, u * 0.055);
   ctx.beginPath();
-  ctx.arc(0, 0, w * 0.9, 0, Math.PI * 2);
+  ctx.arc(0, 0, w * 0.9, 0, TAU);
   ctx.stroke();
   ctx.globalAlpha = 1;
   ctx.rotate(Math.sin(t * 2 + seed) * 0.22);
@@ -259,22 +441,42 @@ export function drawPowerup(ctx, sx, sy, u, type, t, seed = 0) {
 
 // ----------------------------------------------------------------- obstacles
 
-/** Police checkpoint: barricade, cones and a light bar you have to go around. */
+/**
+ * Police checkpoint. A `dodge` prop, so: cold light only, a solid skirt instead
+ * of an open frame, a plinth, and a silhouette that ends in a flashing light
+ * bar rather than a flat plank.
+ *
+ * The old art topped out at 0.88h, which is 1.43u — the jump apex, almost to
+ * the pixel. It looked exactly as tall as the thing a player can clear while
+ * actually being taller, which is the single worst thing this prop could do.
+ * The sign now carries the silhouette to the full height of the hitbox.
+ */
 export function drawCheckpoint(ctx, sx, sy, u, t, seed = 0) {
   const s = PROP_SPEC.checkpoint;
   const w = s.w * u, h = s.h * u;
+  const flash = Math.floor(t * 6 + seed) % 2 === 0;
+  coldSpill(ctx, sx, sy, w, flash ? 0 : 1);
   shadow(ctx, sx, sy, u, s.w);
   ctx.save();
   ctx.translate(sx, sy);
 
-  // legs
+  // Solid dark skirt behind the frame. An open A-frame reads as light and
+  // liftable; filling the lower body with mass is most of what turns this from
+  // "hop it" into "go around it".
+  ctx.fillStyle = '#221d2c';
+  ctx.fillRect(-w * 0.46, -h * 0.62, w * 0.92, h * 0.62);
+  ctx.fillStyle = COLD_RIM;
+  ctx.fillRect(-w * 0.46, -h * 0.62, w * 0.035, h * 0.62);
+
+  // legs in front of the skirt, then the footing they are bolted to
   ctx.fillStyle = '#4a4650';
-  ctx.fillRect(-w * 0.42, -h * 0.62, w * 0.07, h * 0.62);
-  ctx.fillRect(w * 0.35, -h * 0.62, w * 0.07, h * 0.62);
+  ctx.fillRect(-w * 0.44, -h * 0.7, w * 0.08, h * 0.7);
+  ctx.fillRect(w * 0.36, -h * 0.7, w * 0.08, h * 0.7);
+  plinth(ctx, u, w);
 
   // striped barricade plank
-  const py = -h * 0.72, ph = h * 0.26;
-  ctx.fillStyle = '#f0ece4';
+  const py = -h * 0.62, ph = h * 0.22;
+  ctx.fillStyle = '#f4f1ea';
   ctx.fillRect(-w * 0.5, py, w, ph);
   ctx.save();
   ctx.beginPath();
@@ -292,40 +494,50 @@ export function drawCheckpoint(ctx, sx, sy, u, t, seed = 0) {
     ctx.fill();
   }
   ctx.restore();
-  ctx.strokeStyle = '#2a2630';
-  ctx.lineWidth = Math.max(1, u * 0.02);
+  ctx.strokeStyle = '#1a1722';
+  ctx.lineWidth = Math.max(1, u * 0.025);
   ctx.strokeRect(-w * 0.5, py, w, ph);
 
-  // lower plank with lettering
-  const qy = -h * 0.36, qh = h * 0.2;
+  // masts up to the sign — the vertical run is what stops the plank reading as
+  // the top of the object
+  ctx.fillStyle = '#3a3644';
+  ctx.fillRect(-w * 0.3, -h * 0.72, w * 0.07, h * 0.16);
+  ctx.fillRect(w * 0.23, -h * 0.72, w * 0.07, h * 0.16);
+
+  // sign board, carried up to the full hitbox height
+  const qy = -h * 0.98, qh = h * 0.26;
+  ctx.fillStyle = '#0c1233';
+  ctx.fillRect(-w * 0.54, qy - h * 0.02, w * 1.08, qh + h * 0.04);
   ctx.fillStyle = '#1d3fb8';
   ctx.fillRect(-w * 0.5, qy, w, qh);
-  if (u > 34) {
+  ctx.fillStyle = COLD_RIM;
+  ctx.fillRect(-w * 0.5, qy, w, qh * 0.09);
+  if (u > 30) {
     ctx.fillStyle = '#ffffff';
-    ctx.font = `700 ${Math.floor(qh * 0.72)}px system-ui, sans-serif`;
+    ctx.font = `700 ${Math.floor(qh * 0.62)}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('RETÉN', 0, qy + qh * 0.54);
+    ctx.fillText('RETÉN', 0, qy + qh * 0.56);
   }
 
-  // flashing light bar
-  const flash = Math.floor(t * 6 + seed) % 2 === 0;
-  ctx.fillStyle = flash ? PAL.copRed : '#5b1414';
-  roundRect(ctx, -w * 0.2, py - h * 0.16, w * 0.18, h * 0.13, u * 0.02);
+  // Light bar riding the top. Both lamps are always present and they trade
+  // brightness — a bar that only exists on the bright beat flickers out of the
+  // silhouette half the time, which is the half you needed it.
+  const ly = -h * 1.1, lh = h * 0.1;
+  ctx.fillStyle = '#241f2e';
+  ctx.fillRect(-w * 0.28, ly - h * 0.015, w * 0.56, lh + h * 0.03);
+  ctx.fillStyle = flash ? PAL.copRed : '#4d1218';
+  ctx.fillRect(-w * 0.26, ly, w * 0.26, lh);
+  ctx.fillStyle = flash ? '#141a4a' : '#3f60ff';
+  ctx.fillRect(0, ly, w * 0.26, lh);
+  ctx.globalAlpha = 0.32;
+  ctx.fillStyle = flash ? PAL.copRed : '#3f60ff';
+  ctx.beginPath();
+  ctx.arc(flash ? -w * 0.13 : w * 0.13, ly + lh * 0.5, h * 0.26, 0, TAU);
   ctx.fill();
-  ctx.fillStyle = flash ? '#2a49d8' : '#131a4a';
-  roundRect(ctx, w * 0.02, py - h * 0.16, w * 0.18, h * 0.13, u * 0.02);
-  ctx.fill();
-  if (flash) {
-    ctx.globalAlpha = 0.3;
-    ctx.fillStyle = PAL.copRed;
-    ctx.beginPath();
-    ctx.arc(-w * 0.11, py - h * 0.1, h * 0.34, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  }
+  ctx.globalAlpha = 1;
 
-  // a cone for flavour
+  // a cone for flavour, with a collar bright enough to see
   ctx.fillStyle = '#e8622a';
   ctx.beginPath();
   ctx.moveTo(w * 0.52, 0);
@@ -333,50 +545,90 @@ export function drawCheckpoint(ctx, sx, sy, u, t, seed = 0) {
   ctx.lineTo(w * 0.76, 0);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = '#f4f0e6';
-  ctx.fillRect(w * 0.55, -h * 0.2, w * 0.18, h * 0.05);
+  ctx.fillStyle = '#fbf7ec';
+  ctx.fillRect(w * 0.555, -h * 0.21, w * 0.17, h * 0.06);
 
   ctx.restore();
 }
 
-/** Border wall: rusted steel bollards, too tall to jump. Go around. */
+/**
+ * Border wall: rusted steel bollards, too tall to jump. Go around.
+ *
+ * A `dodge` prop, so the highlight down each bollard is cold and the tops are
+ * cut to points. A flat capping rail is a ledge, and a ledge is an invitation —
+ * the whole job of this silhouette is to have nowhere to land on it.
+ */
 export function drawBorderWall(ctx, sx, sy, u, t, seed = 0) {
   const s = PROP_SPEC.border;
   const w = s.w * u, h = s.h * u;
+  coldSpill(ctx, sx, sy, w, 2);
   shadow(ctx, sx, sy, u, s.w);
   ctx.save();
   ctx.translate(sx, sy);
 
   const slats = 7;
   const gap = w / slats;
+  const tip = h * 0.05;
+  // Dark backing panel: the gaps between bollards are where the alley shows
+  // through, and a lit wall behind them dissolves the whole silhouette.
+  ctx.fillStyle = 'rgba(14,8,20,0.6)';
+  ctx.fillRect(-w * 0.5, -h, w, h);
   for (let i = 0; i < slats; i++) {
     const x = -w * 0.5 + i * gap;
     const shade = 0.72 + hash01(seed * 31 + i) * 0.28;
     ctx.fillStyle = `rgb(${Math.floor(138 * shade)},${Math.floor(90 * shade)},${Math.floor(59 * shade)})`;
     ctx.fillRect(x, -h, gap * 0.72, h);
-    ctx.fillStyle = 'rgba(255,255,255,0.10)';
-    ctx.fillRect(x, -h, gap * 0.2, h);
     // rust bloom near the base
     ctx.fillStyle = 'rgba(60,28,16,0.4)';
     ctx.fillRect(x, -h * 0.22, gap * 0.72, h * 0.22);
   }
+  // Cold edge down every bollard, batched into one path. This is the rim that
+  // separates a dark rusted fence from a dark alley, and it is deliberately the
+  // colour of a flasher rather than of the sunset behind the runner.
+  ctx.fillStyle = COLD_RIM;
+  ctx.beginPath();
+  for (let i = 0; i < slats; i++) {
+    ctx.rect(-w * 0.5 + i * gap, -h, gap * 0.16, h);
+  }
+  ctx.fill();
 
-  // capping rail
-  ctx.fillStyle = '#5c5a5f';
-  ctx.fillRect(-w * 0.53, -h - u * 0.07, w * 1.06, u * 0.1);
-  ctx.fillStyle = '#8f8d93';
-  ctx.fillRect(-w * 0.53, -h - u * 0.07, w * 1.06, u * 0.03);
+  // Pointed tips, one path. Nothing to stand on.
+  ctx.fillStyle = '#726b74';
+  ctx.beginPath();
+  for (let i = 0; i < slats; i++) {
+    const x = -w * 0.5 + i * gap;
+    ctx.moveTo(x, -h);
+    ctx.lineTo(x + gap * 0.36, -h - tip);
+    ctx.lineTo(x + gap * 0.72, -h);
+    ctx.closePath();
+  }
+  ctx.fill();
 
-  // concrete footing
+  // capping rail, tucked under the tips
+  ctx.fillStyle = '#4c4a51';
+  ctx.fillRect(-w * 0.53, -h, w * 1.06, u * 0.08);
+  ctx.fillStyle = 'rgba(150,192,244,0.4)';
+  ctx.fillRect(-w * 0.53, -h, w * 1.06, u * 0.022);
+
+  // concrete footing, and the plinth it is cast into
   ctx.fillStyle = '#6f6a72';
-  ctx.fillRect(-w * 0.53, -h * 0.06, w * 1.06, h * 0.06);
+  ctx.fillRect(-w * 0.53, -h * 0.08, w * 1.06, h * 0.08);
+  plinth(ctx, u, w);
 
   ctx.restore();
 }
 
+/**
+ * Parked cruiser. A `dodge` prop, and the hardest of the three to sell: at
+ * 1.70u it is only a quarter of a unit over the jump apex, so the roof is the
+ * one plane in this game that genuinely looks landable and is not. The light
+ * bar and the whip antenna above it exist to break that plane.
+ */
 export function drawCopCar(ctx, sx, sy, u, t, seed = 0) {
   const s = PROP_SPEC.copcar;
   const w = s.w * u, h = s.h * u;
+  const flash = Math.floor(t * 7 + seed) % 2 === 0;
+  coldSpill(ctx, sx, sy, w, flash ? 0 : 1);
   shadow(ctx, sx, sy, u, s.w);
   ctx.save();
   ctx.translate(sx, sy);
@@ -394,53 +646,89 @@ export function drawCopCar(ctx, sx, sy, u, t, seed = 0) {
   ctx.fillStyle = '#22303f';
   roundRect(ctx, -w * 0.3, -h * 0.88, w * 0.6, h * 0.24, w * 0.05);
   ctx.fill();
-  // light bar
-  const flash = Math.floor(t * 7 + seed) % 2 === 0;
-  ctx.fillStyle = flash ? PAL.copRed : '#4a1414';
-  ctx.fillRect(-w * 0.3, -h * 1.04, w * 0.28, h * 0.1);
-  ctx.fillStyle = flash ? '#3355ff' : '#141a44';
-  ctx.fillRect(w * 0.02, -h * 1.04, w * 0.28, h * 0.1);
+  // cold rim along the roof and the shoulder line
+  ctx.fillStyle = COLD_RIM;
+  ctx.fillRect(-w * 0.36, -h * 0.94, w * 0.72, h * 0.03);
+  ctx.fillRect(-w * 0.5, -h * 0.62, w, h * 0.025);
+
+  // whip antenna, then the light bar: the silhouette must not end flat
+  ctx.fillStyle = '#141119';
+  ctx.fillRect(w * 0.3, -h * 1.24, Math.max(1, u * 0.018), h * 0.3);
+  const ly = -h * 1.06, lh = h * 0.12;
+  ctx.fillStyle = '#1d1a24';
+  ctx.fillRect(-w * 0.33, ly - h * 0.015, w * 0.66, lh + h * 0.03);
+  ctx.fillStyle = flash ? PAL.copRed : '#4a1418';
+  ctx.fillRect(-w * 0.31, ly, w * 0.3, lh);
+  ctx.fillStyle = flash ? '#141a44' : '#3f60ff';
+  ctx.fillRect(w * 0.01, ly, w * 0.3, lh);
+  ctx.globalAlpha = 0.3;
+  ctx.fillStyle = flash ? PAL.copRed : '#3f60ff';
+  ctx.beginPath();
+  ctx.arc(flash ? -w * 0.16 : w * 0.16, ly + lh * 0.5, h * 0.3, 0, TAU);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
   // tail lights + tyres
-  ctx.fillStyle = '#d83a2e';
+  ctx.fillStyle = '#ff5a3c';
   ctx.fillRect(-w * 0.46, -h * 0.3, w * 0.14, h * 0.08);
   ctx.fillRect(w * 0.32, -h * 0.3, w * 0.14, h * 0.08);
+  // dark well under the sills, then the tyres sitting down in it
+  ctx.fillStyle = 'rgba(8,3,14,0.6)';
+  ctx.fillRect(-w * 0.5, -h * 0.16, w, h * 0.16);
   ctx.fillStyle = '#1a1a1f';
-  ctx.fillRect(-w * 0.52, -h * 0.16, w * 0.14, h * 0.16);
-  ctx.fillRect(w * 0.38, -h * 0.16, w * 0.14, h * 0.16);
+  ctx.fillRect(-w * 0.52, -h * 0.18, w * 0.16, h * 0.18);
+  ctx.fillRect(w * 0.36, -h * 0.18, w * 0.16, h * 0.18);
 
   ctx.restore();
 }
 
+/**
+ * Dumpster. A `jump` prop, so it is built as a value ramp: near-black where it
+ * touches the asphalt, mid green through the body, and the lid on top is the
+ * brightest thing on the object. The lid was propped up at 1.2h before, which
+ * put the top of the silhouette on a diagonal — a wide flat lit plane is what
+ * says "clear this", so it is barely cracked open now.
+ */
 export function drawDumpster(ctx, sx, sy, u, t, seed = 0) {
   const s = PROP_SPEC.dumpster;
   const w = s.w * u, h = s.h * u;
   shadow(ctx, sx, sy, u, s.w);
   ctx.save();
   ctx.translate(sx, sy);
-  ctx.fillStyle = '#2f6b46';
+  ctx.fillStyle = '#1c4530';
   roundRect(ctx, -w * 0.5, -h, w, h, w * 0.05);
   ctx.fill();
+  ctx.fillStyle = '#2f6b46';
+  ctx.fillRect(-w * 0.5, -h, w, h * 0.62);
   ctx.fillStyle = '#3d8558';
-  ctx.fillRect(-w * 0.5, -h, w, h * 0.16);
+  ctx.fillRect(-w * 0.5, -h, w, h * 0.22);
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.fillRect(-w * 0.5, -h * 0.5, w, h * 0.04);
-  // a lid propped open + a stray bag
+
+  // Lid, barely cracked, running the full width. Its top edge is dead level so
+  // the lit cap can sit flat on it — a sloped top edge leaves the bright bar
+  // floating off the art at one end.
   ctx.fillStyle = '#245038';
   ctx.beginPath();
-  ctx.moveTo(-w * 0.5, -h);
-  ctx.lineTo(-w * 0.2, -h * 1.2);
-  ctx.lineTo(w * 0.3, -h * 1.18);
-  ctx.lineTo(w * 0.5, -h);
+  ctx.moveTo(-w * 0.54, -h);
+  ctx.lineTo(-w * 0.3, -h * 1.09);
+  ctx.lineTo(w * 0.54, -h * 1.09);
+  ctx.lineTo(w * 0.54, -h);
   ctx.closePath();
   ctx.fill();
+  // the plane you clear
+  litTop(ctx, -w * 0.3, -h * 1.09, w * 0.84, Math.max(1.5, h * 0.045));
+
   ctx.fillStyle = '#4a4550';
   ctx.beginPath();
-  ctx.ellipse(w * 0.42, -h * 0.14, w * 0.16, h * 0.16, 0, 0, Math.PI * 2);
+  ctx.ellipse(w * 0.42, -h * 0.14, w * 0.16, h * 0.16, 0, 0, TAU);
   ctx.fill();
-  // wheels
+  // dark contact band, then the wheels standing in it
+  ctx.fillStyle = 'rgba(6,2,10,0.55)';
+  ctx.fillRect(-w * 0.5, -h * 0.11, w, h * 0.11);
   ctx.fillStyle = '#1a1a1f';
-  ctx.fillRect(-w * 0.42, -h * 0.1, w * 0.1, h * 0.1);
-  ctx.fillRect(w * 0.32, -h * 0.1, w * 0.1, h * 0.1);
+  ctx.fillRect(-w * 0.42, -h * 0.12, w * 0.11, h * 0.12);
+  ctx.fillRect(w * 0.31, -h * 0.12, w * 0.11, h * 0.12);
   ctx.restore();
 }
 
@@ -481,9 +769,14 @@ export function drawCrates(ctx, sx, sy, u, t, seed = 0) {
 
   const jitter = (hash01(seed * 3.1) - 0.5) * w * 0.1;
   const lo = h * 0.42;
-  crate(-w * 0.24 + jitter, -h * 0.14, w * 0.5, lo, '#b8632c');
-  crate(w * 0.25 + jitter, -h * 0.14, w * 0.48, lo * 0.86, '#d18a35');
+  // Lower crates knocked back so the stack ramps dark-at-the-road to bright-on-
+  // top rather than sitting at one value.
+  crate(-w * 0.24 + jitter, -h * 0.14, w * 0.5, lo, '#8a4520');
+  crate(w * 0.25 + jitter, -h * 0.14, w * 0.48, lo * 0.86, '#a1682a');
   crate(jitter * 0.4, -h * 0.14 - lo, w * 0.46, lo * 0.9, '#c9762f');
+  // The plane you clear, spanning the whole top of the silhouette.
+  litTop(ctx, jitter * 0.4 - w * 0.23, -h * 0.14 - lo * 1.9, w * 0.46,
+    Math.max(1.5, h * 0.05));
 
   // a couple of chiles spilling over the lip, at close range only
   if (u > 34) {
@@ -508,10 +801,15 @@ export function drawCones(ctx, sx, sy, u, t, seed = 0) {
 
   // One low bar tying the three cones together. Three loose triangles read as
   // three separate things; a taped-off run reads as one obstacle.
-  ctx.fillStyle = '#2b2530';
-  ctx.fillRect(-w * 0.48, -h * 0.5, w * 0.96, h * 0.09);
+  //
+  // The bar is also where the jump rule lands on this prop: a cone ends in a
+  // point, so there is no top plane to light, and the tape is the only
+  // horizontal in the shape. Lighting it gives the run the flat bright edge
+  // that every other jumpable gets from its own lid.
+  ctx.fillStyle = '#221c28';
+  ctx.fillRect(-w * 0.48, -h * 0.5, w * 0.96, h * 0.11);
   ctx.fillStyle = '#f2c53a';
-  ctx.fillRect(-w * 0.48, -h * 0.5, w * 0.96, h * 0.05);
+  ctx.fillRect(-w * 0.48, -h * 0.47, w * 0.96, h * 0.06);
 
   // Batched by colour: one path per layer of the three cones rather than five
   // fills each. Same picture, a third of the paint calls, and this prop is
@@ -553,22 +851,30 @@ export function drawCones(ctx, sx, sy, u, t, seed = 0) {
   body(cx2, h2, -0.16, 0.005, -0.1);
   ctx.fill();
   // reflective collars
-  ctx.fillStyle = '#f7f2e4';
+  ctx.fillStyle = '#fbf7ec';
   ctx.beginPath();
-  ctx.rect(cx0 - w * 0.1, -h0 * 0.66, w * 0.2, h0 * 0.15);
-  ctx.rect(cx1 - w * 0.1, -h1 * 0.66, w * 0.2, h1 * 0.15);
-  ctx.rect(cx2 - w * 0.1, -h2 * 0.66, w * 0.2, h2 * 0.15);
+  ctx.rect(cx0 - w * 0.11, -h0 * 0.66, w * 0.22, h0 * 0.17);
+  ctx.rect(cx1 - w * 0.11, -h1 * 0.66, w * 0.22, h1 * 0.17);
+  ctx.rect(cx2 - w * 0.11, -h2 * 0.66, w * 0.22, h2 * 0.17);
   ctx.fill();
+
+  // Tape strung across the FRONT of the run, drawn last. This is where the jump
+  // rule lands on this prop: a cone ends in a point, so there is no top plane to
+  // catch the sun, and the tape is the only horizontal in the shape. Lighting it
+  // gives the run the one flat bright edge every other jumpable gets from a lid.
+  litTop(ctx, -w * 0.48, -h * 0.5, w * 0.96, Math.max(1.4, h * 0.05));
   ctx.restore();
 }
 
 /**
  * Laundry strung across the alley — duck it.
  *
- * The garments are drawn as one continuous curtain of flat shapes with a dark
- * hem running the full width. The hem is the whole point: it is a single hard
- * horizontal edge at the bottom of the hitbox, which is the line the player
- * actually reads when deciding to slide.
+ * The garments are drawn as one continuous curtain of flat shapes, and the hem
+ * running the full width is the whole point: it is a single hard horizontal
+ * edge at the bottom of the hitbox, which is the line the player actually reads
+ * when deciding to slide. It used to be a dark bar alone, which is a mid-dark
+ * line on a mid-dark alley — `litHem` makes it dark-over-bright, so it holds
+ * whichever way the background goes.
  */
 export function drawClothesline(ctx, sx, sy, u, t, seed = 0) {
   const s = PROP_SPEC.clothesline;
@@ -592,7 +898,10 @@ export function drawClothesline(ctx, sx, sy, u, t, seed = 0) {
     const gx = -w * 0.375 + i * w * 0.25;
     const gw = w * 0.23;
     const sway = Math.sin(t * 1.5 + i * 1.7 + seed) * u * 0.035;
-    const drop = span * (0.82 + hash01(seed * 5 + i) * 0.18);
+    // Hems land in the bottom 6% of the span so the lit bar below always has
+    // cloth touching it. A garment stopping short leaves that bar hanging in
+    // mid-air, and a bright line with nothing attached reads as an overlay.
+    const drop = span * (0.94 + hash01(seed * 5 + i) * 0.06);
     const col = cloth[(i + Math.floor(seed * 3)) % cloth.length];
 
     ctx.fillStyle = col;
@@ -617,9 +926,8 @@ export function drawClothesline(ctx, sx, sy, u, t, seed = 0) {
     ctx.fillRect(gx - gw * 0.5 + sway, yTop + u * 0.1, gw, u * 0.05);
   }
 
-  // The one hard edge: a dark bar right on the bottom of the hitbox.
-  ctx.fillStyle = 'rgba(18,8,24,0.5)';
-  ctx.fillRect(-w * 0.5, yBot - u * 0.05, w, u * 0.05);
+  // The one hard edge, on the bottom of the hitbox: dark band, lit hem under it.
+  litHem(ctx, -w * 0.52, yBot, w * 1.04, Math.max(1.4, u * 0.045));
   ctx.restore();
 }
 
@@ -656,9 +964,16 @@ export function drawAwning(ctx, sx, sy, u, t, seed = 0) {
   ctx.fillRect(-w * 0.55, yTop, w * 1.1, span * 0.22);
 
   // Scalloped hem: the silhouette that says "duck", cut as flat triangles.
+  //
+  // The teeth are pale rather than dark red, which is the slide rule — the sun
+  // rakes in under an awning, so the fringe is the one part of it lit from
+  // below, and that is exactly the edge the player has to get under. A dark
+  // scallop on a dark alley is a shape nobody can find in time.
   const teeth = 6;
   const tw = (w * 1.1) / teeth;
-  ctx.fillStyle = '#b52f21';
+  ctx.fillStyle = 'rgba(16,6,22,0.55)';
+  ctx.fillRect(-w * 0.55, yBot - span * 0.22, w * 1.1, span * 0.08);
+  ctx.fillStyle = '#ffe0a4';
   ctx.beginPath();
   for (let i = 0; i < teeth; i++) {
     const x0 = -w * 0.55 + i * tw;
@@ -668,8 +983,9 @@ export function drawAwning(ctx, sx, sy, u, t, seed = 0) {
     ctx.closePath();
   }
   ctx.fill();
-  ctx.fillStyle = 'rgba(16,6,22,0.45)';
-  ctx.fillRect(-w * 0.55, yBot - span * 0.2, w * 1.1, span * 0.06);
+  // the flat run the teeth hang off, so the hem still reads as one hard line
+  ctx.fillStyle = '#c8501f';
+  ctx.fillRect(-w * 0.55, yBot - span * 0.16, w * 1.1, span * 0.04);
 
   if (u > 40) {
     ctx.fillStyle = '#f7ecd6';

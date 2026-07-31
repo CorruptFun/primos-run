@@ -242,7 +242,9 @@ html, body {
 }
 
 .tagline {
-  margin: 0 0 16px;
+  /* 10px not 16: the language switch now sits between this and the crew and
+     carries the rest of the gap itself. */
+  margin: 0 0 10px;
   font-size: 11.5px;
   letter-spacing: 0.14em;
   text-indent: 0.14em;
@@ -415,6 +417,72 @@ html, body {
 }
 
 .btn-small::after { border-radius: 11px 11px 6px 6px; }
+
+/* -------------------------------------------------------------- language */
+
+/* Segmented switch, sat high on the sheet where it cannot be missed — but
+   built one step DOWN the hierarchy from CORRE on purpose: the recessed well
+   is the same one the URL inputs use, so it reads as a setting rather than a
+   second call to action, and only the live half wears the gold.
+
+   Inline-flex, so the sheet's own text-align: center does the centring. */
+.lang {
+  display: inline-flex;
+  gap: 3px;
+  margin: 0 0 14px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.34);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.42);
+}
+
+.lang button {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  padding: 8px 15px;
+  border: none;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-indent: 0.12em;
+  color: var(--ink-dim);
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  transition:
+    color 0.16s ease,
+    background 0.22s var(--ease-out),
+    box-shadow 0.22s var(--ease-out),
+    transform 0.09s var(--ease-out);
+}
+
+.lang button:hover { color: var(--ink); }
+.lang button:active { transform: translateY(1px); }
+
+.lang button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.75);
+  outline-offset: 2px;
+}
+
+/* Same gold body and bottom lip as .btn, shrunk — one shadow language. */
+.lang button[aria-pressed="true"] {
+  color: #2a1a08;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+  background: linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-lo));
+  box-shadow:
+    0 2px 0 var(--gold-deep),
+    var(--lift-1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+/* On the pause sheet it is the last thing in the stack, under the buttons. */
+#screen-pause .lang { margin: 14px 0 0; }
 
 /* ----------------------------------------------------------------- stats */
 
@@ -686,7 +754,10 @@ h2 {
   .logo-mark { width: 56px; height: 56px; margin-bottom: 6px; }
   .mark-sm { width: 40px; height: 40px; margin-bottom: 10px; }
   .logo-top { font-size: 34px; }
-  .tagline { margin-bottom: 12px; }
+  .tagline { margin-bottom: 8px; }
+  .lang { margin-bottom: 10px; padding: 2px; }
+  .lang button { padding: 6px 13px; }
+  #screen-pause .lang { margin-top: 10px; }
   .crew-tag { margin-bottom: 12px; }
   .stats { margin-top: 12px; }
   .btn { min-height: 48px; margin-top: 8px; }

@@ -8,10 +8,15 @@ import { World } from './world.js';
 import { CREW } from './art/runner.js';
 import { resetCamera, updateCamera, addShake } from './camera.js';
 import { burst, dust, updateParticles, resetParticles } from './particles.js';
+import { startIntro, updateIntro, stopIntro } from './intro.js';
 import * as sfx from './audio.js';
 
 export const STATE = {
   MENU: 'menu',
+  // The opening camera move. The world scrolls and the runner runs, but nothing
+  // can be collected, hit, or scored — so the sequence can never cost or earn
+  // the player anything before they have control.
+  INTRO: 'intro',
   PLAYING: 'playing',
   PAUSED: 'paused',
   OVER: 'over',
@@ -108,8 +113,17 @@ export class Game {
 
   start() {
     this.reset();
-    this.state = STATE.PLAYING;
+    this.state = STATE.INTRO;
+    startIntro(this);
     sfx.startMusic();
+    this.hooks.onStateChange?.(this.state);
+  }
+
+  /** Cut the opening short — any input during the intro drops you into the run. */
+  skipIntro() {
+    if (this.state !== STATE.INTRO) return;
+    stopIntro();
+    this.state = STATE.PLAYING;
     this.hooks.onStateChange?.(this.state);
   }
 
@@ -167,6 +181,24 @@ export class Game {
   // ------------------------------------------------------------------ update
 
   update(dt) {
+    if (this.state === STATE.INTRO) {
+      // Everything that makes the alley feel alive, and nothing that judges the
+      // player: no collide(), no stamina drain, no chase pressure, no score.
+      this.time += dt;
+      const p = this.player;
+      p.z += RUN.startSpeed * dt;
+      p.phase = (p.phase + dt * 2.4) % 1;
+      this.world.ensureAhead(p.z, 0);
+      this.world.prune(p.z);
+      updateParticles(dt);
+      updateCamera(dt, p.x, p.z, p.y, 0, 0, p.phase, true);
+      if (!updateIntro(dt)) {
+        this.state = STATE.PLAYING;
+        this.hooks.onStateChange?.(this.state);
+      }
+      return;
+    }
+
     if (this.state !== STATE.PLAYING) {
       // Keep the menu alley alive so the background still scrolls.
       if (this.state === STATE.MENU) {

@@ -1,11 +1,17 @@
-// The Primo, rigged.
+// The Primo, rigged — the crew, the run cycle, and the front-facing portrait.
 //
-// The old version rotated limbs in the image plane, which reads as doing the
-// splits — running seen from BEHIND swings almost entirely in depth. So the
-// skeleton is posed in local 3D (x lateral, y up, z forward) with real knee and
-// elbow joints, then projected with a camera-down-the-alley tilt. The head is
-// drawn procedurally from the Primo's traits, facing forward down the alley —
-// head-back.js explains why a PFP crop cannot be used there.
+// This file OWNS THE POSE, not the drawing. The old version rotated limbs in the
+// image plane, which reads as doing the splits: running seen from BEHIND swings
+// almost entirely in depth. So poseRunner solves the skeleton in local 3D
+// (x lateral, y up, z forward) with real knee and elbow joints, and hands it to
+// primo-runner.js, which projects it with a camera-down-the-alley tilt and paints
+// the body. The head is drawn from the Primo's traits by head-back.js, facing
+// forward down the alley — that file explains why a PFP crop cannot be used
+// there.
+//
+// The pose solver below is good and is deliberately left alone. When the body was
+// rebuilt the problem was rendering, not posing, so all the projection and limb
+// shading that used to live here went with it and is not coming back.
 
 import { roundRect } from './palette.js';
 import { drawPrimoBody } from './primo-runner.js';
@@ -19,6 +25,9 @@ export const CREW = [
     tagline: 'Blue Pendleton · Gold Blues',
     skin: '#b9784e', skinDark: '#96593a', skinLight: '#d0946a',
     hair: '#20161a', hairStyle: 'messy',
+    // The collection's own black Primos cap. head-back.js lights it apart from
+    // the hair rather than trusting the two colours to differ.
+    cap: '#1b1b24',
     shirt: '#3c5f9e', shirtDark: '#28406d', tee: '#f2efe6',
     pants: '#2f3a52',
     shades: '#ffc93c', shadeLens: '#3f8f86',
@@ -78,6 +87,7 @@ export const CUSTOM_TEMPLATE = {
   tagline: 'Load one from the collection',
   skin: '#b9784e', skinDark: '#96593a', skinLight: '#d0946a',
   hair: '#20161a', hairStyle: 'messy',
+  cap: '#1b1b24',
   shirt: '#2f6f6a', shirtDark: '#1e4b48', tee: '#f2efe6',
   pants: '#2f3a52',
   shades: null, shadeLens: null,
@@ -196,115 +206,13 @@ function poseSlide(o) {
   };
 }
 
-// ----------------------------------------------------------------- drawing
-
-// A high camera looking down the alley: vertical position dominates, depth
-// contributes a little. Push TILT much past this and the heel kick cancels
-// itself out — the foot rises in world space exactly as depth pushes it back
-// down the screen, and the legs go dead.
-const TILT = 0.15;
-const YAW = 0.34;       // off-axis view, so limb swing also reads laterally
-const ZSHRINK = 0.13;   // limbs thin out as they swing away
-
-// The runner heads into a low sun, so they are BACKLIT: warm rim around the
-// silhouette, cool sky bounce filling the shadow that faces us.
-const RIM = [255, 196, 132];
-const AMBIENT = [126, 108, 158];
-const SHOE = [244, 240, 230];
-
-/**
- * The alley is a dark sunset, but the runner has to read against it at ~130px
- * tall. Subway Surfers keeps its characters bright and saturated for exactly
- * this reason, so every body colour gets lifted before it is shaded.
- */
-function lift(c) {
-  const boosted = scale(c, 1.22);
-  // A little away from grey as well as up. Push this much past 1.1 and brown
-  // skin turns traffic-cone orange.
-  const avg = (boosted[0] + boosted[1] + boosted[2]) / 3;
-  return [
-    Math.min(255, avg + (boosted[0] - avg) * 1.06),
-    Math.min(255, avg + (boosted[1] - avg) * 1.06),
-    Math.min(255, avg + (boosted[2] - avg) * 1.06),
-  ];
-}
-
-/** Project a local 3D body point (in px) to screen offsets. */
-function proj(x, y, z, H) {
-  const zn = z / H;
-  return {
-    x: x + z * YAW,
-    y: -y - z * TILT,
-    k: 1 - zn * ZSHRINK,
-  };
-}
-
-// --------------------------------------------------------------- colour math
-
-function toRGB(col) {
-  if (col.startsWith('rgb')) return col.match(/\d+/g).map(Number);
-  const n = parseInt(col.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-const css = (c, a) =>
-  a == null ? `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`
-            : `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
-const mix = (a, b, t) => [
-  a[0] + (b[0] - a[0]) * t,
-  a[1] + (b[1] - a[1]) * t,
-  a[2] + (b[2] - a[2]) * t,
-];
-const scale = (c, k) => [
-  Math.min(255, c[0] * k), Math.min(255, c[1] * k), Math.min(255, c[2] * k),
-];
-
-/** Capsule between two joints, as a reusable path. */
-function capsule(a, b, ra, rb) {
-  const p = new Path2D();
-  const ang = Math.atan2(b.y - a.y, b.x - a.x);
-  p.arc(a.x, a.y, Math.max(0.4, ra), ang + Math.PI / 2, ang - Math.PI / 2);
-  p.arc(b.x, b.y, Math.max(0.4, rb), ang - Math.PI / 2, ang + Math.PI / 2);
-  p.closePath();
-  return p;
-}
-
-/** Point a fraction of the way from a to b. */
-function lerpPt(a, b, t) {
-  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, k: a.k + (b.k - a.k) * t };
-}
-
-/** Shade a prepared path as a limb lit from behind. */
-function shadeLimb(ctx, path, a, b, ra, rb, base, out, dim = 1) {
-  const dx = b.x - a.x, dy = b.y - a.y;
-  const len = Math.hypot(dx, dy) || 1;
-  let px = -dy / len, py = dx / len;
-  if ((px < 0) !== (out < 0)) { px = -px; py = -py; }
-
-  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-  const r = Math.max(ra, rb);
-  const g = ctx.createLinearGradient(mx - px * r, my - py * r, mx + px * r, my + py * r);
-  const core = scale(mix(base, AMBIENT, 0.30), 0.56 * dim);
-  const body = scale(base, 0.88 * dim);
-  const lit = scale(base, 1.04 * dim);
-  g.addColorStop(0.00, css(mix(core, AMBIENT, 0.30)));
-  g.addColorStop(0.34, css(core));
-  g.addColorStop(0.66, css(body));
-  g.addColorStop(0.90, css(lit));
-  g.addColorStop(1.00, css(mix(lit, RIM, 0.72 * dim)));
-  ctx.fillStyle = g;
-  ctx.fill(path);
-}
-
-/** Soft dark blob where two segments meet, so joints read as joints. */
-function occlude(ctx, p, r) {
-  const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
-  g.addColorStop(0, 'rgba(18,8,26,0.30)');
-  g.addColorStop(1, 'rgba(18,8,26,0)');
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-  ctx.fill();
-}
+// ------------------------------------------------- portrait support
+//
+// Everything that used to live here — the projection, the sphere/capsule limb
+// shading, the depth-sorted skeleton — moved to primo-runner.js and head-back.js
+// when the runner was rebuilt. What is left is the pose solver above, which is
+// good and is deliberately untouched, and the front-facing portrait below, which
+// hud.js, main.js, intro.js and primo-head.js all import.
 
 function plaid(ctx, x, y, w, h, base, dark, coarse) {
   ctx.fillStyle = base;
@@ -317,147 +225,6 @@ function plaid(ctx, x, y, w, h, base, dark, coarse) {
   ctx.globalAlpha = 1;
   ctx.fillStyle = 'rgba(255,255,255,0.13)';
   for (let i = step * 0.92; i < w; i += step) ctx.fillRect(x + i, y, Math.max(1, step * 0.1), h);
-}
-
-/**
- * Plaid wrapped around a torso. Same weave, but the cross-stripes sag toward
- * the middle so the cloth reads as going around a body instead of lying flat
- * on a board — the single cheapest thing that stops the shirt looking like
- * cardboard.
- */
-function plaidCurved(ctx, x, y, w, h, base, dark, coarse) {
-  ctx.fillStyle = base;
-  ctx.fillRect(x, y, w, h);
-  const step = Math.max(2, w / (coarse ? 2.6 : 3.6));
-  const sag = Math.min(h * 0.06, step * 0.55);
-
-  // warp threads follow the barrel, so they bow outward at the edges
-  ctx.globalAlpha = 0.5;
-  ctx.fillStyle = dark;
-  for (let i = step * 0.35; i < w; i += step) {
-    const t = (i / w) * 2 - 1;                    // -1..1 across the body
-    const lean = t * step * 0.22;
-    ctx.beginPath();
-    ctx.moveTo(x + i + lean, y);
-    ctx.lineTo(x + i + step * 0.36 + lean, y);
-    ctx.lineTo(x + i + step * 0.36 - lean, y + h);
-    ctx.lineTo(x + i - lean, y + h);
-    ctx.closePath();
-    ctx.fill();
-  }
-  // weft threads sag: the cloth's near side hangs lower than its edges
-  for (let j = step * 0.25; j < h; j += step) {
-    ctx.beginPath();
-    ctx.moveTo(x, y + j);
-    ctx.quadraticCurveTo(x + w / 2, y + j + sag * 2, x + w, y + j);
-    ctx.lineTo(x + w, y + j + step * 0.32);
-    ctx.quadraticCurveTo(x + w / 2, y + j + step * 0.32 + sag * 2, x, y + j + step * 0.32);
-    ctx.closePath();
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-
-  ctx.fillStyle = 'rgba(255,255,255,0.13)';
-  for (let i = step * 0.92; i < w; i += step) {
-    const t = (i / w) * 2 - 1;
-    const lean = t * step * 0.22;
-    ctx.beginPath();
-    ctx.moveTo(x + i + lean, y);
-    ctx.lineTo(x + i + Math.max(1, step * 0.1) + lean, y);
-    ctx.lineTo(x + i + Math.max(1, step * 0.1) - lean, y + h);
-    ctx.lineTo(x + i - lean, y + h);
-    ctx.closePath();
-    ctx.fill();
-  }
-}
-
-/**
- * Rounded cap over a limb root. Without one, an arm or thigh butts into the
- * body as a flat-ended cylinder and the whole figure reads as loose parts.
- */
-function jointCap(ctx, p, r, base, out) {
-  const g = ctx.createRadialGradient(
-    p.x - out * r * 0.35, p.y - r * 0.4, r * 0.08, p.x, p.y, r);
-  g.addColorStop(0, css(scale(base, 1.02)));
-  g.addColorStop(0.72, css(scale(base, 0.78)));
-  g.addColorStop(1, css(scale(mix(base, AMBIENT, 0.3), 0.5)));
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.ellipse(p.x, p.y, r, r * 0.94, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // warm catch on the outward edge
-  ctx.save();
-  ctx.globalAlpha = 0.42;
-  ctx.fillStyle = css(RIM);
-  ctx.beginPath();
-  ctx.ellipse(p.x + out * r * 0.62, p.y, r * 0.34, r * 0.7, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-// Body plan, as fractions of full standing height.
-// Athletic-chibi: head is ~0.30 of height. The collection's art is big-headed,
-// so going smaller than this stops looking like a Primo — but 0.45 (where this
-// started) reads as a bobblehead.
-const DIM = {
-  thigh: 0.210, shin: 0.210,      // hip lands at 0.47
-  torso: 0.230,                   // shoulders land at 0.70
-  // Arms reach 0.30 of height. Shorter than this and a bent running arm folds
-  // into a stub at the shoulder.
-  upperArm: 0.156, foreArm: 0.146,
-  hipHalf: 0.062,                 // narrow, or the stance goes bow-legged
-  shoulderHalf: 0.100,            // torso half-width at the shoulders
-  armHalf: 0.116,                 // arms hang OUTSIDE the torso, or they vanish
-  headSize: 0.343,                // sprite box; the head fills ~0.875 of it
-  rThigh: 0.052, rKnee: 0.038, rAnkle: 0.026,
-  rArm: 0.036, rElbow: 0.028, rWrist: 0.024,
-};
-
-/** Solve joint positions for a pose. Local 3D, px, +y up, +z forward. */
-function skeleton(pose, H, laneLean) {
-  const hipY = pose.hipY * H;
-  const hipX = pose.hipX * H + laneLean * H * 0.045;
-  const lean = pose.lean;
-  const shoulderY = hipY + DIM.torso * H * Math.cos(lean);
-  const shoulderZ = DIM.torso * H * Math.sin(lean);
-
-  const legs = pose.legs.map((L) => {
-    const hx = L.side * DIM.hipHalf * H + hipX;
-    const hp = { x: hx, y: hipY, z: 0 };
-    const t = L.thigh;
-    const kn = {
-      x: hx - L.side * 0.010 * H,
-      y: hipY - DIM.thigh * H * Math.cos(t),
-      z: DIM.thigh * H * Math.sin(t),
-    };
-    const s = t - L.knee;                      // the knee only folds backward
-    const an = {
-      x: kn.x - L.side * 0.012 * H,
-      y: kn.y - DIM.shin * H * Math.cos(s),
-      z: kn.z + DIM.shin * H * Math.sin(s),
-    };
-    return { side: L.side, hp, kn, an, footAng: s + L.ankle };
-  });
-
-  const arms = pose.arms.map((A) => {
-    const sx = A.side * DIM.armHalf * H + hipX * 0.6;
-    const sh = { x: sx, y: shoulderY, z: shoulderZ + A.side * pose.twist * H * 0.4 };
-    const a = A.shoulder;
-    const el = {
-      x: sx + A.side * 0.016 * H,
-      y: sh.y - DIM.upperArm * H * Math.cos(a),
-      z: sh.z + DIM.upperArm * H * Math.sin(a),
-    };
-    const f = a + A.elbow;
-    const wr = {
-      x: el.x + A.side * 0.010 * H,
-      y: el.y - DIM.foreArm * H * Math.cos(f),
-      z: el.z + DIM.foreArm * H * Math.sin(f),
-    };
-    return { side: A.side, sh, el, wr };
-  });
-
-  return { hipX, hipY, shoulderY, shoulderZ, legs, arms, twist: pose.twist };
 }
 
 /**
