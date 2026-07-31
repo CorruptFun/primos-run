@@ -899,3 +899,179 @@ function leg(ctx, L, h, C, big, huge, near) {
     ctx.stroke();
   }
 }
+
+// ---------------------------------------------------------------- the drone
+// ICE air support, seen from below and ahead — the view a runner gets of a
+// thing diving down their lane. Same rules as the agents: one bright accent
+// (the lens), cold fill, warm nothing — it flies at dusk with its back to the
+// same sun. The red/blue strobes are the cruiser's vocabulary moved into the
+// air, so "la migra" reads before "drone" does.
+//
+// `u` is px per world unit at the drone's depth (project().scale), so the
+// hull is sized in world units like every prop and shrinks honestly with
+// distance. Detail is size-gated the way props.js gates trim: below ~46px the
+// stencil band and rotor hubs are paint with no information in it.
+
+const DRONE_HULL = '#2a2f3c';
+const DRONE_DARK = '#1b1f29';
+const DRONE_BAND = '#e8ebf2';
+const DRONE_LENS = '#7fd8ff';
+
+/**
+ * @param {number} u px per world unit at the drone's depth
+ * @param {boolean} diving true during the strike run — rotors flatten, lens flares
+ */
+export function drawDrone(ctx, cx, cy, u, t, diving) {
+  const w = u * 1.05;                 // hull span, world-honest
+  if (w < 7) return;                  // a distant speck is the searchlight's job
+  const big = w > 46;
+  const th = w * 0.30;                // hull thickness
+  const spin = t * 40;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // Rotor blur first, behind the hull — four translucent discs on X-arms.
+  // Diving flattens them (the drone pitches nose-down at you), which reads as
+  // aggression without a single new shape.
+  const squash = diving ? 0.16 : 0.26;
+  ctx.fillStyle = 'rgba(210,220,235,0.16)';
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * TAU + Math.PI / 4;
+    const ax = Math.cos(a) * w * 0.62;
+    const ay = Math.sin(a) * w * 0.62 * 0.5 - th * 0.55;
+    ctx.beginPath();
+    ctx.ellipse(ax, ay, w * 0.30, w * 0.30 * squash, 0, 0, TAU);
+    ctx.fill();
+    // The shimmer that says "spinning" — one bright chord sweeping each disc.
+    if (big) {
+      ctx.strokeStyle = 'rgba(235,242,252,0.35)';
+      ctx.lineWidth = Math.max(1, w * 0.02);
+      const sa = spin + i * 1.7;
+      ctx.beginPath();
+      ctx.moveTo(ax - Math.cos(sa) * w * 0.26, ay - Math.sin(sa) * w * 0.26 * squash);
+      ctx.lineTo(ax + Math.cos(sa) * w * 0.26, ay + Math.sin(sa) * w * 0.26 * squash);
+      ctx.stroke();
+    }
+  }
+
+  // Arms, under the hull.
+  ctx.strokeStyle = DRONE_DARK;
+  ctx.lineWidth = Math.max(1.5, w * 0.07);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * TAU + Math.PI / 4;
+    ctx.moveTo(0, -th * 0.2);
+    ctx.lineTo(Math.cos(a) * w * 0.52, Math.sin(a) * w * 0.52 * 0.5 - th * 0.45);
+  }
+  ctx.stroke();
+
+  // Hull — a fat lens-shaped wedge, dark over darker, cold sky bounce on top.
+  const hullG = ctx.createLinearGradient(0, -th, 0, th);
+  hullG.addColorStop(0, '#3a4152');
+  hullG.addColorStop(0.45, DRONE_HULL);
+  hullG.addColorStop(1, DRONE_DARK);
+  ctx.fillStyle = hullG;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, w * 0.52, th, 0, 0, TAU);
+  ctx.fill();
+
+  // The stencil band — ICE's white across the hull, the one thing that names
+  // it. Gated: below ~46px it is a smear that costs the silhouette.
+  if (big) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, w * 0.52, th, 0, 0, TAU);
+    ctx.clip();
+    ctx.fillStyle = DRONE_BAND;
+    ctx.fillRect(-w * 0.30, th * 0.06, w * 0.60, th * 0.34);
+    ctx.fillStyle = DRONE_DARK;
+    const lw = Math.max(1, w * 0.028);
+    // "ICE" as three stencil marks, not type — type at this size is noise.
+    ctx.fillRect(-w * 0.17, th * 0.10, lw, th * 0.26);
+    ctx.fillRect(-w * 0.03, th * 0.10, lw * 2.4, lw);
+    ctx.fillRect(-w * 0.03, th * 0.10, lw, th * 0.26);
+    ctx.fillRect(-w * 0.03, th * 0.36 - lw, lw * 2.4, lw);
+    ctx.fillRect(w * 0.10, th * 0.10, lw * 2.4, lw);
+    ctx.fillRect(w * 0.10, th * 0.10, lw, th * 0.26);
+    ctx.fillRect(w * 0.10, th * 0.22, lw * 1.8, lw);
+    ctx.fillRect(w * 0.10, th * 0.36 - lw, lw * 2.4, lw);
+    ctx.restore();
+  }
+
+  // Strobes on the arm tips — red left, blue right, alternating like the
+  // cruiser's bar. They are the "la migra" in the silhouette.
+  const flash = Math.floor(t * 7) % 2 === 0;
+  const sr = Math.max(1.5, w * 0.05);
+  ctx.fillStyle = flash ? '#ff5a5a' : 'rgba(255,90,90,0.25)';
+  ctx.beginPath();
+  ctx.arc(-w * 0.52, -th * 0.35, sr, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = flash ? 'rgba(90,130,255,0.3)' : '#5a86ff';
+  ctx.beginPath();
+  ctx.arc(w * 0.52, -th * 0.35, sr, 0, TAU);
+  ctx.fill();
+
+  // The lens — the single bright accent, dead centre under the hull. Flares
+  // on the dive: the last thing you see before you move, on purpose.
+  const lr = w * (diving ? 0.11 : 0.08);
+  const lg = ctx.createRadialGradient(0, th * 0.5, lr * 0.15, 0, th * 0.5, lr * (diving ? 3.2 : 1.8));
+  lg.addColorStop(0, '#eaffff');
+  lg.addColorStop(0.35, DRONE_LENS);
+  lg.addColorStop(1, 'rgba(127,216,255,0)');
+  ctx.fillStyle = lg;
+  ctx.beginPath();
+  ctx.arc(0, th * 0.5, lr * (diving ? 3.2 : 1.8), 0, TAU);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/**
+ * The searchlight — hull to road, plus the lane pool it lands in. Drawn from
+ * two already-projected points so this file never learns the camera exists.
+ * This is GAMEPLAY INFORMATION first (the magnet-ring rule): the pool is
+ * standing on the lane the dive will come down, so its edges are honest.
+ *
+ * @param {{x:number,y:number}} hull  projected drone position
+ * @param {{x:number,y:number,scale:number}} ground projected road point under it
+ * @param {number} warnK 0..1 how far through the warning — the pool tightens
+ *   as the dive gets close, which is readable urgency with no extra flashing
+ * @param {boolean} diving
+ */
+export function drawDroneLight(ctx, hull, ground, warnK, diving, t) {
+  const u = ground.scale;
+  const poolW = u * (diving ? 0.92 : 1.5 - warnK * 0.55);
+  const poolH = poolW * 0.30;
+
+  ctx.save();
+  // The cone. Faint, additive-ish, cooler than the alley's sodium so it reads
+  // as police light and not another streetlamp.
+  const cone = ctx.createLinearGradient(hull.x, hull.y, ground.x, ground.y);
+  cone.addColorStop(0, 'rgba(180,232,255,0.30)');
+  cone.addColorStop(1, 'rgba(180,232,255,0.05)');
+  ctx.fillStyle = cone;
+  ctx.beginPath();
+  ctx.moveTo(hull.x - u * 0.06, hull.y);
+  ctx.lineTo(hull.x + u * 0.06, hull.y);
+  ctx.lineTo(ground.x + poolW, ground.y);
+  ctx.lineTo(ground.x - poolW, ground.y);
+  ctx.closePath();
+  ctx.fill();
+
+  // The pool, strobing red/blue once the dive is on — the cruiser wash's
+  // language, on the road, in the lane it is about to happen to.
+  const flash = Math.floor(t * 7) % 2 === 0;
+  const core = diving
+    ? (flash ? 'rgba(255,90,90,0.42)' : 'rgba(90,130,255,0.42)')
+    : 'rgba(180,232,255,0.32)';
+  const pool = ctx.createRadialGradient(ground.x, ground.y, poolW * 0.1, ground.x, ground.y, poolW);
+  pool.addColorStop(0, core);
+  pool.addColorStop(1, 'rgba(180,232,255,0)');
+  ctx.fillStyle = pool;
+  ctx.beginPath();
+  ctx.ellipse(ground.x, ground.y, poolW, poolH, 0, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}

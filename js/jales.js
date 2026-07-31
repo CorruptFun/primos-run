@@ -40,6 +40,16 @@ export const JALE_POOL = [
   { id: 'score',  kind: 'run', stat: 'score',    tiers: [1500, 2500, 4000] },
   { id: 'dist',   kind: 'run', stat: 'distance', tiers: [800, 1200, 1800] },
   { id: 'combo',  kind: 'run', stat: 'bestMult', tiers: [4, 6, 8] },
+  // Reachable only past DRONE.startTime (~2 min in) — deliberately: this is
+  // the jale that asks for LONGER runs, not more of them. Tiers stay gentle
+  // because two dodges is already a run most players don't have yet.
+  //
+  // ⚠ Growing this pool reshuffles which jales a given day draws (the draw
+  // walks pool indices), so the day a build with a new row rolls out, players
+  // on either side of the update can see different missions until midnight
+  // UTC. `done` latches are per-id and merge by union, so nothing double-pays
+  // — it is a one-day cosmetic seam, accepted every time the pool grows.
+  { id: 'drones', kind: 'day', stat: 'drones',   tiers: [2, 4, 6] },
 ];
 
 // ------------------------------------------------------------------ the draw

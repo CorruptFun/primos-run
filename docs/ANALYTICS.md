@@ -224,7 +224,7 @@ block.**
 |---|---|---|
 | `app_open` | once per open | standalone, lang, signed_in |
 | `run_start` | RUN pressed | loadout size, shelf item ids |
-| `run_end` | the run is written down | score, distance, seconds, beers, tacos, continues, reason, pb, racha, jalesDone |
+| `run_end` | the run is written down | score, distance, seconds, beers, tacos, continues, reason, pb, racha, jalesDone, drones |
 | `tutorial_start` / `_done` / `_skip` | the escuela | step reached, total steps |
 | `shop_open` / `_buy` / `_denied` | La Tiendita | balance, item, price, how short |
 | `continue_offer` / `_take` / `_decline` | the bust | rung `n`, cost, could they afford it |

@@ -140,6 +140,43 @@ export const POWER = {
 export const MAGNET_RADIUS = 3.6;
 export const CHANCLA_SPEED = 1.55;
 
+// ICE air support — the drone that comes flying down your lane late in the
+// run. An EVENT, not a prop: it is scheduled off time survived, telegraphs
+// loudly, dives the lane you were standing in when the siren started, and
+// leaves. The two ways out are the two verbs the alley already taught: change
+// lanes, or slide under it.
+//
+// TIME-GATED, NEVER DISTANCE-GATED — the same scar PACING documents twice:
+// distance accelerates, so anything keyed on metres arrives faster every
+// minute the player survives. `startTime` sits between tier 2 (90s) and
+// tier 3 (160s): the alley is already asking real questions, the gauntlets
+// have not opened, and a drone landing there reads as an escalation rather
+// than a pile-on.
+//
+// FAIR BY CONSTRUCTION, like the chunks: the lane is locked when the WARNING
+// starts and never retargets, so switching lanes always dodges; `height` sits
+// between the slide hitbox (0.72) and the standing one (1.62), so staying put
+// and sliding also dodges. Jumping does NOT clear it — apex 1.43 lifts you
+// INTO the hull, which is the checkpoint rule's shape: the alley's tall
+// things are answered by lanes and slides, never by faith in a jump.
+export const DRONE = {
+  startTime: 110,       // seconds survived before the first event can launch
+  interval: 46,         // seconds between events…
+  intervalJitter: 18,   // …plus up to this much, so it never turns metronomic
+  telegraph: 1.7,       // siren + searchlight before the first pass
+  reTelegraph: 1.05,    // re-lock warning between passes in one event
+  approach: 30,         // closing u/s ON TOP of the player's own speed
+  spawnAhead: 46,       // units ahead where the dive begins — ~0.8s of strike
+  passBehind: 7,        // units past the player before a pass counts as dodged
+  hover: 2.6,           // cruise height while telegraphing, well over the head
+  height: 1.12,         // hull underside during the dive: slide clears, standing does not
+  w: 0.72,              // hull half-width-ish for the lane hit test
+  // Passes per event, escalating with the event count and clamping at the
+  // tail. The first drone is a warning shot; by the third event it is a
+  // proper strafing run.
+  passes: [1, 2, 2, 3],
+};
+
 // Getting back up after La Migra had you. Shared by the vida bought ahead of
 // time at la tiendita and the continue paid for at the moment of the bust, so
 // the two can never feel different.
@@ -221,4 +258,7 @@ export const HAPTICS = {
   hit: [26, 44, 26],
   smash: [10, 18, 22],
   bust: [40, 70, 40, 70, 110],
+  // The drone warning — bust's rhythm at a fraction of its weight, because it
+  // means "incoming", not "over". Fires per telegraph, so it stays short.
+  drone: [18, 34, 18],
 };

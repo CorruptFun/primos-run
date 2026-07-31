@@ -2,7 +2,7 @@
 
 import {
   LANE_W, RUN, STAMINA, CHASE, POWER, SCORE, HITBOX,
-  MAGNET_RADIUS, CHANCLA_SPEED, JUICE, REPRIEVE,
+  MAGNET_RADIUS, CHANCLA_SPEED, JUICE, REPRIEVE, DRONE,
 } from './config.js';
 import { World } from './world.js';
 import { CREW } from './art/runner.js';
@@ -89,6 +89,17 @@ export class Game {
     this.continues = 0;
 
     this.power = { magnet: 0, chancla: 0, skateboard: 0 };
+
+    // ICE air support (see DRONE in config.js). `next` is the earliest the
+    // first event may launch — no jitter on it, so the first drone lands at a
+    // predictable, tunable moment of the difficulty curve; jitter applies
+    // from the second event on. `drones` counts passes DODGED this run — the
+    // jales price it, so the counter rule in the block above applies here too.
+    this.drone = {
+      phase: 'idle', next: DRONE.startTime, lane: 0, x: 0, y: 0, z: 0,
+      warnT: 0, warnT0: 0, pass: 0, event: 0, hitThis: false, resolved: false,
+    };
+    this.drones = 0;
 
     this.player = {
       lane: 0,
@@ -354,6 +365,10 @@ export class Game {
       return;
     }
 
+    // ---- ICE air support
+    this.updateDrone(dt);
+    if (this.state !== STATE.PLAYING) return;   // a drone strike can end the run
+
     // ---- world
     this.world.ensureAhead(p.z, this.distance);
     this.world.prune(p.z);
@@ -364,6 +379,109 @@ export class Game {
 
     this.multiplier = Math.min(SCORE.comboMax, 1 + Math.floor(this.combo / SCORE.comboStep));
     if (this.multiplier > this.bestMult) this.bestMult = this.multiplier;
+  }
+
+  // ------------------------------------------------------------------- drone
+
+  /**
+   * The ICE drone event — see DRONE in config.js for the design and every
+   * number. Three phases: `warn` (siren, searchlight, the lane locks), `dive`
+   * (down the locked lane at strike height), and back to `idle` between
+   * events. The lane NEVER retargets after the warning starts, and the strike
+   * height clears a slide — both dodges the alley already taught always work,
+   * which is what keeps a homing enemy inside the fair-by-construction rule
+   * the chunks obey.
+   */
+  updateDrone(dt) {
+    const d = this.drone;
+    const p = this.player;
+
+    if (d.phase === 'idle') {
+      if (this.time < d.next) return;
+      d.phase = 'warn';
+      d.warnT = DRONE.telegraph;
+      d.warnT0 = DRONE.telegraph;      // render reads warn progress off these
+      d.lane = p.lane;
+      d.x = d.lane * LANE_W;
+      d.z = p.z + DRONE.spawnAhead;
+      d.y = DRONE.hover;
+      d.pass = 0;
+      d.hitThis = false;
+      d.resolved = false;
+      sfx.droneSiren();
+      hap.drone();
+      // Translated via FROM_GAME in i18n.js, like every string this class
+      // hands out.
+      this.hooks.onToast?.('ICE DRONE', '#7fd8ff');
+      return;
+    }
+
+    if (d.phase === 'warn') {
+      // Hold station ahead of the runner while the siren runs — the light IS
+      // the warning, so it must stay on screen however fast the run is.
+      d.z = p.z + DRONE.spawnAhead;
+      d.x += (d.lane * LANE_W - d.x) * Math.min(1, dt * 10);
+      d.y = DRONE.hover;
+      d.warnT -= dt;
+      if (d.warnT <= 0) {
+        d.phase = 'dive';
+        d.resolved = false;
+        sfx.droneDive();
+      }
+      return;
+    }
+
+    // ---- dive
+    d.z -= DRONE.approach * dt;               // the player's own speed closes the rest
+    const gap = d.z - p.z;
+    // Drop from hover to strike height across the first stretch of approach,
+    // flat well before the collision window so the height being tested is the
+    // height being seen.
+    const k = Math.max(0, Math.min(1, gap / (DRONE.spawnAhead * 0.6)));
+    d.y = DRONE.height + (DRONE.hover - DRONE.height) * k;
+
+    if (!d.resolved && Math.abs(gap) < 0.6) {
+      const inLane = Math.abs(d.x - p.x) < (DRONE.w + HITBOX.w) * 0.5;
+      const under = p.y + (p.sliding ? HITBOX.slideH : HITBOX.standH) <= DRONE.height + 0.02;
+      if (inLane && !under && this.invuln <= 0) {
+        d.hitThis = true;
+        const rush = this.power.chancla > 0;
+        // Through hit(), not a private copy of it: the rush smashes it, the
+        // skateboard eats it, and a plain strike is a normal crash — a drone
+        // must never invent a new way to be hurt.
+        this.hit({ x: d.x, z: d.z });
+        if (rush) {
+          // Swatted out of the sky — the whole event ends, and looks it.
+          burst(d.x, d.y, d.z, 26, '#7fd8ff', { spread: 3.6, life: 0.8, size: 0.13 });
+          d.phase = 'idle';
+          d.event++;
+          d.next = this.time + DRONE.interval + Math.random() * DRONE.intervalJitter;
+          return;
+        }
+        d.resolved = true;                    // one strike per pass, clipped and gone
+      }
+    }
+
+    if (gap < -DRONE.passBehind) {
+      if (!d.hitThis) this.drones++;          // a pass survived clean is a dodge
+      d.pass++;
+      const total = DRONE.passes[Math.min(d.event, DRONE.passes.length - 1)];
+      if (d.pass < total) {
+        // It banks around for another go — shorter warning, same rules: the
+        // lane re-locks to wherever the player is standing NOW.
+        d.phase = 'warn';
+        d.warnT = DRONE.reTelegraph;
+        d.warnT0 = DRONE.reTelegraph;
+        d.lane = p.lane;
+        d.hitThis = false;
+        sfx.droneSiren();
+        hap.drone();
+      } else {
+        d.phase = 'idle';
+        d.event++;
+        d.next = this.time + DRONE.interval + Math.random() * DRONE.intervalJitter;
+      }
+    }
   }
 
   // --------------------------------------------------------------- collision
@@ -547,6 +665,11 @@ export class Game {
     this.stumble = 0;
     this.hitFlash = 0;
     this.invuln = REPRIEVE.invuln;
+    // Call off the air unit. The clear-ahead sweep below promises open alley
+    // to someone getting back on their feet; a drone mid-dive would break
+    // that promise from above, so the event cancels and the next one waits.
+    this.drone.phase = 'idle';
+    this.drone.next = this.time + REPRIEVE.grace + DRONE.interval * 0.6;
     // A fresh tank. Being caught because the gasolina ran out and then waking
     // up with an empty one is not a second chance, it is a second bust.
     this.stamina = Math.max(this.stamina, STAMINA.start);

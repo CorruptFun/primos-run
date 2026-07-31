@@ -50,4 +50,5 @@ export const hap = {
   hit:     () => buzz(HAPTICS.hit),
   smash:   () => buzz(HAPTICS.smash),
   bust:    () => buzz(HAPTICS.bust),
+  drone:   () => buzz(HAPTICS.drone),
 };

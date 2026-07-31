@@ -139,6 +139,22 @@ export function gassed() {
   tone(220, 0.5, 'sine', 0.16, 90);
 }
 
+// The drone's two voices. The siren is the bust wail's vocabulary at half the
+// length and a fifth up — same family (it IS la migra), clearly not the same
+// event (that one means over, this one means MOVE). The dive is mostly air.
+export function droneSiren() {
+  for (let i = 0; i < 2; i++) {
+    tone(1180, 0.16, 'square', 0.12, 880, i * 0.19);
+    tone(880, 0.16, 'square', 0.12, 1180, i * 0.19 + 0.09);
+  }
+}
+
+export function droneDive() {
+  tone(1400, 0.5, 'sawtooth', 0.1, 240);
+  noise(0.45, 0.2, 1800);
+  noise(0.3, 0.14, 700, 0.12);
+}
+
 export function bust() {
   stopMusic();
   // two-tone siren wail

@@ -124,6 +124,45 @@ feet, and the shop sold a car. `js/wallet.js`'s `RENAMED` carries the old id off
 players' shelves; nothing else validates a shelf id, so without it the rename
 would have quietly binned a 55-chela item.
 
+### ICE air support — the drone
+
+Late in the run, ICE starts flying drones down your lane. It is an **event, not
+a prop**: a siren screams, a searchlight locks the lane you are standing in,
+and ~1.7 seconds later the drone dives down that lane at strike height. Later
+events make multiple passes (1 → 2 → 2 → 3), each with its own re-lock and a
+shorter warning.
+
+| | value (`DRONE` in config) |
+|---|---|
+| `startTime` | 110s survived — between tier 2 (90s) and tier 3 (160s) |
+| `interval` / `intervalJitter` | 46s + up to 18s between events |
+| `telegraph` / `reTelegraph` | 1.7s first warning, 1.05s between passes |
+| `approach` | +30 u/s closing on top of the player's own speed |
+| `height` | 1.12u hull underside — a slide (0.72u) clears it |
+
+Three rules keep a homing enemy inside the fair-by-construction promise:
+
+- **Time-gated, never distance-gated** — the pacing chapter's scar, applied:
+  distance accelerates, so anything keyed on metres arrives faster every
+  minute the player survives.
+- **The lane locks when the WARNING starts and never retargets.** Changing
+  lanes always dodges. The searchlight is gameplay information, not
+  decoration — it stands on the exact lane the dive will come down.
+- **The strike height sits between the slide hitbox and the standing one**,
+  so staying put and sliding also dodges. Jumping does NOT clear it — apex
+  1.43u lifts you *into* the hull, the checkpoint rule's shape: the alley's
+  tall things are never answered by faith in a jump.
+
+A strike is a **normal crash** through the same `hit()` every prop uses —
+chase +46, combo reset, nothing new to fear. A chancla rush **swats the drone
+out of the sky** (the standard smash bonus, and the whole event ends). The
+reprieve after a bust cancels any event in flight — nobody gets dive-bombed
+while getting back on their feet.
+
+Passes survived count as **dodges** (`drones` in the run stats), which the
+jales price (`DODGE %n ICE DRONES`) — the one daily that asks for *longer*
+runs rather than more of them.
+
 ## Pacing
 
 The alley is built from **42 hand-authored chunks** — 10 tier-0, 13 tier-1,
@@ -440,6 +479,11 @@ From the owner, 2026-07-30. Not built yet.
 guns, a bag of white powder and a skateboard because **later levels have ICE
 drones you shoot down**. That is the reason the gun exists — it is a mechanic,
 not set dressing. `js/art/ice.js` is the rig for those units.
+
+> The first half of that shipped: drones now FLY (see
+> [ICE air support](#ice-air-support--the-drone) above) as a dodge event in the
+> endless run. What remains of this roadmap item is the *shooting* — the gun
+> verb below — and the level structure around it.
 
 The design consequence not yet built: `chancla` currently smashes whatever you
 *collide with*. A gun needs a verb — fire, or auto-target — or it is a reskin

@@ -393,6 +393,14 @@ group('los jales — the same three for everyone, deterministically');
   eq(a.every((m) => poolIds.has(m.id)), true, 'every jale comes from the pool');
   eq(a.every((m) => JALE_POOL.find((p) => p.id === m.id).tiers.includes(m.target)), true,
      'every target is one of its jale’s authored tiers');
+  // The drone jale exists and is priced as a DAY goal off the counter game.js
+  // actually keeps (`drones` = passes dodged). If the stat name drifts, the
+  // mission bar sticks at zero forever and looks like a mission bug.
+  const droneJale = JALE_POOL.find((m) => m.id === 'drones');
+  eq(!!droneJale, true, 'the pool includes the drone jale');
+  eq(droneJale && droneJale.stat, 'drones', 'and it prices the dodge counter, not hits');
+  eq(droneJale && droneJale.kind, 'day', 'cumulative across the day — one run need not survive three drones');
+
   // Different days draw differently, at least across a week — if this ever
   // fails, the hash is broken, not unlucky: 7 identical draws of 3-of-9 by
   // chance is astronomically unlikely.
@@ -408,14 +416,16 @@ group('los jales — progress, payout and the per-day latch');
   const ms = jalesForDay(day);
   // A run that completes NOTHING but progresses the cumulative goals.
   const idle = { beers: 1, tacos: 0, slides: 1, jumps: 1, powerups: 0, smashes: 0,
-                 score: 10, distance: 10, bestMult: 1 };
+                 drones: 0, score: 10, distance: 10, bestMult: 1 };
   const r1 = applyJalesRun(null, day, idle);
   eq(r1.payout, 0, 'nothing completed pays nothing');
   eq(r1.state.day, day, 'the record binds to the day');
 
   // A run that maxes every stat completes all three and the sweep.
+  // Every stat the pool prices — this bundle IS the run-stats contract, and
+  // adding a pool row without extending it is exactly what it failed on once.
   const monster = { beers: 999, tacos: 99, slides: 99, jumps: 99, powerups: 99,
-                    smashes: 99, score: 99999, distance: 99999, bestMult: 8 };
+                    smashes: 99, drones: 99, score: 99999, distance: 99999, bestMult: 8 };
   const r2 = applyJalesRun(r1.state, day, monster);
   eq(r2.completedNow.length, 3, 'a monster run completes all three');
   eq(r2.sweepNow, true, 'and takes the sweep');

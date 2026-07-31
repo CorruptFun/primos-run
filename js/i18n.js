@@ -178,10 +178,14 @@ const STR = {
   'help.rule.title':  { en: 'THESE DO NOT GET JUMPED', es: 'ESTO NO SE SALTA' },
   'help.rule.body':   { en: 'Checkpoints, the wall, the ICE cruiser. Every one of them is taller '
                           + 'than your jump, and always has been. Jumping one is a hit, every '
-                          + 'single time. Change lanes instead.',
+                          + 'single time. Change lanes instead. And when the siren screams and a '
+                          + 'light locks your lane, ICE is flying a drone down it — move over, or '
+                          + 'slide under it.',
                         es: 'Retenes, el muro, la patrulla. Todos son más altos que tu salto, y '
                           + 'siempre lo han sido. Saltarlos es golpe seguro, cada vez. Mejor '
-                          + 'cámbiate de carril.' },
+                          + 'cámbiate de carril. Y cuando grite la sirena y una luz marque tu '
+                          + 'carril, viene un dron de ICE derecho por ahí — quítate, o barre '
+                          + 'por abajo.' },
 
   // The pickups, in the order the alley hands them to you. The three power-ups
   // are named the way the HUD names them mid-run — PIÑATA, CHANCLA, SKATEBOARD
@@ -677,6 +681,11 @@ const STR = {
   'jale.score':       { en: 'SCORE %n IN ONE RUN', es: 'HAZ %n EN UNA CORRIDA' },
   'jale.dist':        { en: 'RUN %n METERS IN ONE GO', es: 'CORRE %n METROS DE UN JALÓN' },
   'jale.combo':       { en: 'HIT A ×%n COMBO', es: 'PEGA UN COMBO ×%n' },
+  'jale.drones':      { en: 'DODGE %n ICE DRONES', es: 'ESQUIVA %n DRONES DE ICE' },
+
+  // The drone warning toast — a pill on the canvas at the moment the siren
+  // starts, so it is an ORDER, not a sentence.
+  'toast.drone':      { en: 'ICE DRONE — MOVE!', es: 'DRON DE ICE — ¡ÁBRETE!' },
 };
 
 /**
@@ -692,6 +701,7 @@ const FROM_GAME = {
   'CHANCLA RUSH': 'power.chancla',
   SKATEBOARD: 'power.skateboard',
   'CORRUPT LOOKED AWAY': 'toast.vida',
+  'ICE DRONE': 'toast.drone',
 };
 
 // --------------------------------------------------------------- the packs

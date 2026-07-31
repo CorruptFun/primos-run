@@ -547,7 +547,7 @@ function fillGameOver() {
   const today = dayKey(new Date());
   const runStats = {
     beers: game.beers, tacos: game.tacos, slides: game.slides, jumps: game.jumps,
-    powerups: game.powerups, smashes: game.smashes,
+    powerups: game.powerups, smashes: game.smashes, drones: game.drones,
     score: Math.floor(game.score), distance: Math.floor(game.distance),
     bestMult: game.bestMult,
   };
@@ -607,6 +607,10 @@ function fillGameOver() {
     // dailies keep people running" is answerable from run_end alone.
     racha: rachaRes?.racha?.len ?? 0,
     jalesDone: jalesRes ? Object.keys(jalesRes.state.done || {}).length : 0,
+    // Air support, from the run's own counters: passes survived. Whether the
+    // drone is fair is a question this pair answers (dodges vs runs that
+    // ended right after startTime).
+    drones: game.drones,
   });
 
   // Fire-and-forget: it reveals itself only once it has a real rank to show.

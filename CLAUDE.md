@@ -254,6 +254,15 @@ rules that will bite if rediscovered the hard way:
   button. If a future feature wants one, read the design chapter first — the
   streak resets are the loss-aversion hook and a claim button breaks the "no
   payment sheet, chelas in chelas out" honesty stance.
+- **The ICE drone is TIME-gated (`DRONE.startTime`), lane-locked at the
+  WARNING, and slide-clearable — all three are fairness, not flavour.** Gate it
+  on distance and it arrives faster every minute survived (the pacing scar);
+  let it retarget mid-dive and no dodge is guaranteed; raise `height` above
+  the slide hitbox and one of the two taught verbs stops working. A strike
+  goes through the same `hit()` as every prop — do not give it its own damage
+  path. `reprieve()` cancels an event in flight, on purpose. The `drones`
+  counter is passes DODGED (not hits) and a jale prices it — stop counting it
+  and that mission bar sticks at zero forever.
 
 ## Cloud save, sign-in and the boards
 

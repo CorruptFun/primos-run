@@ -7,6 +7,7 @@ import {
 import { PAL, quad, fogAmount, hash01 } from './art/palette.js';
 import { drawSky, drawWallSegment, drawSkyline, drawWires } from './art/scenery.js';
 import { PROP_DRAW, drawChaser } from './art/props.js';
+import { drawDrone, drawDroneLight } from './art/ice.js';
 import { drawRunner } from './art/runner.js';
 import { drawParticles } from './particles.js';
 import { propSprite, drawPropSprite } from './art/sprites.js';
@@ -72,6 +73,12 @@ export function renderScene(ctx, g) {
   drawPuddles(ctx, projectClamped, cam.z, t);
 
   drawProps(ctx, g, t);
+  // The drone flies AHEAD of the runner for its whole visible life — by the
+  // time it crosses the player's plane it is inside the near clip a few frames
+  // later — so between props and runner is the honest place in the paint
+  // order. A tall prop standing between the two can overlap wrong for a
+  // moment; sorting it into the prop pass is not worth that frame.
+  drawTheDrone(ctx, g, t);
   // During the opening hero shot the runner is drawn front-on by intro.js, so
   // the normal back view would double them up.
   if (!introOwnsRunner()) drawPlayer(ctx, g, t);
@@ -461,6 +468,21 @@ function drawBoard(ctx, sx, sy, u) {
   ctx.fill();
 
   ctx.restore();
+}
+
+function drawTheDrone(ctx, g, t) {
+  const d = g.drone;
+  if (!d || d.phase === 'idle') return;
+  const s = project(d.x, d.y, d.z);
+  if (!s) return;
+  const diving = d.phase === 'dive';
+  // The light first, so the hull sits over its own cone.
+  const ground = project(d.x, 0, d.z);
+  if (ground) {
+    const warnK = d.warnT0 > 0 ? 1 - Math.max(0, d.warnT) / d.warnT0 : 1;
+    drawDroneLight(ctx, s, ground, diving ? 1 : warnK, diving, g.time);
+  }
+  drawDrone(ctx, s.x, s.y, s.scale, g.time, diving);
 }
 
 function drawTheChaser(ctx, g, t) {
