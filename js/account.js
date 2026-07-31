@@ -21,8 +21,13 @@ import {
   claimReferralRewards, fetchMyReferralStats, fetchPendingRewards, inviteLink, mintMyCode,
 } from './referrals.js';
 import * as store from './store.js';
+import { EVENTS, isOptedOut, setOptedOut, track } from './analytics.js';
 
 const $ = (id) => document.getElementById(id);
+
+// Set when the sign-in redirect is started, spent when the page comes back with
+// a session. See the comment at the call site.
+const SIGNIN_FLAG = 'primos-run:signin-started';
 
 let unsub = null;
 
@@ -82,6 +87,19 @@ function paintAuth() {
   btn.addEventListener('click', () => {
     btn.disabled = true;
     btn.textContent = t('acct.continuing');
+    track(EVENTS.SIGN_IN_START);
+    // Sign-in leaves the page entirely, so "did it work" cannot be observed from
+    // here — and on the way back it is a FRESH page load whose null→session
+    // transition is indistinguishable from a returning player's ordinary boot
+    // restore. sessionStorage survives the same-tab redirect and nothing else,
+    // which makes it exactly the right width for this: the flag is set here and
+    // spent by the completion check at the bottom of this file.
+    try {
+      sessionStorage.setItem(SIGNIN_FLAG, '1');
+    } catch {
+      // Blocked (private mode). The funnel loses its numerator; sign-in itself
+      // is unaffected, which is the right way round for a metric to fail.
+    }
     // The tap navigates the whole page to Google, so nothing after this runs on
     // success and the button legitimately stays in this state. Only a failure to
     // START the redirect is reportable from here.
@@ -232,6 +250,40 @@ function payWelcomeIfDue() {
 // --- wiring -----------------------------------------------------------------
 
 /** Wire the screen once, at boot. */
+/**
+ * Close the sign-in funnel, if this page load is the far side of one.
+ *
+ * Called on every session change AND once at init, because the OAuth return can
+ * establish the session either before or after this module wires its listener
+ * and only one of those two orders fires an event. Spending the flag makes it
+ * idempotent, so being called both ways costs nothing.
+ */
+function completeSignIn() {
+  try {
+    if (!cloudSession()) return;
+    if (sessionStorage.getItem(SIGNIN_FLAG) !== '1') return;
+    sessionStorage.removeItem(SIGNIN_FLAG);
+    track(EVENTS.SIGN_IN_DONE);
+  } catch {
+    /* storage blocked — the funnel loses a row, nothing else */
+  }
+}
+
+// --- analytics opt-out ------------------------------------------------------
+
+/**
+ * The toggle, and the honest sentence next to it.
+ *
+ * It is in ACCOUNT rather than buried in a settings sheet because this is where
+ * the other "what leaves this device" decisions live — the race name and the
+ * cloud save — and a privacy control the player cannot find is not a control.
+ */
+function paintPrivacy() {
+  const box = $('acct-analytics');
+  if (!box) return;
+  box.checked = !isOptedOut();
+}
+
 export function initAccount() {
   const input = $('name-input');
   const preview = $('name-preview');
@@ -361,6 +413,20 @@ export function initAccount() {
       })
       .catch(() => status(t('acct.badBackup'), true));
   });
+
+  // --- privacy ---
+  const optIn = $('acct-analytics');
+  if (optIn) {
+    optIn.addEventListener('change', () => {
+      setOptedOut(!optIn.checked);
+      status(optIn.checked ? t('acct.statsOn') : t('acct.statsOff'));
+    });
+  }
+
+  // The OAuth return can land before this module wires its listener, so the
+  // completion is checked here as well as on every session change. Spending the
+  // flag makes the pair idempotent.
+  completeSignIn();
 }
 
 /**
@@ -376,6 +442,7 @@ export function refreshAccount() {
   paintAuth();
   paintName();
   paintInvite();
+  paintPrivacy();
   // After paintInvite, so a welcome that pays out repaints over a panel that has
   // already been built rather than racing it.
   payWelcomeIfDue();
@@ -383,7 +450,12 @@ export function refreshAccount() {
   // a configured build — auth never changes otherwise, so the friendly
   // not-configured path never depends on a live client.
   if (isCloudConfigured() && !unsub) {
-    unsub = onCloudChange(() => { paintAuth(); paintName(); paintInvite(); });
+    unsub = onCloudChange(() => {
+      completeSignIn();
+      paintAuth();
+      paintName();
+      paintInvite();
+    });
   }
 }
 

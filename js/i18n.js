@@ -408,6 +408,22 @@ const STR = {
   'acct.nameSet':     { en: 'You are %s now.', es: 'Quedaste como %s.' },
   'acct.nameCleared': { en: 'Name cleared.', es: 'Nombre borrado.' },
 
+  // Gameplay stats. The copy says exactly what is collected and exactly what is
+  // not, because the whole reason the identity is a random id rather than a
+  // fingerprint is so this paragraph can be written honestly.
+  'acct.statsTitle':  { en: 'Gameplay stats', es: 'Estadísticas de juego' },
+  'acct.statsCopy':   { en: 'Anonymous counts — runs, scores, which buttons get used — '
+                          + 'tied to a random id, never to you. No trackers, no ad networks, '
+                          + 'nobody else gets it.',
+                        es: 'Conteos anónimos — carreras, puntajes, qué botones se usan — '
+                          + 'ligados a un id al azar, nunca a ti. Sin rastreadores, sin redes '
+                          + 'de anuncios, nadie más lo recibe.' },
+  'acct.statsLabel':  { en: 'Share anonymous gameplay stats',
+                        es: 'Compartir estadísticas anónimas' },
+  'acct.statsOn':     { en: 'Thanks — stats are on.', es: 'Gracias — estadísticas activadas.' },
+  'acct.statsOff':    { en: 'Stats are off on this device.',
+                        es: 'Estadísticas apagadas en este aparato.' },
+
   'acct.backupTitle': { en: 'Backup on this device', es: 'Respaldo en este aparato' },
   'acct.backupCopy':  { en: 'Download a backup file — it survives clearing your browser, '
                           + 'and you load it back on any device.',

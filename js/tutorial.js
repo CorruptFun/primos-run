@@ -25,6 +25,9 @@ import * as store from './store.js';
 // name would shadow it inside exactly the functions that need to translate.
 import { t as tr, onLangChange } from './i18n.js';
 import { drawTrainer, TRAINER_NAME } from './art/trainer.js';
+// Aliased-in for the same reason `t` is: `track` is already the name of a HUD
+// drawing helper imported above, and this file calls it three times.
+import { EVENTS, track as trackEvent } from './analytics.js';
 
 // Feet clearance at the top of a standing jump: v²/2g. Computed rather than
 // typed so the diagram cannot drift away from the physics it is teaching.
@@ -242,6 +245,7 @@ export function tutorialNeeded() {
 }
 
 export function startTutorial() {
+  trackEvent(EVENTS.TUTORIAL_START);
   T.active = true;
   T.step = 0;
   T.t = 0;
@@ -265,8 +269,24 @@ export function tutorialActive() {
  * Persists unconditionally, even if the tutorial was never started — a caller
  * that decides to skip training outright should get the same "never again"
  * guarantee as one that ran it to the end.
+ *
+ * @param {'done'|'skip'} [reason] how it ended. Only the SKIP pill passes
+ *   'skip'; every other exit — running the course out, the `go` step timing
+ *   out, a run ending underneath the overlay — is a completion.
  */
-export function finishTutorial() {
+export function finishTutorial(reason = 'done') {
+  // Gate the event on T.active, not on reaching here: this function is called
+  // twice on the ordinary path (updateTutorial() calls it, then main.js calls
+  // it again on the false return), and a tutorial that reports finishing twice
+  // makes its own funnel read over 100%.
+  if (T.active) {
+    trackEvent(reason === 'skip' ? EVENTS.TUTORIAL_SKIP : EVENTS.TUTORIAL_DONE, {
+      // WHICH step they bailed on is the only actionable thing here — it names
+      // the lesson that is not landing.
+      step: T.step,
+      steps: STEPS.length,
+    });
+  }
   T.active = false;
   forced = false;
   skipRect.w = 0;
@@ -351,7 +371,7 @@ export function tutorialTap(x, y) {
   const pad = 8;
   if (x < r.x - pad || x > r.x + r.w + pad) return false;
   if (y < r.y - pad || y > r.y + r.h + pad) return false;
-  finishTutorial();
+  finishTutorial('skip');
   return true;
 }
 

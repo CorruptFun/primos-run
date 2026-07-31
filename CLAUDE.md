@@ -2,6 +2,25 @@
 
 Endless runner down LA alleyways starring the Primos Solana NFT collection.
 Live repo: <https://github.com/CorruptFun/primos-run>
+Live game: <https://corrupt.solutions/games/primos/> (the canonical URL — see
+`js/referrals.js` for why it is hardcoded rather than built from `location`)
+
+## Long-form docs live in `docs/`
+
+This file is the guardrail — the things that have actually bitten. The reasoning
+is written down properly next door, and it is worth reading before a substantial
+change rather than re-deriving it:
+
+| doc | what's in it |
+|---|---|
+| `docs/BUILD_OVERVIEW.md` | architecture, boot order, render pipeline, the rig, the world generator |
+| `docs/GAME_DESIGN.md` | every rule and number, with the reasoning behind each |
+| `docs/CLOUD_AND_LEADERBOARDS.md` | cloud save, sign-in, boards, invites, the merge, migrations |
+| `docs/ANALYTICS.md` | the event pipe, the dashboard, what is collected and what is not |
+| `docs/GO_LIVE_CHECKLIST.md` | what must be true before and after a deploy |
+
+**Update them with the code.** A stale doc is worse than none — the last one to
+go stale here claimed 520 of 3,069 tokens for a day after full coverage landed.
 
 ## Do not assume
 
@@ -61,7 +80,9 @@ side, with a live oversized view and a real Primo loaded from IPFS. It
 cache-busts its imports on purpose — `python3 -m http.server` answers with
 `Last-Modified` and browsers reuse stale ES modules, which silently shows you
 the previous build. The game itself does NOT cache-bust, so clear the service
-worker (`primos-run-v1`) when testing there.
+worker (`primos-run-<CACHE_VERSION>`, whatever `sw.js` currently says) when
+testing there. `pwa-register.js` already skips registration on localhost, which
+covers the dev loop; a stale cache is a symptom of having tested on a deploy.
 
 ## Layout
 
@@ -81,6 +102,9 @@ worker (`primos-run-v1`) when testing there.
 | `js/referrals.js` | invite codes, `?ref=` capture, qualify + payout |
 | `js/merge.js`, `js/raceday.js` | pure: save reconciliation, day/week keys |
 | `js/account.js`, `js/boards.js` | the ACCOUNT and LEADERBOARD screens |
+| `js/analytics.js` | the event pipe — `track()`, crash telemetry, opt-out |
+| `js/version.js` | the build stamp. Bump WITH `sw.js`'s `CACHE_VERSION` |
+| `stats.html`, `js/stats/` | the admin analytics dashboard (never precached) |
 | `scripts/gen_art.py` | Gemini art generation + chroma key |
 | `scripts/make-icons.js` | PWA icons, zero dependencies |
 | `scripts/verify-rls.sh` | RLS audit — run after any migration |
@@ -174,16 +198,78 @@ the shipped original if you need to compare.
   them, because the qualify stamp goes up on the save push. That is the accepted
   simplification, not a bug.
 
+## Analytics (`js/analytics.js`, `stats.html`, migration `0003`)
+
+First-party, no third-party trackers. Ships dormant with the rest of the cloud
+layer. Built to the **`first-party-analytics` skill** — read it before changing
+anything here. Full write-up in `docs/ANALYTICS.md`.
+
+- **The `primos_` prefix is the whole safety, again, and worse than in 0002.**
+  Viva Maya owns UNPREFIXED `public.events`, `events_guard()`, `prune_events()`,
+  `app_admins` AND `admin_analytics()` in this same project. An unprefixed 0003
+  would have *silently* adopted its events table and **replaced its hardened
+  guard and RPC** — killing that game's event dedupe with no error anywhere.
+  Three collisions, none of which announce themselves.
+- **`primos_events` has an INSERT policy and NO SELECT POLICY, EVER.** An event
+  log is a per-device behavioural history; it is worse to leak than the board.
+  The migration ends with a self-check that refuses to apply if a select policy
+  exists. Read it through `primos_admin_analytics()`, which returns aggregates
+  only. Corollary: `Prefer: return=minimal` on the insert is *correctness* — ask
+  PostgREST to return the rows and it tries to read them back and fails the write.
+- **THE WIRE IS A PLAIN INSERT. The dedupe is in the guard TRIGGER.** The
+  idempotent shape every guide reaches for — `?on_conflict=event_id` +
+  `resolution=ignore-duplicates` — **cannot work here**: `ON CONFLICT` makes
+  Postgres require SELECT rights, so the rewriter folds the table's SELECT
+  policies in as an extra `WITH CHECK`; there are none, so it is a constant
+  false and every batch is `42501` → 401. **The error names no policy — that is
+  the tell.** No select policy can fix it (the check runs on the NEW row, so it
+  would have to be `using (true)`). Worse, it SUCCEEDS on a retry and fails only
+  on new data, because a conflict that fires inserts no row and never evaluates
+  the check — so a probe that reuses an event_id reports a false pass. Shipped
+  broken, caught by `verify-rls.sh` against production, fixed the same day.
+- **`js/hud.js` also exports a `track`** (a drawing helper). `js/tutorial.js`
+  imports both, so the analytics one is aliased `trackEvent` there. Getting this
+  wrong is silent — you draw a slider track instead of recording an event.
+- **`supabase db push` DOES NOT WORK from this repo, and its first failure mode
+  is silence.** `schema_migrations` is per-PROJECT, and Viva Maya + Turbo Maze
+  already own versions `0001`–`0022` there. A migration numbered `0003` looks
+  already-applied and is **skipped with a success message**. Number anything new
+  by TIMESTAMP. Then push refuses permanently ("remote versions not found
+  locally") because this repo will never hold the other games' files — that is
+  correct, not a problem to fix. **Never run the `migration repair --status
+  reverted` it suggests**: it would mark the other two games' migrations
+  reverted and make their next push re-apply twenty files. Apply with
+  `supabase db query --linked -f <file>` and record nothing.
+- **`EVENTS` is the one source of event names**, and the names 0003's funnels
+  filter on are asserted against it in `dev/cloud-test.html`. A misspelled step
+  renders as a permanently-zero funnel, which looks exactly like real data, and
+  there is no compile step here to catch it.
+- **A rate with a zero denominator is null, rendered "—", never 0%**, and D1/D7
+  count only cohorts whose day has fully elapsed. Both rules exist because the
+  wrong version puts a number on screen that looks like a measurement.
+- **`stats.html` and `js/stats/` are never precached, and `sw.js` skips them
+  outright** — players must not download the owner's tool, and without the skip
+  an offline `/stats.html` is answered with the *game*.
+- `window.__renderStats(payload)` renders the dashboard with no database behind
+  it — the panels are otherwise behind a Google sign-in and an `app_admins` row.
+  `stats.html` does not cache-bust, so re-import with `?v=Date.now()` when
+  iterating.
+
 ## Checks
 
 ES modules, so `node --check` needs an `.mjs` copy:
 
 ```bash
-for f in js/*.js js/art/*.js; do cp "$f" /tmp/x.mjs; node --check /tmp/x.mjs || echo "FAIL $f"; done
+for f in js/*.js js/art/*.js js/stats/*.js; do cp "$f" /tmp/x.mjs; node --check /tmp/x.mjs || echo "FAIL $f"; done
 ```
 
-`dev/cloud-test.html` asserts the pure half of the cloud layer — day/week keys,
-the merge, name sanitising — in the browser. Open it after touching
-`raceday.js`, `merge.js`, `store.js` or `leaderboard.js`.
+`dev/cloud-test.html` asserts every pure module in the browser — day/week keys,
+the merge, name sanitising, the analytics vocabulary pin and the dashboard's rate
+math. 164 assertions. Open it after touching `raceday.js`, `merge.js`,
+`store.js`, `leaderboard.js`, `referrals.js`, `analytics.js` or `js/stats/`.
 
-**Bump `CACHE_VERSION` in `sw.js` on every deploy** or players keep stale JS.
+**Bump `CACHE_VERSION` in `sw.js` on every deploy** or players keep stale JS —
+and bump `APP_VERSION` in `js/version.js` in the same commit. If they drift,
+`sw.js` is what players feel and `version.js` is what the dashboard reports, so
+errors get attributed to the wrong build: precisely the panel you reach for when
+something has just broken.

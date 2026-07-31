@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Harmless if found, and no reason to advertise the owner's tool. -->
+<meta name="robots" content="noindex, nofollow">
+<title>Primos: Barrio Run — stats</title>
+<link rel="icon" href="favicon.png">
+<style>
+/* Light and dark as custom properties, both validated against their surfaces.
+   The owner reads this on a phone at night as often as at a desk. */
+:root {
+  --bg: #f6f5f3;
+  --surface: #ffffff;
+  --surface-2: #f0eeeb;
+  --ink: #1b1a18;
+  --ink-2: #5f5b55;
+  --line: #dedad4;
+  --accent: #c8442b;
+  --good: #2f7d4f;
+  --bad: #b3341f;
+  --s1: #c8442b;
+  --s2: #2b6fc8;
+  --s3: #2f7d4f;
+  --s4: #b8860b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14130f;
+    --surface: #1e1c18;
+    --surface-2: #262320;
+    --ink: #f2efe9;
+    --ink-2: #a29c92;
+    --line: #35312b;
+    --accent: #ff7a5c;
+    --good: #6bd39a;
+    --bad: #ff8a70;
+    --s1: #ff7a5c;
+    --s2: #6ba8ff;
+    --s3: #6bd39a;
+    --s4: #ffc861;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding: 20px 16px 64px;
+  max-width: 1000px;
+  margin: 0 auto;
+  -webkit-text-size-adjust: 100%;
+}
+h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 15px; margin: 30px 0 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); }
+h3 { font-size: 14px; margin: 0 0 4px; }
+p { margin: 0 0 10px; }
+.note { color: var(--ink-2); font-size: 13px; margin: 0 0 8px; }
+.hidden { display: none !important; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+pre {
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+}
+
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+header .sub { color: var(--ink-2); font-size: 13px; }
+
+.toolbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 14px 0 18px; }
+button {
+  font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  cursor: pointer;
+}
+button:hover { border-color: var(--ink-2); }
+button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.spacer { flex: 1; }
+
+#view-stats.refetching { opacity: 0.55; transition: opacity 120ms; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.tile {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 2px;
+}
+.tile-label { font-size: 12px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; }
+.tile-value { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.tile-sub { font-size: 12px; color: var(--ink-2); }
+.tile-good .tile-sub { color: var(--good); }
+.tile-bad  .tile-value, .tile-bad .tile-sub { color: var(--bad); }
+
+.panel {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; padding: 14px; margin-top: 10px;
+}
+.chart { width: 100%; height: auto; display: block; overflow: visible; }
+.grid { stroke: var(--line); stroke-width: 1; }
+.axis { fill: var(--ink-2); font-size: 10px; font-family: inherit; }
+.line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--ink-2); }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.legend-dot { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+
+.bars { display: flex; flex-direction: column; gap: 4px; }
+.bar-row, .funnel-row { display: grid; grid-template-columns: 92px 1fr 56px; gap: 10px; align-items: center; }
+.funnel-row { grid-template-columns: 150px 1fr 56px 44px; }
+.bar-label, .funnel-label { font-size: 12px; color: var(--ink-2); }
+.bar-track { background: var(--surface-2); border-radius: 5px; height: 14px; overflow: hidden; }
+.bar-fill { background: var(--s1); height: 100%; border-radius: 0 5px 5px 0; min-width: 2px; }
+.bar-value { font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+.funnel-pct { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; text-align: right; }
+
+.funnels { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; }
+.funnel {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; padding: 14px;
+}
+
+.twin summary { cursor: pointer; font-size: 12px; color: var(--ink-2); padding: 4px 0; }
+/* Wide tables scroll INSIDE their own box. The five-column continue ladder does
+   not fit a phone, and the alternative is the whole page scrolling sideways —
+   which on a dashboard read one-handed is how a column gets missed entirely. */
+.twin { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; margin-top: 8px; font-size: 13px; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-2); font-weight: 600; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td:first-child { word-break: break-word; }
+
+.state { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 22px; margin-top: 20px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Primos: Barrio Run</h1>
+  <span class="sub">analytics · <span id="host"></span></span>
+</header>
+<p class="note" id="generated"></p>
+
+<div id="view-loading" class="state">Loading…</div>
+
+<div id="view-signin" class="state hidden">
+  <h3>Sign in</h3>
+  <p class="note">
+    This dashboard reads aggregates only, and only for accounts on the admin
+    list. Sign in with the owner Google account — the same session the game uses.
+  </p>
+  <button id="btn-signin" class="primary">Sign in with Google</button>
+</div>
+
+<div id="view-denied" class="state hidden">
+  <h3>Signed in, but not an admin</h3>
+  <p class="note">
+    The server refused the query. To grant this account, run the following in the
+    Supabase SQL editor — which only helps if you can already open it.
+  </p>
+  <pre id="denied-sql"></pre>
+  <button data-signout>Sign out</button>
+</div>
+
+<div id="view-error" class="state hidden">
+  <h3>Something went wrong</h3>
+  <p class="note" id="error-message"></p>
+  <button id="btn-retry">Try again</button>
+</div>
+
+<div id="view-stats" class="hidden">
+
+  <div class="toolbar">
+    <button data-days="7">7d</button>
+    <button data-days="14" class="on">14d</button>
+    <button data-days="30">30d</button>
+    <button data-days="90">90d</button>
+    <span class="spacer"></span>
+    <button id="btn-refresh">Refresh</button>
+    <button data-signout>Sign out</button>
+  </div>
+
+  <div class="tiles" id="kpis"></div>
+
+  <h2>Daily activity</h2>
+  <p class="note">Bucketed in UTC, matching the boards and the save's day map. Silent days are drawn as zero — the silence is the signal.</p>
+  <div class="panel">
+    <div id="chart-daily"></div>
+    <div id="table-daily"></div>
+  </div>
+
+  <h2>Retention</h2>
+  <p class="note">Only devices whose day 0 + N has fully elapsed count. A cohort that has not had its chance yet reads “—”, never 0%.</p>
+  <div class="tiles" id="retention"></div>
+
+  <h2>The run</h2>
+  <p class="note">Where runs actually end — the question this whole stack was built to answer.</p>
+  <div class="tiles" id="run-tiles"></div>
+  <div class="panel">
+    <div id="chart-scores"></div>
+    <div id="table-reasons"></div>
+  </div>
+
+  <h2>Funnels</h2>
+  <p class="note">Every denominator is a distinct-device count. A rate over event counts would measure enthusiasm, not conversion.</p>
+  <div class="funnels" id="funnels"></div>
+
+  <h2>La Tiendita</h2>
+  <div class="panel">
+    <div id="table-shop"></div>
+  </div>
+  <h2>The continue ladder</h2>
+  <p class="note">Which rung of 25 × 2ⁿ players actually pay at — a direct read on whether the doubling is priced right.</p>
+  <div class="panel">
+    <div id="table-continues"></div>
+  </div>
+
+  <h2>Client errors</h2>
+  <p class="note">Split by build. That column is what turns “something broke” into “this deploy broke it”.</p>
+  <div class="panel">
+    <div id="table-errors"></div>
+  </div>
+
+  <h2>Builds in the wild</h2>
+  <p class="note">The service worker is prompt-mode, so every other panel is unreadable without knowing who runs which code.</p>
+  <div class="panel">
+    <div id="table-versions"></div>
+  </div>
+
+  <h2>Every event name</h2>
+  <p class="note">Unfiltered, so a client-side typo and the guard's <code>unknown</code> bucket are visible rather than silently absent.</p>
+  <div class="panel">
+    <div id="table-names"></div>
+  </div>
+
+</div>
+
+<script type="module" src="./js/stats/main.js"></script>
+</body>
+</html>

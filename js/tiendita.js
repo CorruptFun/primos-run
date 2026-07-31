@@ -22,6 +22,7 @@ import { drawTrainer, loadTrainer } from './art/trainer.js';
 import { t, onLangChange } from './i18n.js';
 import * as wallet from './wallet.js';
 import * as sfx from './audio.js';
+import { EVENTS, track } from './analytics.js';
 
 // ---------------------------------------------------------------- the shelf
 
@@ -207,6 +208,9 @@ function shopOpen() {
 export function openShop(back) {
   shopBack = back || null;
   note('');
+  // The balance they walked in with. Whether the shelf is priced right is
+  // mostly a question about this number, not about what got bought.
+  track(EVENTS.SHOP_OPEN, { balance: wallet.balance() });
   hideScreens();
   $('screen-shop').classList.remove('hidden');
   renderShelf();
@@ -289,10 +293,18 @@ function attemptBuy(item) {
   const bought = wallet.buy(item.id, item.price);
   if (bought === null) {
     sfx.uiClick();
+    // A refusal is a price signal, not an error: `short` is exactly how far off
+    // the shelf is for the people who wanted something and could not have it.
+    track(EVENTS.SHOP_DENIED, {
+      item: item.id,
+      price: item.price,
+      short: Math.max(0, item.price - wallet.balance()),
+    });
     note(t('shop.denied'));
     renderShelf();
     return;
   }
+  track(EVENTS.SHOP_BUY, { item: item.id, price: item.price, left: bought.left });
   sfx.powerUp();
   note(t('shop.bought').replace('%s', t(item.name)));
   renderShelf();

@@ -41,6 +41,9 @@ const { mergeSaves } = await import(`../js/merge.js${V}`);
 const { anonName, sanitizeName } = await import(`../js/leaderboard.js${V}`);
 const { coerce } = await import(`../js/store.js${V}`);
 const { inviteLink } = await import(`../js/referrals.js${V}`);
+const { EVENTS } = await import(`../js/analytics.js${V}`);
+const { buildFunnel, coerceStats, fillDays, fillScoreBuckets, niceScale, rate, ratePct,
+        retentionRate, SCORE_BUCKET_LABELS } = await import(`../js/stats/model.js${V}`);
 
 const out = document.getElementById('out');
 let pass = 0, fail = 0;
@@ -335,6 +338,117 @@ group('invites — a referral code has to survive a hand-edited save');
 
 group('formatting');
 eq(formatWeekStanding(18204, 5), '18,204 · 5d', 'the total, then the turnout that explains it');
+
+// ---------------------------------------------------------------- analytics
+
+group('analytics — the vocabulary pin (the load-bearing one)');
+{
+  // THE POINT OF THIS BLOCK. Every funnel in the migration and every panel in
+  // stats.html is defined against a name. A misspelled one renders as a
+  // permanently-zero step, which on a dashboard is indistinguishable from a
+  // real 0% — and 0% conversion is exactly the sort of number someone acts on.
+  // There is no compile step in this project to catch it, so this is the catch.
+  //
+  // These are the names 0003_primos_analytics.sql filters on, written out as
+  // literals ON PURPOSE: importing them from EVENTS would make this assert that
+  // a thing equals itself. The literal side is the SQL's copy.
+  const inSql = [
+    'app_open', 'run_start', 'run_end',
+    'tutorial_start', 'tutorial_done', 'tutorial_skip',
+    'shop_open', 'shop_buy', 'shop_denied',
+    'continue_offer', 'continue_take', 'continue_decline',
+    'primo_open', 'primo_set',
+    'sign_in_start', 'sign_in_done',
+    'client_error',
+  ];
+  const declared = new Set(Object.values(EVENTS));
+  for (const name of inSql) {
+    eq(declared.has(name), true, `SQL filters on '${name}' and the client can send it`);
+  }
+
+  // The guard normalises anything that is not lower snake_case into a visible
+  // 'unknown' bucket, so a name that would be normalised is a name that will
+  // never match its own funnel again.
+  for (const [key, name] of Object.entries(EVENTS)) {
+    eq(/^[a-z][a-z0-9_]*$/.test(name) && name.length <= 40, true,
+       `EVENTS.${key} survives the guard's normalisation`);
+  }
+}
+
+group('analytics — a rate with no denominator is null, never zero');
+{
+  eq(rate(0, 0), null, '0/0 is "no data", not 0%');
+  eq(rate(5, 0), null, 'and so is anything over zero');
+  eq(rate(1, 4), 25, 'a real rate is a real number');
+  eq(ratePct(0, 0), '—', 'the renderer prints an em dash rather than a measurement');
+  eq(ratePct(1, 3), '33%', 'and rounds a real one');
+  eq(retentionRate({ eligible: 0, returned: 0 }), null,
+     'a cohort whose day has not elapsed reads null — folding it in drags every number down');
+  eq(retentionRate({ eligible: 8, returned: 2 }), 25, 'an elapsed cohort reads honestly');
+}
+
+group('analytics — the dashboard survives a server that predates it');
+{
+  // A partially-applied migration, an older RPC, or a network hiccup returning
+  // nonsense must degrade to EMPTY PANELS. A dashboard that throws on one
+  // missing key shows nothing at all, which is the worst possible answer.
+  const empty = coerceStats(null);
+  eq(empty.totals.devices, 0, 'null payload coerces to zeroes');
+  eq(empty.daily, [], 'and to empty lists');
+  eq(empty.funnels.shop.opened, 0, 'including panels the server has never heard of');
+  eq(coerceStats({ totals: 'nonsense', daily: 'nope' }).daily, [],
+     'a wrong TYPE degrades the same way a missing key does');
+  eq(coerceStats({ totals: { devices: '42' } }).totals.devices, 42, 'a numeric string still counts');
+  eq(coerceStats({ totals: { devices: 21.5 } }).totals.devices, 22,
+     'a forged float rounds rather than poisoning the panel');
+  eq(coerceStats({ counts: [{ name: 'x'.repeat(80), events: 1 }] }).counts[0].name.length, 40,
+     'a long name is capped on the way in, not on the way to the DOM');
+}
+
+group('analytics — funnels');
+{
+  const f = buildFunnel([
+    { label: 'opened', value: 100 },
+    { label: 'started', value: 40 },
+    { label: 'finished', value: 10 },
+  ]);
+  eq(f[0].fromPrev, null, 'the first step has nothing to convert from');
+  eq(f[1].fromPrev, 40, 'each step converts against the one before it');
+  eq(f[2].fromFirst, 10, 'and reports its share of the top of the funnel');
+  eq(f[2].share, 0.1, 'the bar width is that share');
+  eq(buildFunnel([]), [], 'an empty funnel is empty, not a crash');
+  const zero = buildFunnel([{ label: 'a', value: 0 }, { label: 'b', value: 0 }]);
+  eq(zero[1].fromPrev, null, 'zero over zero stays null all the way through');
+  eq(zero[1].share, 0, 'and the bar has no width rather than a NaN one');
+}
+
+group('analytics — score buckets and the day fill');
+{
+  // The SQL owns the bucket indices (width_bucket 0..5000 in 10 steps, which
+  // yields 0 for below-range and 11 for above), this file owns the labels. The
+  // count has to match or bucket 11 renders as '#11'.
+  eq(SCORE_BUCKET_LABELS.length, 12, 'ten buckets plus the under- and over-range ones');
+  eq(fillScoreBuckets([{ bucket: 2, runs: 7 }]).length, 12, 'the histogram is always full width');
+  eq(fillScoreBuckets([{ bucket: 2, runs: 7 }])[2].runs, 7, 'a reported bucket lands in its slot');
+  eq(fillScoreBuckets([{ bucket: 2, runs: 7 }])[3].runs, 0, 'and an absent one is a visible zero');
+  eq(fillScoreBuckets([{ bucket: 99, runs: 7 }])[0].runs, 0, 'an out-of-range bucket is dropped, not thrown');
+
+  // A silent day is the signal — a chart that skips it draws a smooth line
+  // straight through an outage.
+  const filled = fillDays([{ day: '2026-07-31', devices: 3 }], 3, '2026-07-31');
+  eq(filled.length, 3, 'the window is filled to its full width');
+  eq(filled.map((d) => d.day), ['2026-07-29', '2026-07-30', '2026-07-31'], 'in order, ending today');
+  eq(filled[0].devices, 0, 'a day with no events is drawn as zero');
+  eq(filled[2].devices, 3, 'and a real day keeps its number');
+}
+
+group('analytics — the axis');
+{
+  eq(niceScale(0).ticks, [0, 1], 'an all-zero chart still draws an axis');
+  eq(niceScale(7).max, 8, 'a max rounds up to something readable');
+  eq(niceScale(1000).max, 1000, 'a round number is left alone');
+  eq(niceScale(-5).ticks, [0, 1], 'and nonsense does not produce a negative axis');
+}
 
 const total = document.getElementById('total');
 total.className = fail === 0 ? 'pass' : 'fail';

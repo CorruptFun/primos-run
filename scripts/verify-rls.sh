@@ -147,6 +147,39 @@ else
   bad "anonymous DELETE removed rows" "$R"
 fi
 
+# --- the email oracle -------------------------------------------------------
+# primos_public_name(uid, submitted) answers "is this string that account's email
+# local-part?" — the submitted name back for no, 'Player XXXX' for YES. It is
+# SECURITY DEFINER so it can read auth.users.
+#
+# It shipped in 0001 WITHOUT a revoke, so Supabase's default left it executable
+# by PUBLIC — i.e. by anyone holding the publishable key, which is in the client.
+# The board is world-readable and every row carries a user_id, so that was a
+# dictionary attack on every player's real email local-part, one cheap REST call
+# per guess. Closed by 20260731173000. Measured: HTTP 200 before, 401 after.
+#
+# Paired with a control, because a function that does not exist is ALSO refused.
+echo
+echo "primos_public_name — must NOT be an email oracle"
+C="$(code -X POST "$REST/rpc/primos_public_name" -d "{\"uid\":\"$FAKE\",\"submitted\":\"guess\"}")"
+CTRLFN="$(code -X POST "$REST/rpc/primos_function_that_does_not_exist" -d '{}')"
+if [ "$C" = "$CTRLFN" ]; then
+  meh "anonymous EXECUTE refused (HTTP $C) — INCONCLUSIVE" \
+      "a nonexistent function answers HTTP $CTRLFN too — has 0001 been applied at all?"
+elif [ "$C" = "401" ] || [ "$C" = "403" ]; then
+  ok "anonymous EXECUTE denied (HTTP $C, vs HTTP $CTRLFN for a missing function)"
+else
+  bad "the email oracle is OPEN — anyone can test a name against any player's account" "HTTP $C"
+fi
+
+# The anonymous name is deliberately still public: it is derived from a user id
+# that is already printed on every board row. If this ever starts failing,
+# somebody over-tightened the revoke above.
+R="$(anon -X POST "$REST/rpc/primos_anon_display_name" -d '{"uid":"7f3a91b2-0000-4000-8000-000000000000"}')"
+[ "$R" = '"Player 7F3A"' ] \
+  && ok "primos_anon_display_name is public and byte-identical to the client's anonName()" \
+  || bad "the anonymous name drifted or was over-revoked — players would see two different names" "$R"
+
 # --- the rollup view --------------------------------------------------------
 echo
 echo "primos_weekly_totals — the derived season view"
@@ -200,6 +233,132 @@ elif [ "$C" = "401" ] || [ "$C" = "403" ]; then
 else
   bad "anonymous callers can resolve invite codes" "HTTP $C"
 fi
+
+# --- analytics: append-only, and readable by nobody --------------------------
+# The event log is the most sensitive thing in this project — a per-device
+# behavioural history, which is worse to leak than a board or an invite code.
+# 0003 grants INSERT and NO SELECT AT ALL, and these probes are what proves it
+# stayed that way. The write probe is not a formality either: analytics that
+# cannot be written by an anonymous visitor is analytics that is simply dead,
+# and that failure is invisible from the client, which swallows everything.
+echo
+echo "primos_events — append-only to the world"
+# `[]` IS THE SECURE ANSWER HERE, and this assertion is the right way round only
+# because of the control probe at the top of this script.
+#
+# anon holds the ordinary Supabase SELECT *grant*, so PostgREST does not refuse
+# the request — RLS simply filters every row away and the result is an empty
+# array. That is indistinguishable from "the table isn't there" on its own,
+# which is precisely why the control exists: a nonexistent table ERRORS, so an
+# empty array from a table that does exist means RLS did its job.
+#
+# An earlier version of this probe asserted the opposite and passed only while
+# the table was ABSENT (a 404 is not `[]`), then failed the moment the migration
+# was applied — green for the wrong reason, then red for the wrong reason.
+R="$(anon "$REST/primos_events?select=device_id,name,props")"
+[ "$R" = "[]" ] && ok "anonymous SELECT returns no rows (and the control proves that means RLS, not absence)" \
+                || bad "the event log answered something other than an empty set" "$R"
+
+EV="$(uuidgen 2>/dev/null | tr 'A-Z' 'a-z')"
+: "${EV:=22222222-2222-4222-8222-222222222222}"
+
+# THE PIPE ITSELF. A plain insert — the exact shape js/analytics.js sends.
+C="$(code -X POST "$REST/primos_events" -H 'Prefer: return=minimal' \
+     -d "[{\"device_id\":\"$FAKE\",\"session_id\":\"$FAKE\",\"name\":\"verify_probe\",\"props\":{},\"app_version\":\"verify\",\"event_id\":\"$EV\"}]")"
+{ [ "$C" = "201" ] || [ "$C" = "204" ]; } \
+  && ok "anonymous INSERT accepted (HTTP $C) — the pipe is alive" \
+  || bad "anonymous INSERT refused — analytics is DEAD, and the client cannot tell you" "HTTP $C"
+
+# Sent again, same event_id. Must be ACCEPTED (the guard trigger returns null
+# rather than raising) and must not create a second row. The row count is
+# unreadable from here by design, so the effect is reported inconclusive with
+# the exact query to settle it.
+C="$(code -X POST "$REST/primos_events" -H 'Prefer: return=minimal' \
+     -d "[{\"device_id\":\"$FAKE\",\"session_id\":\"$FAKE\",\"name\":\"verify_probe\",\"props\":{},\"app_version\":\"verify\",\"event_id\":\"$EV\"}]")"
+if [ "$C" = "201" ] || [ "$C" = "204" ]; then
+  meh "duplicate event_id accepted (HTTP $C) — INCONCLUSIVE" \
+      "accepted is only half of it; the dedupe is real only if the row count did not move, and this table refuses reads by design. Settle it with: select count(*) from public.primos_events where event_id = '$EV'; — it must be 1"
+else
+  bad "a re-sent event was rejected — the guard must DROP duplicates, not raise" "HTTP $C"
+fi
+
+# ⚠ THE INVERTED ASSERTION, and the one that cost a live bug.
+#
+# `?on_conflict=event_id` + `resolution=ignore-duplicates` is the idempotent
+# wire shape every guide reaches for, and js/analytics.js shipped it in its
+# first draft. It CANNOT work here: ON CONFLICT makes Postgres require SELECT
+# rights on the target, so the rewriter folds the table's SELECT policies in as
+# an extra WITH CHECK on the new row — there are none, so the check is a
+# constant false and every batch is refused 42501 → 401. The client dropped any
+# 4xx that was not 400, so every event was being silently discarded.
+#
+# So this probe asserts the shape is REFUSED. If it ever starts succeeding,
+# somebody has added a SELECT policy to the event log — which is the one change
+# that must never happen — and this line is where that shows up.
+#
+# ⚠ IT MUST USE A FRESH event_id, and that is not a detail. `ON CONFLICT DO
+# NOTHING` that actually CONFLICTS inserts no row, so the folded-in check never
+# evaluates and the request succeeds — the broken shape looks fine on a retry
+# and fails only on genuinely new events, i.e. on all real traffic. Reusing $EV
+# here made this probe report a false pass on 2026-07-31.
+EV2="$(uuidgen 2>/dev/null | tr 'A-Z' 'a-z')"
+: "${EV2:=44444444-4444-4444-8444-444444444444}"
+C="$(code -X POST "$REST/primos_events?on_conflict=event_id" \
+     -H 'Prefer: return=minimal,resolution=ignore-duplicates' \
+     -d "[{\"device_id\":\"$FAKE\",\"session_id\":\"$FAKE\",\"name\":\"verify_probe\",\"event_id\":\"$EV2\"}]")"
+{ [ "$C" = "401" ] || [ "$C" = "403" ]; } \
+  && ok "the ON CONFLICT wire shape is refused (HTTP $C) — no SELECT policy exists, as designed" \
+  || bad "ON CONFLICT succeeded, which means the event log now HAS a select policy" "HTTP $C"
+
+# Attributing an event to somebody else's account. The policy admits a null
+# user_id or auth.uid(); anonymously there is no auth.uid(), so a non-null one
+# must be refused.
+C="$(code -X POST "$REST/primos_events" \
+     -d "[{\"device_id\":\"$FAKE\",\"session_id\":\"$FAKE\",\"name\":\"forged\",\"user_id\":\"$FAKE\"}]")"
+{ [ "$C" = "401" ] || [ "$C" = "403" ] || [ "$C" = "400" ]; } \
+  && ok "anonymous INSERT with a forged user_id refused (HTTP $C)" \
+  || bad "events can be attributed to another account" "HTTP $C"
+
+echo
+echo "primos_app_admins — the whole authorization model for reads"
+R="$(anon "$REST/primos_app_admins?select=user_id")"
+[ "$R" = "[]" ] && bad "the admin list is readable — it must have RLS on and ZERO policies" "$R" \
+                || ok "anonymous SELECT is refused"
+
+echo
+echo "the read path — admin-gated, with a control pair"
+C="$(code -X POST "$REST/rpc/primos_admin_analytics" -d '{"p_days":7}')"
+CTRLFN="$(code -X POST "$REST/rpc/primos_function_that_does_not_exist" -d '{}')"
+if [ "$C" = "$CTRLFN" ]; then
+  meh "anonymous RPC refused (HTTP $C) — INCONCLUSIVE" \
+      "a nonexistent function answers HTTP $CTRLFN too, so this cannot tell a real permission denial from a missing function — has 0003 been applied?"
+elif [ "$C" = "401" ] || [ "$C" = "403" ]; then
+  ok "anonymous EXECUTE of primos_admin_analytics denied (HTTP $C, vs HTTP $CTRLFN for a missing function)"
+else
+  bad "anonymous callers can read the analytics aggregates" "HTTP $C"
+fi
+
+C="$(code -X POST "$REST/rpc/primos_prune_events" -d '{"keep_days":1}')"
+if [ "$C" = "$CTRLFN" ]; then
+  meh "anonymous prune refused (HTTP $C) — INCONCLUSIVE" \
+      "indistinguishable from the function being absent — has 0003 been applied?"
+elif [ "$C" = "401" ] || [ "$C" = "403" ]; then
+  ok "anonymous EXECUTE of primos_prune_events denied (HTTP $C)"
+else
+  bad "anonymous callers can DELETE the event log" "HTTP $C"
+fi
+
+# --- cross-game collision ----------------------------------------------------
+# Viva Maya lives in this same project and owns UNPREFIXED events / app_admins /
+# admin_analytics / prune_events. If 0003 had shipped unprefixed it would have
+# adopted its table and REPLACED its hardened guard and RPC, silently. This
+# probe cannot see into the database, but it can prove the prefixed objects are
+# the ones actually answering — the two above already did that.
+echo
+echo "note: Viva Maya owns the UNPREFIXED public.events in this same project."
+echo "      Every object 0003 creates is primos_-prefixed for that reason. If a"
+echo "      future migration drops the prefix, it will not fail — it will"
+echo "      silently take over that game's analytics. Check the prefix by eye."
 
 # --- the guard --------------------------------------------------------------
 # Not RLS, but what the board's fairness actually rests on. Both of these have
