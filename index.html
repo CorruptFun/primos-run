@@ -15,21 +15,30 @@
 
 <!-- Share cards. Absolute URLs on purpose: Slack, Discord, iMessage and X all
      resolve og:image against their own host, not the page's, so a relative path
-     silently yields no preview at all. -->
+     silently yields no preview at all.
+     The IMAGE stays on the always-warm Pages origin, never the corrupt.solutions
+     proxy: X fetches it exactly once, on a tight timeout, at post time, and a
+     serverless cold start loses that race — after which X caches the imageless
+     card per URL and it is stuck there for days.
+     og:url is the canonical corrupt.solutions path so the card is credited to
+     the branded domain and one URL owns the card identity. -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Primos: Barrio Run">
 <meta property="og:title" content="Primos: Barrio Run">
 <meta property="og:description" content="An endless run through Los Angeles alleyways. Grab chelas, eat tacos, dodge the checkpoints, outrun ICE.">
-<meta property="og:url" content="https://corruptfun.github.io/primos-run/">
-<meta property="og:image" content="https://corruptfun.github.io/primos-run/icon-512.png">
-<meta property="og:image:width" content="512">
-<meta property="og:image:height" content="512">
-<meta property="og:image:alt" content="The Primos mark — a face in shades and a bandana.">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://corrupt.solutions/games/primos/">
+<!-- A dedicated 1200x630 banner, not the square app icon: at `summary` size the
+     card is a thumbnail beside text, which reads as an afterthought in a feed. -->
+<meta property="og:image" content="https://corruptfun.github.io/primos-run/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Primos: Barrio Run — the Primos mark over Los Angeles · 3 lanes · no brakes.">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Primos: Barrio Run">
 <meta name="twitter:description" content="An endless run through Los Angeles alleyways. Grab chelas, eat tacos, dodge the checkpoints, outrun ICE.">
-<meta name="twitter:image" content="https://corruptfun.github.io/primos-run/icon-512.png">
-<link rel="canonical" href="https://corruptfun.github.io/primos-run/">
+<meta name="twitter:image" content="https://corruptfun.github.io/primos-run/og-image.png">
+<meta name="twitter:image:alt" content="Primos: Barrio Run — the Primos mark over Los Angeles · 3 lanes · no brakes.">
+<link rel="canonical" href="https://corrupt.solutions/games/primos/">
 
 <link rel="stylesheet" href="css/style.css">
 </head>
