@@ -54,7 +54,11 @@
 const V = `?t=${Date.now()}`;
 const { PROP_DRAW, PROP_SPEC } = await import(`../js/art/props.js${V}`);
 
-const POWERS = ['magnet', 'chancla', 'lowrider'];
+// Keyed off PROP_SPEC rather than written out, so the rename that turned
+// `lowrider` into `skateboard` cannot silently blank a column again — this list
+// said `lowrider` for three releases and the third powerup just drew nothing,
+// on the one page whose whole job is judging whether it can be told apart.
+const POWERS = Object.keys(PROP_SPEC).filter(t => PROP_SPEC[t].kind === 'power');
 const PICKUPS = ['beer', 'taco', ...POWERS];
 const OBSTACLES = ['checkpoint', 'border', 'copcar', 'dumpster', 'crates', 'cones',
                    'clothesline', 'awning'];

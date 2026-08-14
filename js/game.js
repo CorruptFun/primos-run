@@ -440,7 +440,21 @@ export class Game {
     const k = Math.max(0, Math.min(1, gap / (DRONE.spawnAhead * 0.6)));
     d.y = DRONE.height + (DRONE.hover - DRONE.height) * k;
 
-    if (!d.resolved && Math.abs(gap) < 0.6) {
+    // THE PASS IS AN EVENT, NOT A WINDOW. This used to ask whether the drone
+    // was within 0.6u of the player on the frame it was sampled — and the
+    // drone closes at DRONE.approach PLUS the player's own speed, ~58 u/s by
+    // the time it first launches. That is 1.45u of travel in a 40fps frame
+    // against a 1.2u window, so below ~45fps the hull stepped clean over the
+    // player and the strike was never tested: the drone became decoration,
+    // and `drones` counted the non-event as a dodge that fed a jale.
+    //
+    // Testing the CROSSING instead is frame-rate independent by construction —
+    // gap goes from positive to non-positive exactly once per pass, whatever
+    // the step size. `resolved` is then latched whatever the outcome, so the
+    // pass is judged once, at the moment the drone reaches the player, and a
+    // late drift back into the lane cannot be struck by a hull already behind.
+    if (!d.resolved && gap <= 0) {
+      d.resolved = true;
       const inLane = Math.abs(d.x - p.x) < (DRONE.w + HITBOX.w) * 0.5;
       const under = p.y + (p.sliding ? HITBOX.slideH : HITBOX.standH) <= DRONE.height + 0.02;
       if (inLane && !under && this.invuln <= 0) {
@@ -458,7 +472,6 @@ export class Game {
           d.next = this.time + DRONE.interval + Math.random() * DRONE.intervalJitter;
           return;
         }
-        d.resolved = true;                    // one strike per pass, clipped and gone
       }
     }
 
@@ -490,6 +503,19 @@ export class Game {
     const p = this.player;
     const playerH = p.sliding ? HITBOX.slideH : HITBOX.standH;
     const magnetOn = this.power.magnet > 0;
+    // Half the ground covered this frame. The z test below is a snapshot of
+    // where things are NOW, so a prop is only ever caught if a frame happens to
+    // land while it is inside the window — and at RUN.maxSpeed a frame at the
+    // dt clamp (1/20) advances 1.65u through a 1.55u window. The prop is passed
+    // through untouched: the crash that never lands flatters the player, but
+    // the BEER that never lands reads as the game refusing a pickup you drove
+    // straight into, which is the same complaint the lane-weave spacing exists
+    // to prevent. Floor the window at the step so nothing can pass between two
+    // frames. At any healthy frame rate this term is smaller than the window it
+    // is compared against and the collision box is exactly what it always was —
+    // 0.28u at 60fps against a 0.70u half-window — so feel is untouched and
+    // only a device already dropping frames sees any difference at all.
+    const sweep = this.speed * dt * 0.5;
 
     for (const o of this.world.objects) {
       if (o.dead) continue;
@@ -509,7 +535,7 @@ export class Game {
       }
 
       const depth = DEPTH[o.kind] || 0.5;
-      if (Math.abs(dz) > depth + HITBOX.depth * 0.5) continue;
+      if (Math.abs(dz) > Math.max(depth + HITBOX.depth * 0.5, sweep)) continue;
       if (Math.abs(o.x - p.x) > (o.w + HITBOX.w) * 0.5) continue;
 
       if (o.kind === 'pickup' || o.kind === 'power') {

@@ -141,11 +141,20 @@ so the drone introduces itself before it escalates.
 | `approach` | +30 u/s closing on top of the player's own speed |
 | `height` | 1.12u hull underside — a slide (0.72u) clears it |
 
-Three rules keep a homing enemy inside the fair-by-construction promise:
+Four rules keep a homing enemy inside the fair-by-construction promise:
 
 - **Time-gated, never distance-gated** — the pacing chapter's scar, applied:
   distance accelerates, so anything keyed on metres arrives faster every
   minute the player survives.
+- **The pass is judged as a CROSSING, not sampled as a window.** The drone
+  closes at `approach` *plus* the player's own speed — about 58 u/s when it
+  first launches — so the frame that should catch it advances 1.45u at 40fps
+  through what used to be a 1.2u test window. Below roughly 45fps the hull
+  stepped clean over the player and no strike was ever tested: the drone was
+  decoration on exactly the devices least able to render it, and `drones`
+  counted the non-event as a dodge that fed a jale. It now resolves on the
+  frame `gap` first goes non-positive, which happens exactly once per pass at
+  any step size.
 - **The lane locks when the WARNING starts and never retargets.** Changing
   lanes always dodges. The searchlight is gameplay information, not
   decoration — it stands on the exact lane the dive will come down.

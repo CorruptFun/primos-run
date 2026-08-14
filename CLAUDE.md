@@ -67,6 +67,19 @@ go stale here claimed 520 of 3,069 tokens for a day after full coverage landed.
   dark oval is another face, and drawn before the hair the hair covers the half
   that says "this hangs off an ear".
 
+- **A COLLISION TEST THAT SAMPLES A WINDOW IS FRAME-RATE DEPENDENT, AND THIS
+  GAME MOVES FAST ENOUGH FOR THAT TO MATTER.** The drone shipped asking whether
+  it was within 0.6u of the player on the frame it was sampled, while closing at
+  `DRONE.approach` *plus* the player's own speed — ~58 u/s. That is 1.45u of
+  travel in a 40fps frame against a 1.2u window, so **below ~45fps the drone
+  could not hit anyone**, and `drones` scored the non-event as a dodge feeding a
+  jale. It is a crossing test now (`gap <= 0`, latched once per pass), which is
+  correct at any step size. `collide()` has the same exposure at the `dt` clamp
+  (1/20 against a 1.55u prop window at `RUN.maxSpeed`) and floors its z window at
+  the distance covered that frame — the term is inert above ~24fps, so feel is
+  untouched. `scripts/verify-chunks.mjs` prints the geometry these depend on; any
+  new hazard that moves toward the player needs the same treatment.
+
 - **Checkpoints, border walls and cruisers cannot be jumped, by design.** Their
   heights are set above the jump apex deliberately (`RUN.jumpV` in `config.js`,
   and the comment on `PROP_SPEC` in `js/art/props.js`). Lane changes are the
@@ -158,8 +171,26 @@ go stale here claimed 520 of 3,069 tokens for a day after full coverage landed.
 
 ## Run it
 
-`.claude/launch.json` (in `~/Creative/`) → entry `primos-run`, port 4177.
-Use the preview tools, not `python3` in a Bash call.
+`.claude/launch.json` — **this repo's own, which overrides the one in
+`~/Creative/`** — entry `primos-run`, port 4177. Use the preview tools, not
+`python3` in a Bash call.
+
+**That entry must invoke `scripts/dev-server.py`, and it silently did not.** It
+was `python3 -m http.server 4177` — the exact stock server the harness section
+below warns about — so *every* session in this repo was served heuristically
+cacheable ES modules and shown the previous build after an edit. It cost a
+debugging session: a verified-correct fix kept reproducing the bug, because the
+page was still running the pre-edit module while `curl` and `fetch` both
+returned the new file. **The tell is `Last-Modified` with no `Cache-Control`:**
+
+```bash
+curl -sI http://localhost:4177/js/game.js | grep -i "cache-control\|last-modified"
+```
+
+`no-store` and no `Last-Modified` means `dev-server.py`. Anything else means
+something is squatting the port — check `lsof -nP -iTCP:4177 -sTCP:LISTEN`
+before you debug a single line of code. A stray server from an earlier session
+outlives that session and wins the port.
 
 ## Iterate on the character in the harness, not in-game
 
@@ -217,6 +248,7 @@ of having tested on a deploy.
 | `scripts/gen_art.py` | Gemini art generation + chroma key |
 | `scripts/make-icons.js` | PWA icons, zero dependencies |
 | `scripts/verify-rls.sh` | RLS audit — run after any migration |
+| `scripts/verify-chunks.mjs` | alley fairness audit — the authoring rules, enforced |
 
 ## El fit, la racha and los jales (the retention loop)
 
@@ -520,11 +552,32 @@ ES modules, so `node --check` needs an `.mjs` copy:
 for f in js/*.js js/art/*.js js/stats/*.js; do cp "$f" /tmp/x.mjs; node --check /tmp/x.mjs || echo "FAIL $f"; done
 ```
 
+`scripts/verify-chunks.mjs` enforces the alley's authoring rules, which until
+now lived only in a doc comment and had been broken by hand twice:
+
+```bash
+node scripts/verify-chunks.mjs
+```
+
+Rows ≥8u apart and ≥9u across a verb change, no row shutting all three lanes, no
+lane demanding a jump and a slide at once, no pickup out of reach or parked
+inside a dodge prop — plus the geometry the verbs rest on (jump apex vs every
+`jump` prop, slide box vs every `slide` prop, drone strike height between the
+two). It exits non-zero, so it can gate a deploy. Run it after touching `CHUNKS`,
+`PROP_SPEC`, `RUN`, `HITBOX` or `DRONE`. **The 2-lane-move warnings are known and
+deliberate** — `zigzag-walls` is named for what it does — but a NEW one means a
+tier-3 pattern got tighter than anything that shipped.
+
 `dev/cloud-test.html` asserts every pure module in the browser — day/week keys,
 the merge, name sanitising, the analytics vocabulary pin, the feedback bounds and
-sanitisers, and the dashboard's rate math. 196 assertions. Open it after touching
+sanitisers, and the dashboard's rate math. 255 assertions. Open it after touching
 `raceday.js`, `merge.js`, `store.js`, `leaderboard.js`, `referrals.js`,
 `analytics.js`, `feedback.js` or `js/stats/`.
+
+`window.__step(n, dt)` / `window.__draw()` on the game page are the seam for
+driving the run headlessly at a CHOSEN frame rate — which is how the drone bug
+was caught and how any future collision change should be checked. Stepping at
+`dt = 1/20` and `1/60` and getting different outcomes is the whole signal.
 
 **Bump `CACHE_VERSION` in `sw.js` on every deploy** or players keep stale JS —
 and bump `APP_VERSION` in `js/version.js` in the same commit. If they drift,

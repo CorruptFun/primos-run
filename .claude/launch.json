@@ -2,9 +2,15 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "//": "MUST be dev-server.py, never `python3 -m http.server`. The stock",
+      "//2": "server answers with Last-Modified and no Cache-Control, so the",
+      "//3": "browser heuristically caches every ES module: you edit a file,",
+      "//4": "reload, and are shown the PREVIOUS build with nothing in the",
+      "//5": "console. This entry WAS the stock server, and it silently cost a",
+      "//6": "debugging session — the fix looked like it had not worked.",
       "name": "primos-run",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4177"],
+      "runtimeArgs": ["scripts/dev-server.py", "4177"],
       "port": 4177
     }
   ]

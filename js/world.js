@@ -436,18 +436,24 @@ const CHUNKS = [
   // ---- tier 3: no mercy ---------------------------------------------------
   {
     // The wall->duck step was 7u, under the house minimum and with a verb
-    // change across it. Every row here is 8u apart now.
+    // change across it. It went to 8u — which fixed the outright violation and
+    // missed the second half of the same rule: 8 is the floor for a row that
+    // asks for the SAME verb again, and every step in this chunk changes it
+    // (wall -> duck -> wall -> hop). At tier 3 the stretch is 1.82, so 8u is
+    // 0.44s at top speed and a quarter of that is gone to reaction alone. Every
+    // row is 9u apart now, which is what the rule at the top of this file has
+    // said the whole time. Strictly more reaction time, so nothing gets harder.
     id: 'the-corridor', tier: 3, len: 41, weight: 4, density: 'dense',
     items: [
       { t: 'border', lane: -1, dz: 8 }, { t: 'border', lane: 0, dz: 8 },
-      { t: 'clothesline', lane: 1, dz: 16 },
-      { t: 'checkpoint', lane: 1, dz: 24 }, { t: 'checkpoint', lane: 0, dz: 24 },
-      { t: 'dumpster', lane: -1, dz: 32 }, { t: 'dumpster', lane: 0, dz: 32 },
-      { t: 'dumpster', lane: 1, dz: 32 },
-      { t: 'beer', lane: 1, dz: 8 }, { t: 'beer', lane: 1, dz: 15.6, y: 0.42 },
-      { t: 'beer', lane: -1, dz: 24 }, { t: 'beer', lane: -1, dz: 25.6 },
-      { t: 'beer', lane: -1, dz: 31, y: 1.1 }, { t: 'beer', lane: -1, dz: 32.4, y: 1.5 },
-      { t: 'taco', lane: 0, dz: 38 },
+      { t: 'clothesline', lane: 1, dz: 17 },
+      { t: 'checkpoint', lane: 1, dz: 26 }, { t: 'checkpoint', lane: 0, dz: 26 },
+      { t: 'dumpster', lane: -1, dz: 35 }, { t: 'dumpster', lane: 0, dz: 35 },
+      { t: 'dumpster', lane: 1, dz: 35 },
+      { t: 'beer', lane: 1, dz: 8 }, { t: 'beer', lane: 1, dz: 16.6, y: 0.42 },
+      { t: 'beer', lane: -1, dz: 26 }, { t: 'beer', lane: -1, dz: 27.6 },
+      { t: 'beer', lane: -1, dz: 34, y: 1.1 }, { t: 'beer', lane: -1, dz: 35.4, y: 1.5 },
+      { t: 'taco', lane: 0, dz: 39 },
     ],
   },
   {
@@ -462,17 +468,21 @@ const CHUNKS = [
     ],
   },
   {
+    // The cop row shuts two lanes and the cone row then asks for a jump, so
+    // that step changes the verb and owes 9u rather than 8. The rows after it
+    // ask for the same lane again, so 8 is the floor there and they stay put —
+    // this is one unit of air in one place, not a re-tune of the pattern.
     id: 'full-send', tier: 3, len: 36, weight: 3, density: 'dense',
     items: [
       { t: 'awning', lane: -1, dz: 7 }, { t: 'awning', lane: 0, dz: 7 },
       { t: 'awning', lane: 1, dz: 7 },
       { t: 'copcar', lane: -1, dz: 15 }, { t: 'copcar', lane: 0, dz: 15 },
-      { t: 'cones', lane: 1, dz: 23 }, { t: 'cones', lane: 0, dz: 23 },
-      { t: 'border', lane: 1, dz: 31 }, { t: 'border', lane: 0, dz: 31 },
+      { t: 'cones', lane: 1, dz: 24 }, { t: 'cones', lane: 0, dz: 24 },
+      { t: 'border', lane: 1, dz: 32 }, { t: 'border', lane: 0, dz: 32 },
       { t: 'beer', lane: 0, dz: 6.6, y: 0.42 },
       { t: 'beer', lane: 1, dz: 15 }, { t: 'beer', lane: 1, dz: 16.6 },
-      { t: 'beer', lane: -1, dz: 22.6, y: 1.0 },
-      { t: 'beer', lane: -1, dz: 31 },
+      { t: 'beer', lane: -1, dz: 23.6, y: 1.0 },
+      { t: 'beer', lane: -1, dz: 32 },
     ],
   },
   {
