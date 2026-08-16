@@ -502,6 +502,17 @@ in `docs/NFT_GATE.md` — read it before touching any of this.
   `public.game_saves` owned by another game — it must not grow Primos-specific
   policies. It is the seam for the day the board shows which Primo ran, which is
   the only surface where exclusivity is publicly observable.
+- **`scripts/verify-gate.mjs` pins the grouping filter, and it is the one place
+  in this project where a wrong answer is a security bug** rather than a
+  cosmetic one: too strict refuses every genuine holder, too loose opens the
+  gate for the price of a counterfeit mint. It runs offline against fixtures —
+  `scripts/probe-gate.mjs <wallet>` is the same logic against a real key. Both
+  are TWINS of `countPrimos()`/`tokenNumber()` in the Edge Function and must not
+  drift; they cannot be shared, because that one is Deno and these are Node with
+  no build step between them (same situation as `raceday.js` and its SQL copy).
+- **DAS omits `verified` when it is TRUE.** So absence must not read as false —
+  getting that backwards refuses every holder in the collection. Only an
+  explicit `verified: false` is a counterfeit.
 - `dev/gate-test.html` covers the client half with no wallet and no backend. It
   cannot test the part that matters, and says so at the top.
 

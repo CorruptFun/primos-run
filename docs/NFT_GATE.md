@@ -98,6 +98,25 @@ existing policy, so it is safe under the current ungated client.
 
 ### 2. Get an RPC endpoint that speaks DAS
 
+**Try the key before you build anything on it:**
+
+```bash
+SOLANA_RPC_URL='https://mainnet.helius-rpc.com/?api-key=<KEY>' \
+  node scripts/probe-gate.mjs <a-wallet-that-holds-a-primo>
+```
+
+It reports whether the endpoint speaks DAS, lists every collection that wallet
+holds, and prints the verdict the gate would reach plus the token numbers that
+become "yours and yours only". Nothing needs deploying. Run
+`node scripts/verify-gate.mjs` alongside it — that pins the same filter against
+fixtures, offline.
+
+⚠ Pass the key in the **environment**, never as an argument: arguments are
+visible in `ps` to every process on the machine and land in shell history.
+
+#### Which provider
+
+
 Helius, Triton or QuickNode. The **public `api.mainnet-beta.solana.com` will not
 work** — it does not implement `getAssetsByOwner`, which is the call that answers
 "does this wallet hold a Primo" in one request instead of one per NFT.
