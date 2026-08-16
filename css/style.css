@@ -2117,3 +2117,13 @@ h2 {
   margin: 14px 0 10px;
 }
 .gate-wallets:empty { margin: 0; }
+
+/* A Primo somebody else holds. Dimmed and desaturated rather than hidden — the
+   browser stays a shop window for the whole collection (same reasoning as the
+   leaderboard's open read policy), it just will not let you wear one that is
+   not yours. Muted the same way .broke greys out an item you cannot afford. */
+.primo-tile.locked {
+  filter: grayscale(1);
+  opacity: 0.42;
+  cursor: not-allowed;
+}

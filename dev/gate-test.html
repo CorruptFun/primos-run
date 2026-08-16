@@ -74,6 +74,56 @@ ok('a stubbed Phantom is found', found.length === 1 && found[0].id === 'phantom'
 window.phantom = { solana: { connect: async () => ({ publicKey: 'X' }) } };   // no signMessage
 ok('a half-injected provider is not offered', gate.available().length === 0);
 
+// ---- ownership: the "theirs and theirs only" half
+// A pass is base64url(payload).base64url(hmac); ownedTokens() reads the SIGNED
+// payload, not the convenience copy beside it. This forges a payload to prove
+// the reader works — it cannot forge the hmac, which is the whole point.
+const mkPass = (tokens) => {
+  const payload = btoa(JSON.stringify({ w: 'W', n: tokens.length, t: tokens, exp: Date.now() + 60000 }))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `${payload}.signaturewouldgohere`;
+};
+const putPass = (tokens, extra = {}) => localStorage.setItem('primos-run:gate-pass',
+  JSON.stringify({ wallet: 'W', pass: mkPass(tokens), count: tokens.length,
+    exp: Date.now() + 60000, ...extra }));
+
+putPass([4, 2933]);
+ok('reads the owned list out of the signed payload',
+  JSON.stringify(gate.ownedTokens()) === '[4,2933]', JSON.stringify(gate.ownedTokens()));
+
+// ⚠ The gate is OFF in the repo, so owns() must say yes to everything — the
+// ungated game has always let any Primo be worn and must keep doing so.
+ok('gate off: every Primo is wearable', gate.owns(7) === true && gate.owns(2933) === true);
+
+// Token 0 exists (the collection is 0..3068) and must not be lost to falsiness.
+putPass([0]);
+ok('token #0 survives the round trip',
+  gate.ownedTokens().length === 1 && gate.ownedTokens()[0] === 0,
+  JSON.stringify(gate.ownedTokens()));
+
+// Out-of-range and non-integer entries are dropped rather than trusted.
+localStorage.setItem('primos-run:gate-pass', JSON.stringify({
+  wallet: 'W', count: 9, exp: Date.now() + 60000,
+  pass: btoa(JSON.stringify({ w: 'W', t: [5, 3069, -1, 'x', 1.5, 3068], exp: 0 }))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') + '.sig',
+}));
+ok('out-of-range and junk token numbers are dropped',
+  JSON.stringify(gate.ownedTokens()) === '[5,3068]', JSON.stringify(gate.ownedTokens()));
+
+// A pass that cannot be parsed yields NO Primos, and must not throw.
+localStorage.setItem('primos-run:gate-pass',
+  JSON.stringify({ wallet: 'W', pass: 'not.a.pass', count: 1, exp: Date.now() + 60000 }));
+ok('an unreadable pass owns nothing, and does not throw', gate.ownedTokens().length === 0);
+ok('...but the player is still let in', gate.storedPass() !== null);
+
+// The convenience copy must NOT be what ownership is read from.
+putPass([4], { tokens: [1, 2, 3, 2933] });
+ok('a tampered convenience copy does not grant ownership',
+  JSON.stringify(gate.ownedTokens()) === '[4]', JSON.stringify(gate.ownedTokens()));
+
+localStorage.removeItem('primos-run:gate-pass');
+ok('no pass owns nothing', gate.ownedTokens().length === 0);
+
 document.getElementById('out').textContent = log.join('\n');
 window.__done = true;
 window.__fails = log.filter((l) => l.startsWith('FAIL')).length;

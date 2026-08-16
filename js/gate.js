@@ -96,10 +96,14 @@ export function storedPass() {
   }
 }
 
-function keepPass(wallet, pass, exp, count) {
+function keepPass(wallet, pass, exp, count, tokens) {
   try {
     localStorage.setItem(PASS_KEY, JSON.stringify({
       wallet, pass, count,
+      // The owned-token list, mirrored out of the signed pass for cheap reads.
+      // The PASS is the authority — this copy is a convenience, and ownedTokens()
+      // below re-reads it from the signed payload rather than trusting this.
+      tokens: Array.isArray(tokens) ? tokens : [],
       // Never trust the server's expiry past our own ceiling: a bug or a
       // tampered response that hands out a ten-year pass must not become a
       // permanent bypass on this device.
@@ -223,8 +227,12 @@ export async function verify(wallet, accessToken) {
   }
   if (!out.body.holder) return { ok: true, holder: false, count: 0, address };
 
-  keepPass(address, out.body.pass, Date.parse(out.body.expiresAt) || (Date.now() + PASS_TTL_MS), out.body.primoCount);
-  return { ok: true, holder: true, count: out.body.primoCount || 0, address };
+  keepPass(address, out.body.pass, Date.parse(out.body.expiresAt) || (Date.now() + PASS_TTL_MS),
+    out.body.primoCount, out.body.tokens);
+  return {
+    ok: true, holder: true, count: out.body.primoCount || 0, address,
+    tokens: Array.isArray(out.body.tokens) ? out.body.tokens : [],
+  };
 }
 
 /**
@@ -242,4 +250,53 @@ export function open() {
 export function holder() {
   const p = storedPass();
   return p ? { wallet: p.wallet, count: p.count || 0, exp: p.exp } : null;
+}
+
+// ------------------------------------------------------------- what is yours
+//
+// ⚠ READ OUT OF THE SIGNED PAYLOAD, not out of the convenience copy beside it.
+//
+// The pass is `base64url(payload).base64url(hmac)`, and the payload carries the
+// owned-token list. Reading it here means the list the game trusts is the list
+// the Edge Function signed — a console can still overwrite the whole pass, but
+// it cannot EDIT one, and the difference matters: editing is what someone would
+// do to add a Primo they do not hold to a pass that is otherwise genuine.
+//
+// The HMAC itself is deliberately not checked here. It cannot be — the secret
+// is the server's — and pretending otherwise would be theatre. What this buys is
+// that every path in the game reads ownership from one signed place instead of
+// from a field anyone can append to.
+
+/**
+ * The token numbers this device's pass says the wallet holds.
+ * @returns {number[]} empty when the gate is off, or there is no pass.
+ */
+export function ownedTokens() {
+  const p = storedPass();
+  if (!p || typeof p.pass !== 'string') return [];
+  try {
+    const [payload] = p.pass.split('.');
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    const body = JSON.parse(json);
+    const list = Array.isArray(body?.t) ? body.t : [];
+    return list.filter((n) => Number.isInteger(n) && n >= 0 && n < 3069);
+  } catch {
+    // A pass we cannot read is a pass we do not honour for ownership. The
+    // player still gets in — open() only needs it to exist and be unexpired —
+    // they just get no Primos offered, which is recoverable by verifying again
+    // rather than being locked out of the game.
+    return [];
+  }
+}
+
+/**
+ * May this device run as this Primo?
+ *
+ * With the gate off this is always true, which is what keeps the picker and the
+ * browser free of `if (GATE_ENABLED)` — the ungated game behaves exactly as it
+ * always has, where any Primo may be worn.
+ */
+export function owns(n) {
+  if (!enabled()) return true;
+  return ownedTokens().includes(Number(n));
 }

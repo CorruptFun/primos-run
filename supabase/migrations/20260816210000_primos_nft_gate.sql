@@ -125,9 +125,22 @@ create table if not exists public.primos_holders (
     -- asked and was turned away.
     primo_count  integer not null default 0 check (primo_count >= 0),
 
+    -- WHICH Primos, not just how many. This is the ownership registry, and it
+    -- needs no uniqueness constraint of its own: the chain already guarantees
+    -- exactly one holder per NFT, so two players cannot both end up owning
+    -- #2933 unless the chain says so. data/primo-claims.json — the hand-edited
+    -- list of editorial corrections — exists precisely because this column did
+    -- not, and is superseded by it wherever the gate is on.
+    tokens       integer[] not null default '{}',
+
     first_seen   timestamptz not null default now(),
     verified_at  timestamptz not null default now()
 );
+
+-- Additive and defaulted, so re-running this file over an earlier install costs
+-- nothing and rows written before the column existed read as "none known".
+alter table public.primos_holders
+    add column if not exists tokens integer[] not null default '{}';
 
 -- The board policy in the enforcing migration looks a holder up by user_id, and
 -- that is a per-write lookup on every score submitted.
@@ -180,6 +193,40 @@ $$;
 
 revoke all on function public.primos_is_holder(uuid, integer) from public;
 grant execute on function public.primos_is_holder(uuid, integer) to anon, authenticated, service_role;
+
+
+-- ==========================================
+-- IS THIS PRIMO THEIRS?
+--
+-- The "theirs and theirs only" half. A player may run as #2933 exactly when the
+-- wallet they proved holds #2933 — asked of the database, not of the browser,
+-- so it is available to any future policy that wants to bind a Primo to a row
+-- (a board that displays which Primo ran, say).
+--
+-- Nothing enforces it TODAY, because nothing server-side currently records a
+-- Primo number: primoNumber lives in the local save, and the save table is the
+-- SHARED public.game_saves owned by another game in this project, which must
+-- not grow Primos-specific policies. This is the seam for when that changes,
+-- and js/gate.js applies the same rule client-side in the meantime.
+-- ==========================================
+create or replace function public.primos_owns_token(uid uuid, token integer, stale_days integer default 7)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select exists (
+        select 1
+          from public.primos_holders h
+         where h.user_id = uid
+           and token = any(h.tokens)
+           and h.verified_at > now() - make_interval(days => greatest(stale_days, 1))
+    );
+$$;
+
+revoke all on function public.primos_owns_token(uuid, integer, integer) from public;
+grant execute on function public.primos_owns_token(uuid, integer, integer) to anon, authenticated, service_role;
 
 
 -- ==========================================

@@ -7,6 +7,7 @@
 
 import { loadHead } from './art/primo-head.js';
 import { fetchArt, release, evict, orderGateways } from './primo-cache.js';
+import { enabled as gateOn, owns as gateOwns } from './gate.js';
 
 // Public gateways. Tried in the order js/primo-cache.js decides — which is this
 // order until something fails, and then the one that last answered first.
@@ -323,6 +324,22 @@ function localHandle() {
  */
 export async function claimStatus(token) {
   try {
+    // ⚠ THE CHAIN OUTRANKS THE FILE. With the gate on, ownership is not an
+    // editorial matter any more — it is whatever the player's wallet holds, as
+    // signed by the Edge Function. So the hand-maintained corrections in
+    // data/primo-claims.json stop being consulted for a token the gate can
+    // answer for: a Primo you hold is yours, and one you do not is not, and
+    // neither verdict is something the owner should have to keep a list about.
+    //
+    // This is the "real guarantee at WRITE time" the block above anticipated,
+    // arriving from a direction that block did not predict. The chain gives
+    // exactly one holder per NFT for free — no uniqueness constraint, no
+    // registry to reconcile, no way for two players to wear the same Primo.
+    if (gateOn()) {
+      return gateOwns(token)
+        ? { state: 'free', holder: 'you' }
+        : { state: 'assigned', holder: null };
+    }
     const table = await getClaims();
     if (!table) return FREE;                       // no file, bad file: open
     const key = String(token);
@@ -407,6 +424,10 @@ const EXTRA = {
   'browse.back':      { en: 'BACK', es: 'ATRÁS' },
   'browse.noIndex':   { en: 'Could not load the collection list. Check your connection and try again.',
                         es: 'No se pudo cargar la lista de la colección. Revisa tu conexión e inténtalo otra vez.' },
+  // Refusing a Primo the player does not hold. Deadpan, and it never scolds —
+  // wanting one you do not own is the entire point of a collection.
+  'browse.notYours':  { en: '#%n is not in your wallet. That one belongs to somebody else.',
+                        es: 'El #%n no está en tu wallet. Ese es de alguien más.' },
   'crew.tileBrowse':  { en: 'BROWSE', es: 'VER' },
 };
 

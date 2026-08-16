@@ -39,6 +39,7 @@ import {
   getIndex, cidFor, GATEWAYS, MAX_TOKEN, SUPPLY, loadPrimoArt, claimStatus,
 } from './primo-picker.js';
 import { fetchArt, release } from './primo-cache.js';
+import { enabled as gateOn, owns as gateOwns } from './gate.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -155,7 +156,16 @@ function build() {
     const tile = e.target.closest('.primo-tile');
     if (!tile || tile.hidden) return;
     const n = Number(tile.dataset.n);
-    if (Number.isInteger(n)) pick(n);
+    if (!Number.isInteger(n)) return;
+    // ⚠ Refused HERE as well as in pick(), because a locked tile must not even
+    // start a gateway fetch — otherwise browsing the collection you do not own
+    // costs the same bandwidth as browsing the one you do, for art the game is
+    // about to refuse to let you wear.
+    if (gateOn() && !gateOwns(n)) {
+      $('browse-status').textContent = t('browse.notYours').replace('%n', String(n));
+      return;
+    }
+    pick(n);
   });
 
   built = true;
@@ -179,6 +189,13 @@ function renderPage() {
     tile.dataset.n = String(n);
     tile.querySelector('b').textContent = String(n);
     tile.classList.toggle('on', selected ? selected.n === n : false);
+    // Locked rather than hidden, deliberately. Showing all 3,069 and marking
+    // which are yours keeps the browser a shop window for the collection — the
+    // same reasoning that leaves the leaderboard's read policy open. Hiding
+    // them would turn a 3,069-piece collection into a private album.
+    const locked = gateOn() && !gateOwns(n);
+    tile.classList.toggle('locked', locked);
+    tile.setAttribute('aria-disabled', locked ? 'true' : 'false');
   }
 
   $('browse-range').textContent = t('browse.range')

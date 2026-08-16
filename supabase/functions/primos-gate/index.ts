@@ -110,8 +110,14 @@ async function hmacKey(secret: string) {
   );
 }
 
-async function issuePass(secret: string, wallet: string, count: number, exp: number) {
-  const payload = b64url(new TextEncoder().encode(JSON.stringify({ w: wallet, n: count, exp })));
+async function issuePass(
+  secret: string, wallet: string, count: number, tokens: number[], exp: number,
+) {
+  // `t` is the owned-token list. It rides inside the signed payload rather than
+  // beside it so the client cannot widen its own collection: the game reads the
+  // list to decide which Primos are selectable, and an unsigned list would make
+  // that decision editable from the console.
+  const payload = b64url(new TextEncoder().encode(JSON.stringify({ w: wallet, n: count, t: tokens, exp })));
   const sig = await crypto.subtle.sign('HMAC', await hmacKey(secret), new TextEncoder().encode(payload));
   return `${payload}.${b64url(new Uint8Array(sig))}`;
 }
@@ -124,9 +130,31 @@ async function issuePass(secret: string, wallet: string, count: number, exp: num
 // lookup per NFT in the wallet. getAssetsByOwner answers the actual question in
 // one request — and the endpoint that serves it needs a key, which is the
 // reason this runs server-side rather than in js/gate.js.
-async function countPrimos(rpc: string, collection: string, wallet: string): Promise<number> {
+//
+// ⚠ IT RETURNS WHICH ONES, NOT JUST HOW MANY, and that is what makes a Primo
+// "theirs and theirs only" in the game. The chain already guarantees exactly one
+// holder per NFT, so an owned-token list IS the ownership registry — there is no
+// claims table to keep, no uniqueness constraint to enforce and no way for two
+// players to end up running as #2933. data/primo-claims.json exists because this
+// list did not; see the header of claimStatus() in js/primo-picker.js.
+function tokenNumber(asset: Record<string, any>): number | null {
+  // "Primo #2933" — the same field scripts/harvest-primos.mjs parses, and it
+  // rejects anything that does not yield a number rather than guessing.
+  const name = asset?.content?.metadata?.name ?? '';
+  let m = /#\s*(\d{1,4})\b/.exec(name);
+  if (m) return Number(m[1]);
+  // Fall back to the pinned metadata path, `…/<dir>/<n>.json`, which is how the
+  // index was built in the first place.
+  m = /\/(\d{1,4})\.json(?:$|\?)/.exec(asset?.content?.json_uri ?? '');
+  return m ? Number(m[1]) : null;
+}
+
+async function countPrimos(
+  rpc: string, collection: string, wallet: string,
+): Promise<{ total: number; tokens: number[] }> {
   let page = 1;
   let total = 0;
+  const tokens: number[] = [];
   // Paged rather than first-page-only: a wallet holding more than the page size
   // in OTHER NFTs would push its Primos off page one and read as a non-holder.
   // Bounded so a wallet with thousands of assets cannot hold the request open.
@@ -157,11 +185,19 @@ async function countPrimos(rpc: string, collection: string, wallet: string): Pro
         && g?.verified !== false);
       // A compressed asset that has been burnt still appears; frozen ones are
       // still held and still count.
-      if (grouped && asset?.burnt !== true) total++;
+      if (grouped && asset?.burnt !== true) {
+        total++;
+        const n = tokenNumber(asset);
+        // A Primo whose number cannot be read still COUNTS for the gate — the
+        // player plainly holds one — it just cannot be offered as a skin. Better
+        // than refusing entry over a metadata quirk.
+        if (n !== null && n >= 0 && n < 3069 && !tokens.includes(n)) tokens.push(n);
+      }
     }
     if (items.length < 1000) break;
   }
-  return total;
+  tokens.sort((a, b) => a - b);
+  return { total, tokens };
 }
 
 // -------------------------------------------------------------------- serve
@@ -243,8 +279,9 @@ Deno.serve(async (req) => {
 
     // The wallet is proved. Now: does it hold anything?
     let count = 0;
+    let tokens: number[] = [];
     try {
-      count = await countPrimos(RPC!, COLLECTION!, wallet);
+      ({ total: count, tokens } = await countPrimos(RPC!, COLLECTION!, wallet));
     } catch (e) {
       // ⚠ FAIL CLOSED. An RPC outage must not hand out passes — that is a gate
       // that opens whenever its lock is unplugged. 502 so the client can say
@@ -268,6 +305,10 @@ Deno.serve(async (req) => {
       wallet,
       user_id: userId,
       primo_count: count,
+      // The list, not just the count, so primos_owns_token() can answer "is this
+      // player allowed to run as #2933" from the database rather than from
+      // anything a browser said.
+      tokens,
       verified_at: now,
     }, { onConflict: 'wallet' });
 
@@ -283,7 +324,8 @@ Deno.serve(async (req) => {
       ok: true,
       holder: true,
       primoCount: count,
-      pass: await issuePass(SECRET!, wallet, count, exp),
+      tokens,
+      pass: await issuePass(SECRET!, wallet, count, tokens, exp),
       expiresAt: new Date(exp).toISOString(),
     });
   }

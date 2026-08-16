@@ -484,6 +484,24 @@ in `docs/NFT_GATE.md` — read it before touching any of this.
 - **No wallet address in the event log**, ever — `GATE_PASS`/`GATE_FAIL` carry a
   count and a reason. A wallet is a fingerprint on a public chain, the same rule
   `PRIMO_SET` follows for token numbers.
+- **A PRIMO IN YOUR WALLET IS YOURS AND NOBODY ELSE'S, and the chain is what
+  makes that free.** The Edge Function returns WHICH tokens a wallet holds, not
+  just how many, signed into the pass — and since exactly one wallet can hold
+  #2933, exclusivity needs no claims table, no uniqueness constraint and no
+  reconciliation. This supersedes `data/primo-claims.json` wherever the gate is
+  on; `claimStatus()` consults the gate first and the file only when it is off.
+  `ownedTokens()` reads the SIGNED payload, never the convenience copy beside it
+  — a console can overwrite a whole pass but cannot edit one, and editing is what
+  someone would do to append a Primo they do not hold.
+- **Unowned tiles are LOCKED, NOT HIDDEN.** All 3,069 stay browsable so the
+  collection is still a shop window; you just cannot wear one that is not yours.
+  Same reasoning as the board's open read policy. Hiding them would turn a
+  3,069-piece collection into a private album.
+- **`primos_owns_token()` exists and nothing calls it yet, on purpose.**
+  `primoNumber` lives only in the local save, and the save table is the SHARED
+  `public.game_saves` owned by another game — it must not grow Primos-specific
+  policies. It is the seam for the day the board shows which Primo ran, which is
+  the only surface where exclusivity is publicly observable.
 - `dev/gate-test.html` covers the client half with no wallet and no backend. It
   cannot test the part that matters, and says so at the top.
 

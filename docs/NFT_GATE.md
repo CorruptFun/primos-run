@@ -39,6 +39,47 @@ Concretely, after both migrations:
 
 ---
 
+## Yours, and yours only
+
+A Primo in your wallet is yours in the game, and nobody else can run as it.
+
+**The chain is the registry.** `getAssetsByOwner` returns *which* Primos a wallet
+holds, not just how many, and that list rides inside the HMAC-signed pass. Since
+exactly one wallet can hold #2933, exclusivity needs no claims table, no
+uniqueness constraint and no reconciliation — it is a property of the asset, not
+a rule the game maintains.
+
+That supersedes `data/primo-claims.json` wherever the gate is on. That file was
+always an editorial patch — the owner hand-assigning a token back to whoever
+should have had it — and its own header said the real guarantee "is going to live
+server-side at WRITE time". This is that, arriving from a direction it did not
+predict: not a server deciding who claimed first, but the chain having already
+decided who owns it. `claimStatus()` consults the gate first and the file only
+when the gate is off.
+
+- Selecting a Primo you do not hold is refused at both doors — the number search
+  (via `claimStatus`) and the browser grid.
+- Unowned tiles are **locked, not hidden**. All 3,069 stay browsable so the
+  collection is still a shop window; you just cannot wear one that is not yours.
+  Same reasoning as leaving the leaderboard's read policy open.
+- `ownedTokens()` reads the list out of the **signed payload**, never the
+  convenience copy beside it in localStorage. A console can overwrite a whole
+  pass but cannot edit one — and editing is precisely what someone would do to
+  append a Primo they do not hold to an otherwise genuine pass.
+- `primos_owns_token(uid, n)` asks the same question of the database. Nothing
+  calls it yet: `primoNumber` lives only in the local save, and the save table is
+  the **shared** `public.game_saves` owned by another game in this project, which
+  must not grow Primos-specific policies. It is the seam for the day the board
+  displays which Primo ran — at which point exclusivity becomes enforced on the
+  one surface where it is publicly observable.
+
+⚠ **Where this is and is not enforced.** Client-side, ownership is as strong as
+the gate itself — which is to say a modified client can ignore it, exactly as it
+can ignore the door. There is currently no public surface where one player sees
+another's Primo, so a bypasser wearing #2933 locally is visible to nobody. The
+moment such a surface exists it must go through `primos_owns_token()`, or the
+guarantee becomes decorative on the only screen where it would matter.
+
 ## Rollout, in order
 
 **The order is load-bearing.** Two of these steps lock people out if taken early.
