@@ -48,6 +48,15 @@ window.fetch = async (url, opts) => {
       { status: 200, headers: { 'content-type': 'text/html' } });
   }
   if (behaviour === '429') return new Response('slow down', { status: 429 });
+  if (behaviour === 'stall-first') {
+    // gw-a never settles; gw-b answers. The hedge is what reaches gw-b.
+    if (s.startsWith('https://gw-a')) {
+      return new Promise((_, rej) => {
+        opts.signal?.addEventListener('abort', () => rej(new Error('aborted')));
+      });
+    }
+    return new Response(png, { status: 200, headers: { 'content-type': 'image/png' } });
+  }
   if (behaviour === 'octet') {
     return new Response(png, { status: 200,
       headers: { 'content-type': 'application/octet-stream' } });
@@ -115,6 +124,18 @@ behaviour = 'ok';
 const after = await cache.fetchArt('CIDAFTER', GW);
 ok('recovers once the gateway does', typeof after === 'string');
 cache.release(after);
+
+// ---- 7. the hedge. A STALL is the dominant gateway failure — the connection
+// is accepted and held — so a sequential walk spends its whole budget on one
+// dead gateway while live ones sit untried behind it. gw-a never answers here;
+// only the hedge reaches gw-b.
+behaviour = 'stall-first';
+const t0 = performance.now();
+const hedged = await cache.fetchArt('CIDSTALL', GW);
+const dt = Math.round(performance.now() - t0);
+ok('hedged past a stalling gateway', typeof hedged === 'string', `${dt}ms`);
+ok('in hedge time, not fence time', dt < 5000, `${dt}ms vs a 9000ms fence`);
+if (typeof hedged === 'string') cache.release(hedged);
 
 document.getElementById('out').textContent = log.join('\n');
 window.__done = true;

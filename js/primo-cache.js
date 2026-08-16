@@ -181,11 +181,12 @@ export function gatewayHealth() {
 // -------------------------------------------------------------------- fetch
 
 /**
+ * @param {AbortController|null} ctrl the caller's, so a losing attempt in the
+ *   hedged walk below can be cancelled without touching the winner's body.
  * @returns {{res: Response|null, cool: number}} `cool` is how long to bench this
  *   gateway for when `res` is null.
  */
-async function timedFetch(url, ms) {
-  const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+async function timedFetch(url, ms, ctrl) {
   const timer = setTimeout(() => { try { ctrl?.abort(); } catch { /* */ } }, ms);
   try {
     // CORS mode, not no-cors, and that is not optional: an opaque response
@@ -228,6 +229,90 @@ async function timedFetch(url, ms) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// --------------------------------------------------------- the hedged walk
+//
+// ⚠ A SEQUENTIAL WALK IS HOSTAGE TO ITS SLOWEST MEMBER, and widening GATEWAYS
+// from four to six made that worse, not better: six gateways at a 9s fence is
+// 54 SECONDS before an image gives up, and the crew tiles have been showing
+// hand-drawn stand-ins since CREW_ART_GRACE expired at 900ms. Trading "no art
+// ever" for "art in a minute" is not a fix — nobody is looking at the menu that
+// long, so it reads exactly the same.
+//
+// The killer is that the dominant failure is a STALL, not an error. A gateway
+// that is throttling or chasing a cold block accepts the connection and holds
+// it; only the fence ends it. So one slow gateway spends the whole budget while
+// five live ones sit untried behind it.
+//
+// So the walk hedges: start a gateway, and if it has not answered within
+// HEDGE_MS, start the NEXT ONE ALONGSIDE it rather than waiting it out. Losers
+// are cancelled the moment anyone wins. A slow gateway now costs HEDGE_MS of
+// latency instead of FETCH_TIMEOUT, and a gateway that is merely slow rather
+// than dead can still win the race it started.
+//
+// This is the standard hedged-request trade: a little more load on the gateways
+// when the first one is slow, in exchange for a tail that a player will wait
+// through. It only ever fires on slowness — a gateway that answers promptly is
+// never hedged against.
+const HEDGE_MS = 2500;
+
+/**
+ * First gateway to answer wins.
+ *
+ * @returns {Promise<{gw: string, res: Response}|null>} never rejects. Resolves
+ *   null only once EVERY attempt has finished without an answer.
+ */
+function walkGateways(cid, chain) {
+  return new Promise((resolve) => {
+    const running = [];        // { gw, ctrl } for everything started so far
+    let next = 0;              // index of the next gateway to bring in
+    let live = 0;              // attempts still in the air
+    let done = false;
+    let hedge = null;
+
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      if (hedge) clearTimeout(hedge);
+      // ⚠ Abort the LOSERS ONLY. The winner's Response is headers-only at this
+      // point — its body has not been read yet — so aborting a shared signal
+      // here would cancel the very bytes we are about to bake and cache. That
+      // is why each attempt carries its own controller instead of sharing one.
+      for (const a of running) {
+        if (!value || a.gw !== value.gw) { try { a.ctrl?.abort(); } catch { /* */ } }
+      }
+      resolve(value);
+    };
+
+    const start = () => {
+      if (done) return;
+      if (hedge) { clearTimeout(hedge); hedge = null; }
+      if (next >= chain.length) {
+        // Nothing left to start; the last attempt in flight decides it.
+        if (live === 0) finish(null);
+        return;
+      }
+      const gw = chain[next++];
+      const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+      running.push({ gw, ctrl });
+      live++;
+      // Armed BEFORE the await, or a stall would never reach the hedge at all.
+      if (next < chain.length) hedge = setTimeout(start, HEDGE_MS);
+      timedFetch(gw + cid, FETCH_TIMEOUT, ctrl).then(({ res, cool }) => {
+        live--;
+        // A rival already won and cancelled us. Say nothing: benching a gateway
+        // for losing a race it might well have finished would be a lie that
+        // compounds, since orderGateways would then steer traffic away from it.
+        if (done) return;
+        if (res) { noteOk(gw); finish({ gw, res }); return; }
+        noteFail(gw, cool);
+        start();   // this one is out — do not wait on the hedge, go now
+      });
+    };
+
+    start();
+  });
 }
 
 // --------------------------------------------------------------------- api
@@ -283,10 +368,9 @@ export async function fetchArt(cid, gateways) {
 
   const cache = await open();
   const chain = orderGateways(gateways);
-  for (const gw of chain) {
-    const { res, cool } = await timedFetch(gw + cid, FETCH_TIMEOUT);
-    if (!res) { noteFail(gw, cool); continue; }
-    noteOk(gw);
+  const won = await walkGateways(cid, chain);
+  if (won) {
+    const { res } = won;
     if (cache) {
       try {
         // clone() BEFORE reading the body — a Response body can only be

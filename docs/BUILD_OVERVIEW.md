@@ -403,6 +403,22 @@ page pay that fence twenty times per dead gateway, four deep, at eight concurren
 discovery cost is paid once per session. Cooling gateways are demoted, never
 dropped, so a chain where everything is benched still tries everything.
 
+**The walk hedges.** The dominant gateway failure is not an error, it is a
+stall: the connection is accepted and then held while a block is chased, and
+only the fence ends it. A strictly sequential chain therefore spends its whole
+budget on one dead member while five live ones wait behind it — and widening the
+list to six made the worst case *longer*, 54s at a 9s fence, which is no better
+than never for someone looking at a menu. `walkGateways` starts the next gateway
+alongside the current one after `HEDGE_MS` (2.5s) instead of waiting it out;
+first answer wins and the losers are cancelled. A stall costs 2.5s, a
+merely-slow gateway can still win its own race, and the all-stall worst case
+lands near 16s rather than 54s.
+
+Each attempt carries its **own** `AbortController`. The winner's `Response` is
+headers-only at the moment the losers are cancelled — its body has not been read
+— so cancelling through a shared signal would abort the very bytes about to be
+baked and cached.
+
 **A 200 is not proof of an image.** Gateways answer with HTML — block-not-found
 pages, queue interstitials — at status 200. Failing to bake that is harmless;
 *caching* it is not, because `primos-art-v1` is keyed on the CID and would answer

@@ -135,6 +135,18 @@ go stale here claimed 520 of 3,069 tokens for a day after full coverage landed.
   once per session, not once per image. Cooling gateways are DEMOTED, never
   dropped, so a chain where everything is cooling still tries everything.
 
+- **THE WALK HEDGES, because the dominant gateway failure is a STALL.** A
+  throttling gateway accepts the connection and holds it, so a strictly
+  sequential chain spends its entire budget on one dead member while live ones
+  sit untried — and widening the list to six made that *worse*: 6 × the 9s fence
+  is 54s before a tile gives up, by which time the stand-ins have been on screen
+  for a minute. `walkGateways` starts the next gateway alongside the current one
+  after `HEDGE_MS` (2.5s) rather than waiting it out, first answer wins, losers
+  are cancelled. A stall costs 2.5s instead of 9s and a merely-slow gateway can
+  still win its own race. ⚠ Each attempt carries its OWN AbortController: the
+  winner's Response is headers-only when the losers are cancelled, so a shared
+  signal would abort the very body about to be baked and cached.
+
 - **A 200 IS NOT PROOF OF AN IMAGE, and caching one that isn't is permanent.**
   Gateways serve HTML — block-not-found pages, queue interstitials — with a 200.
   Baking that fails harmlessly; *caching* it does not, because the bucket is keyed
