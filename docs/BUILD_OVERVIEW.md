@@ -379,6 +379,44 @@ player's Primo loads untainted and its pixels can be sampled for outfit colours;
 Gateways also **stall** rather than erroring, so any fetch through one needs its
 own timeout or the fallback chain never advances.
 
+### The gateway walk
+
+The fallback chain is the single point of failure for every Primo image on
+screen, and it has now failed three times in three different ways. What it looks
+like each time is identical and gives nothing away: the hand-drawn stand-ins on
+the menu, grey squares in the browser, nothing in the console.
+
+**Count operators, not URLs.** `GATEWAYS` in `js/primo-picker.js` read as four
+entries and was two: `ipfs.io` and `dweb.link` are one Protocol Labs backend
+behind one per-IP rate limiter, so they refuse together; `w3s.link` and
+`nftstorage.link` are both Storacha, and neither pins this collection. A single
+throttle therefore ended the walk. The list is six now — the same set
+`scripts/harvest-primos.mjs` round-robins, which is the set with evidence behind
+it — ordered so consecutive attempts always change operator.
+
+**The walk remembers.** A gateway that fails is benched (five minutes for a 429
+or 5xx, one minute otherwise) and the one that last answered is tried first. This
+is not a nicety: a dead gateway holds the connection for the full 9s fence rather
+than failing fast, so a chain walked from the top for every image made a 20-tile
+page pay that fence twenty times per dead gateway, four deep, at eight concurrent
+— while `CREW_ART_GRACE` (900ms) had long since painted the cartoons. Now the
+discovery cost is paid once per session. Cooling gateways are demoted, never
+dropped, so a chain where everything is benched still tries everything.
+
+**A 200 is not proof of an image.** Gateways answer with HTML — block-not-found
+pages, queue interstitials — at status 200. Failing to bake that is harmless;
+*caching* it is not, because `primos-art-v1` is keyed on the CID and would answer
+every future load on that device with the same undecodable bytes, permanently.
+`fetchArt` checks the content type before storing, and `loadPrimoArt` evicts bytes
+it holds that will not bake.
+
+**When the whole chain fails, say so.** Every layer below `fetchArt` degrades
+gracefully on purpose, and the sum of that is an outage with an empty console.
+One `console.warn` names the CID and dumps `gatewayHealth()`.
+
+`dev/art-cache-test.html` exercises all of the above with `fetch` stubbed to a
+local PNG, so none of it needs a real gateway to misbehave to be reproducible.
+
 **The collection is numbered 0–3068, not 1–3069.** Token #0 exists. Any
 `min`/`max` on a number input has to allow it.
 

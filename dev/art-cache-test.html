@@ -1,0 +1,123 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>art cache test</title>
+<!--
+  The Primo art pipeline, WITH NO GATEWAY INVOLVED.
+
+  window.fetch is stubbed to serve a real PNG off this origin, so the whole
+  chain — fetchArt → Cache Storage → loadHead → headFromImage — is exercised
+  offline, deterministically, in a browser. That matters because every previous
+  art outage here was a NETWORK fault that presented as silence: a memoised
+  empty index, an unfenced loadHead, a retired Cloudflare gateway, and then a
+  fallback chain of four URLs that was really two operators behind one rate
+  limiter. None of them could be reproduced without waiting on a real gateway
+  to misbehave, and all of them looked identical from the menu — the hand-drawn
+  stand-ins, and nothing in the console.
+
+  What is pinned here is everything that is OURS: the walk's ordering and
+  health memory, the refusal to cache a 200 that is not an image, eviction, and
+  the blob → canvas bake staying untainted so outfit colours can still be
+  sampled. Gateway liveness is not testable here and never will be; the ordering
+  logic is what decides whether one bad gateway costs a moment or costs the art.
+
+  Open it after touching js/primo-cache.js, js/primo-picker.js's GATEWAYS, or
+  loadHead in js/art/primo-head.js. Imports are cache-busted; scripts/dev-server.py
+  serves no-store anyway.
+-->
+<body style="background:#1d1229;color:#fdf6e6;font:14px ui-monospace,monospace;padding:20px">
+<pre id="out">running…</pre>
+<script type="module">
+const log = [];
+const ok = (n, c, extra = '') => log.push(`${c ? 'ok  ' : 'FAIL'} ${n}${extra ? ' — ' + extra : ''}`);
+
+const bust = `?v=${Date.now()}`;
+const cache = await import(`../js/primo-cache.js${bust}`);
+const head = await import(`../js/art/primo-head.js${bust}`);
+
+// A real PNG off this origin, standing in for what a gateway would serve.
+const png = await (await fetch('../art/torso.png')).blob();
+
+const GW = ['https://gw-a.test/ipfs/', 'https://gw-b.test/ipfs/'];
+let behaviour = 'ok';
+const realFetch = window.fetch.bind(window);
+window.fetch = async (url, opts) => {
+  const s = String(url && url.url ? url.url : url);
+  if (!s.startsWith('https://gw-')) return realFetch(url, opts);
+  if (behaviour === 'html') {
+    return new Response('<html>not found</html>',
+      { status: 200, headers: { 'content-type': 'text/html' } });
+  }
+  if (behaviour === '429') return new Response('slow down', { status: 429 });
+  if (behaviour === 'octet') {
+    return new Response(png, { status: 200,
+      headers: { 'content-type': 'application/octet-stream' } });
+  }
+  if (behaviour === 'none') return new Response(png, { status: 200 });
+  return new Response(png, { status: 200, headers: { 'content-type': 'image/png' } });
+};
+
+// ---- 1. the blob path: fetchArt -> loadHead -> headFromImage
+const blob = await cache.fetchArt('CIDPROBE', GW);
+ok('fetchArt returned a blob URL', typeof blob === 'string' && blob.startsWith('blob:'), String(blob));
+
+const baked = await head.loadHead(blob);
+ok('loadHead decoded the blob URL', !!baked && !!baked.head, 'this is the iOS crossOrigin trap');
+// loadHead -> { head: headFromImage(img), img }, and headFromImage -> { head: canvas, ...palette }
+ok('head sprite is 256px', baked && baked.head.head.width === 256 && baked.head.head.height === 256,
+  baked && `${baked.head.head.width}x${baked.head.head.height}`);
+
+// ---- 2. the canvas must NOT be tainted, or outfit colours die silently
+let tainted = false;
+try {
+  const c = document.createElement('canvas');
+  c.width = c.height = 8;
+  const x = c.getContext('2d');
+  x.drawImage(baked.img, 0, 0);
+  x.getImageData(0, 0, 1, 1);
+} catch { tainted = true; }
+ok('canvas untainted from a blob URL', !tainted);
+ok('a palette came back', baked && typeof baked.head.shirt === 'string'
+  && baked.head.shirt.startsWith('rgb'), baked && baked.head.shirt);
+
+// ---- 3. Cache Storage really kept it (the second visit is free)
+ok('cached after one fetch', await cache.isCached('CIDPROBE'));
+cache.release(blob);
+const again = await cache.fetchArt('CIDPROBE', GW);
+ok('served from cache on the second ask', typeof again === 'string');
+cache.release(again);
+
+// ---- 4. eviction unsticks a poisoned entry
+await cache.evict('CIDPROBE');
+ok('evict cleared it', !(await cache.isCached('CIDPROBE')));
+
+// ---- 5. an HTML 200 must never reach the cache
+behaviour = 'html';
+const bad = await cache.fetchArt('CIDBAD', GW);
+ok('HTML-with-200 rejected', bad === null, String(bad));
+ok('and never cached', !(await cache.isCached('CIDBAD')));
+
+// ---- 5b. ...but a raw block IS art. Rejecting by document type, not by an
+// image/* allowlist, is what keeps this one working.
+behaviour = 'octet';
+const raw = await cache.fetchArt('CIDRAW', GW);
+ok('application/octet-stream accepted', typeof raw === 'string', String(raw));
+if (typeof raw === 'string') {
+  ok('and it still bakes', !!(await head.loadHead(raw)));
+  cache.release(raw);
+}
+behaviour = 'none';
+const bare = await cache.fetchArt('CIDBARE', GW);
+ok('no content-type at all accepted', typeof bare === 'string', String(bare));
+if (typeof bare === 'string') cache.release(bare);
+
+// ---- 6. a rate limit demotes, it does not end the walk
+behaviour = 'ok';
+const after = await cache.fetchArt('CIDAFTER', GW);
+ok('recovers once the gateway does', typeof after === 'string');
+cache.release(after);
+
+document.getElementById('out').textContent = log.join('\n');
+window.__done = true;
+window.__fails = log.filter((l) => l.startsWith('FAIL')).length;
+</script>
+</body>

@@ -303,7 +303,18 @@ export function loadHead(src) {
   return new Promise((resolve) => {
     const img = new Image();
     // Needed so getImageData works on the gateway response.
-    img.crossOrigin = 'anonymous';
+    //
+    // ⚠ NOT for a blob: URL, which is where most loads now come from since
+    // js/primo-cache.js started handing out cached bytes. A blob minted by this
+    // document is already same-origin and never taints a canvas, so the
+    // attribute buys nothing — and it is not free: it puts the load through the
+    // CORS path, which WebKit has historically failed outright for blob: URLs.
+    // That failure mode is invisible on desktop Chromium and total on iOS, and
+    // it looks exactly like the art not loading. Same shape as the
+    // `aspect-ratio`-on-a-button bug in the Primo grid.
+    if (typeof src === 'string' && !src.startsWith('blob:')) {
+      img.crossOrigin = 'anonymous';
+    }
     img.onload = () => {
       try {
         resolve({ head: headFromImage(img), img });

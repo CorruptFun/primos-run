@@ -115,6 +115,47 @@ go stale here claimed 520 of 3,069 tokens for a day after full coverage landed.
   *stall* rather than erroring, so any fetch through one needs its own timeout or
   the fallback chain never advances.
 
+- **COUNT OPERATORS IN `GATEWAYS`, NOT URLS.** The list read as four gateways and
+  was two: `ipfs.io` and `dweb.link` are both Protocol Labs behind ONE per-IP rate
+  limiter and refuse together, and `w3s.link` + `nftstorage.link` are both Storacha
+  (the latter the sunset NFT.Storage gateway), neither of which pins this
+  collection. One throttle took out half the chain and the surviving half was the
+  half least likely to hold Primos art — i.e. the whole chain, i.e. the stand-in
+  cartoons stay on screen. The list is now six, ordered so consecutive attempts
+  always change operator, and it matches the set `scripts/harvest-primos.mjs`
+  round-robins — the one with evidence behind it, since it built the index.
+
+- **THE FALLBACK CHAIN HAS A MEMORY NOW, AND IT IS NOT AN OPTIMISATION.** A dead
+  gateway does not fail fast, it holds the connection for the full 9s fence. With
+  a chain walked from the top for every image, a 20-tile page paid that fence
+  twenty times per dead gateway — 36s a tile, four deep, at 8 concurrent, while
+  `CREW_ART_GRACE` (900ms) had long since given up and painted cartoons. So
+  `js/primo-cache.js` benches a gateway that fails (5 min for a 429/5xx, 1 min
+  otherwise) and starts at whichever one last answered: the discovery cost is paid
+  once per session, not once per image. Cooling gateways are DEMOTED, never
+  dropped, so a chain where everything is cooling still tries everything.
+
+- **A 200 IS NOT PROOF OF AN IMAGE, and caching one that isn't is permanent.**
+  Gateways serve HTML — block-not-found pages, queue interstitials — with a 200.
+  Baking that fails harmlessly; *caching* it does not, because the bucket is keyed
+  on the CID and answers every future load on that device with the same undecodable
+  bytes, long after the gateway recovered. `fetchArt` content-type checks before
+  storing, and `loadPrimoArt` calls `evict(cid)` when bytes it holds will not bake.
+
+- **When the whole chain fails, `fetchArt` logs one line.** Every layer below it is
+  a deliberate graceful degradation — a grey tile, a kept cartoon — and the sum of
+  that politeness is an outage with nothing in the console, which is how all three
+  previous art faults presented and why each cost a debugging session. Whole chain
+  down is a fault, not a degradation. `gatewayHealth()` prints what the walk
+  currently believes.
+
+- **`loadHead` must NOT set `crossOrigin` on a `blob:` URL.** Most loads are blobs
+  now that the cache serves them; a blob minted by this document is already
+  same-origin and never taints a canvas, so the attribute buys nothing — and it
+  routes the load through the CORS path, which WebKit has historically failed
+  outright for `blob:`. Invisible on desktop Chromium, total on iOS. Same shape as
+  the `aspect-ratio`-on-a-button bug in the Primo grid.
+
 - **No collection artwork lives in this repo, and none should.** The index holds
   IPFS CIDs only. Player images are fetched client-side at the player's request
   and kept in `localStorage` — and, since `js/primo-cache.js`, in a Cache Storage
@@ -567,6 +608,13 @@ two). It exits non-zero, so it can gate a deploy. Run it after touching `CHUNKS`
 `PROP_SPEC`, `RUN`, `HITBOX` or `DRONE`. **The 2-lane-move warnings are known and
 deliberate** — `zigzag-walls` is named for what it does — but a NEW one means a
 tier-3 pattern got tighter than anything that shipped.
+
+`dev/art-cache-test.html` drives the whole Primo art pipeline with `fetch` stubbed
+to a local PNG — the gateway walk's ordering and health memory, the refusal to
+cache a 200 that is not an image, eviction, and the blob → canvas bake staying
+untainted. No network, so it reproduces offline the faults that previously needed
+a real gateway to misbehave. Open it after touching `primo-cache.js`, `GATEWAYS`
+or `loadHead`.
 
 `dev/cloud-test.html` asserts every pure module in the browser — day/week keys,
 the merge, name sanitising, the analytics vocabulary pin, the feedback bounds and

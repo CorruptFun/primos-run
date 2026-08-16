@@ -6,18 +6,37 @@
 // a public gateway in the player's own browser, at the player's own request.
 
 import { loadHead } from './art/primo-head.js';
-import { fetchArt, release } from './primo-cache.js';
+import { fetchArt, release, evict, orderGateways } from './primo-cache.js';
 
-// Public gateways, tried in order, first answer wins.
+// Public gateways. Tried in the order js/primo-cache.js decides — which is this
+// order until something fails, and then the one that last answered first.
 //
-// cloudflare-ipfs.com used to sit second in this list and has not resolved
-// since Cloudflare retired its public gateway — it answers ENOTFOUND, so a
-// third of the fallback chain was a guaranteed miss. These four are live.
+// ⚠ COUNT OPERATORS, NOT URLS. This list read as four gateways and was two:
+// ipfs.io and dweb.link are both Protocol Labs, behind one backend and ONE
+// PER-IP RATE LIMITER, so they refuse together; w3s.link and nftstorage.link are
+// both Storacha (nftstorage.link being the classic NFT.Storage gateway, which
+// was sunset), and neither pins this collection, so both serve it only if it
+// happens to be reachable from their node. One throttle on the first operator
+// therefore took out half the chain at a stroke and the surviving half was the
+// half least likely to hold Primos art — which is the whole chain failing, which
+// is the stand-in cartoons staying on screen.
+//
+// This is the same class of fault as the cloudflare-ipfs.com entry that used to
+// sit second here and had not resolved since Cloudflare retired its public
+// gateway. That one was deleted; these are kept but SEPARATED, so consecutive
+// attempts always change operator and no single throttle can end the walk.
+//
+// The two additions are not guesses: scripts/harvest-primos.mjs round-robins
+// these six and is what successfully built data/primos-index.json across all
+// 3,069 tokens, so they are the set with evidence behind it. The client had
+// been shipping the narrower list.
 export const GATEWAYS = [
-  'https://ipfs.io/ipfs/',
-  'https://dweb.link/ipfs/',
-  'https://w3s.link/ipfs/',
-  'https://nftstorage.link/ipfs/',
+  'https://ipfs.io/ipfs/',              // Protocol Labs
+  'https://gateway.pinata.cloud/ipfs/', // Pinata
+  'https://ipfs.filebase.io/ipfs/',     // Filebase
+  'https://dweb.link/ipfs/',            // Protocol Labs — paired with ipfs.io
+  'https://w3s.link/ipfs/',             // Storacha
+  'https://nftstorage.link/ipfs/',      // Storacha — legacy NFT.Storage
 ];
 
 // The collection is numbered 0..3068 — 3,069 tokens, and NOT 1..3069.
@@ -184,6 +203,12 @@ export async function loadPrimoArt(cid) {
     // job — holding it would leak one blob per Primo ever looked at.
     release(blob);
     if (result) return { ...result, url: canonical };
+    // Bytes we hold and cannot decode. They may have come off the cache, in
+    // which case they are keyed on the CID and every future load on this device
+    // gets the same undecodable answer — a Primo that is permanently a stand-in
+    // long after the gateway that served the bad response recovered. Drop them
+    // and let the walk below have a clean go.
+    await evict(cid);
   }
 
   // Fallback for the cases fetch() cannot serve: a gateway that answers images
@@ -191,7 +216,11 @@ export async function loadPrimoArt(cid) {
   // needs neither, so this path still renders the Primo — it just cannot cache
   // it or sample its colours. Losing the caching is much better than losing the
   // art, which is what returning null here would mean.
-  for (const gw of GATEWAYS) {
+  //
+  // Same health order as the fetch walk: this runs immediately after that walk
+  // failed, so re-asking the gateways in list order would spend LOAD_TIMEOUT
+  // each on the ones that just timed out.
+  for (const gw of orderGateways(GATEWAYS)) {
     const url = gw + cid;
     const result = await withTimeout(loadHead(url), LOAD_TIMEOUT);
     if (result) return { ...result, url };

@@ -103,8 +103,87 @@ async function remember(cache, cid) {
   }
 }
 
+// --------------------------------------------------------- gateway health
+//
+// ⚠ THE FALLBACK CHAIN USED TO HAVE NO MEMORY, AND THAT IS WHAT TURNS ONE BAD
+// GATEWAY INTO "THE NFT PICTURES DO NOT SHOW".
+//
+// Every image started at GATEWAYS[0] and walked the list from the top. That is
+// free when the first gateway answers and ruinous when it does not, because a
+// gateway that is rate-limiting or chasing a block DOES NOT FAIL FAST — it
+// holds the connection until FETCH_TIMEOUT fires. So a 20-tile page of the
+// browser paid the full 9s fence on the dead gateway TWENTY TIMES, then again
+// on the next dead one, before any tile reached a live gateway. Four gateways
+// deep that is 36s per tile, at 8 concurrent, for art the player is watching an
+// empty grid waiting for. The crew tiles gave up even earlier: CREW_ART_GRACE
+// is 900ms, so the hand-drawn stand-ins were on screen long before the first
+// gateway had finished not answering, and they simply stayed.
+//
+// The symptom is total ("it's just showing the stock characters") rather than
+// partial, which is why this reads as art being broken rather than as one
+// gateway being slow. Nothing logs, because every layer below is a correct
+// graceful degradation — see the note on the console warning in fetchArt.
+//
+// So: remember. A gateway that fails goes on a cooldown and is tried LAST while
+// it lasts, and the gateway that last answered is tried FIRST. The discovery
+// cost is paid once per session by one image instead of once per image.
+const health = new Map();     // gateway -> ms timestamp it may be tried again
+let preferred = null;         // the gateway that last served us bytes
+
+// A gateway that refused us (429) or fell over (5xx) is up and saying no, and
+// it will keep saying no for a while — the whole point of a rate limit. One
+// that timed out or could not be reached might just have been chasing a cold
+// block, so it comes back into rotation sooner.
+const COOL_REFUSED = 5 * 60 * 1000;
+const COOL_FAILED = 60 * 1000;
+
+const now = () => Date.now();
+
+/**
+ * The gateways to try, best bet first. Never drops one — a cooling gateway is
+ * merely demoted, so a chain where every gateway is cooling still tries them
+ * all rather than failing instantly. Exported because the `<img>` fallback walk
+ * in js/primo-picker.js has to make the same decision.
+ */
+export function orderGateways(gateways) {
+  const t = now();
+  const ready = [], cooling = [];
+  for (const gw of gateways) ((health.get(gw) || 0) > t ? cooling : ready).push(gw);
+  const i = preferred ? ready.indexOf(preferred) : -1;
+  if (i > 0) ready.splice(0, 0, ready.splice(i, 1)[0]);
+  // Least-recently-cooled first, so the one closest to recovering is the one
+  // the chain reaches for if it gets that far.
+  cooling.sort((a, b) => (health.get(a) || 0) - (health.get(b) || 0));
+  return ready.concat(cooling);
+}
+
+function noteOk(gw) {
+  health.delete(gw);
+  preferred = gw;
+}
+
+function noteFail(gw, cool) {
+  health.set(gw, now() + cool);
+  // Do not keep steering everything at a gateway that just stopped answering.
+  if (preferred === gw) preferred = null;
+}
+
+/** What the chain currently thinks. For the console when art will not load. */
+export function gatewayHealth() {
+  const t = now();
+  const out = { preferred, cooling: {} };
+  for (const [gw, until] of health) {
+    if (until > t) out.cooling[gw] = Math.round((until - t) / 1000) + 's';
+  }
+  return out;
+}
+
 // -------------------------------------------------------------------- fetch
 
+/**
+ * @returns {{res: Response|null, cool: number}} `cool` is how long to bench this
+ *   gateway for when `res` is null.
+ */
 async function timedFetch(url, ms) {
   const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
   const timer = setTimeout(() => { try { ctrl?.abort(); } catch { /* */ } }, ms);
@@ -115,9 +194,37 @@ async function timedFetch(url, ms) {
     // counts against quota at a padded size. A gateway without CORS headers
     // fails here and the chain moves to the next one, which is correct.
     const res = await fetch(url, { mode: 'cors', cache: 'default', signal: ctrl?.signal });
-    return res && res.ok ? res : null;
+    if (!res) return { res: null, cool: COOL_FAILED };
+    if (!res.ok) {
+      const refused = res.status === 429 || res.status >= 500;
+      // A 404 is cooled too, on the short timer. On IPFS it usually means THIS
+      // gateway could not find the block rather than that the CID is wrong, and
+      // a gateway that does not carry this collection 404s every token — which
+      // is a gateway worth skipping, not one worth asking 3,069 times. The short
+      // cooldown is what keeps a genuinely bad CID from benching a good gateway.
+      return { res: null, cool: refused ? COOL_REFUSED : COOL_FAILED };
+    }
+    // ⚠ A 200 IS NOT PROOF OF AN IMAGE. Gateways serve HTML — a block-not-found
+    // page, a captcha, a "your request has been queued" interstitial — with a
+    // 200 and a text/html content type. Baking that fails, which is recoverable;
+    // CACHING it is not, because the cache is keyed on the CID and answers every
+    // future request on this device with the same bad bytes. That is a permanent
+    // per-device "the art stopped working" with a full cache behind it.
+    //
+    // Rejected by DOCUMENT type rather than accepted by `image/*`, and that way
+    // round on purpose: a gateway is entitled to serve a raw block as
+    // application/octet-stream, or with no content-type at all, and both decode
+    // perfectly well. An allowlist would throw away working art from a working
+    // gateway — trading the bug for a quieter one. Only the shapes that are
+    // definitely a page and definitely not a picture are turned away.
+    const type = (res.headers.get('content-type') || '').toLowerCase();
+    if (/^(?:text\/|application\/(?:json|xhtml))/.test(type)) {
+      return { res: null, cool: COOL_FAILED };
+    }
+    return { res, cool: 0 };
   } catch {
-    return null;
+    // Aborted by the fence, DNS failure, connection refused, CORS rejection.
+    return { res: null, cool: COOL_FAILED };
   } finally {
     clearTimeout(timer);
   }
@@ -175,9 +282,11 @@ export async function fetchArt(cid, gateways) {
   if (hit) return hit;
 
   const cache = await open();
-  for (const gw of gateways) {
-    const res = await timedFetch(gw + cid, FETCH_TIMEOUT);
-    if (!res) continue;
+  const chain = orderGateways(gateways);
+  for (const gw of chain) {
+    const { res, cool } = await timedFetch(gw + cid, FETCH_TIMEOUT);
+    if (!res) { noteFail(gw, cool); continue; }
+    noteOk(gw);
     if (cache) {
       try {
         // clone() BEFORE reading the body — a Response body can only be
@@ -195,7 +304,44 @@ export async function fetchArt(cid, gateways) {
       return null;
     }
   }
+
+  // ⚠ THE ONE PLACE THAT SAYS ANYTHING OUT LOUD.
+  //
+  // Every layer below this is a deliberate graceful degradation — a tile that
+  // cannot load is a grey square, a crew slot that cannot load keeps its
+  // cartoon — and the sum of all that politeness is a game that silently shows
+  // stand-ins with nothing whatsoever in the console. That is precisely how the
+  // last three art outages presented (see the note in js/main.js: a memoised
+  // empty index, an unfenced loadHead, a retired Cloudflare gateway), and each
+  // one cost a debugging session that started from "it just doesn't work".
+  //
+  // Whole chain down is not a degradation, it is a fault, and it gets one line.
+  try {
+    console.warn(
+      `[primos] no gateway served ${cid} — tried ${chain.length}`,
+      gatewayHealth(),
+    );
+  } catch { /* console is not load bearing */ }
   return null;
+}
+
+/**
+ * Forget one image's bytes.
+ *
+ * For the caller that got bytes out of here and could not decode them: those
+ * bytes are wrong, and because the cache is keyed on the CID they will keep
+ * being wrong on this device forever otherwise. Evicting turns a permanent
+ * failure into one bad load, and the gateway walk behind it can then heal.
+ */
+export async function evict(cid) {
+  if (!cid) return;
+  writeIndex(readIndex().filter((c) => c !== cid));
+  try {
+    const cache = await open();
+    if (cache) await cache.delete(keyFor(cid));
+  } catch {
+    /* best effort — the worst case is the state we were already in */
+  }
 }
 
 /** Hand back an object URL. Not optional — these leak until revoked. */
