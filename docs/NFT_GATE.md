@@ -116,7 +116,6 @@ visible in `ps` to every process on the machine and land in shell history.
 
 #### Which provider
 
-
 Helius, Triton or QuickNode. The **public `api.mainnet-beta.solana.com` will not
 work** — it does not implement `getAssetsByOwner`, which is the call that answers
 "does this wallet hold a Primo" in one request instead of one per NFT.
