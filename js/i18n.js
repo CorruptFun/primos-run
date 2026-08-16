@@ -451,6 +451,37 @@ const STR = {
                         es: '#%n EN LA TABLA DE HOY — PAGADA' },
 
   // -------------------------------------------------- the account / cuenta
+  // --- the NFT gate (js/gate.js, index.html #screen-gate) ---
+  // Voice rule as everywhere: `en` is full English, `es` is full Spanish, and
+  // the only Spanish left in `en` is a proper noun. "Primo" is the collection's
+  // name here, so it stays in both.
+  'gate.title':       { en: 'HOLDERS ONLY', es: 'SOLO HOLDERS' },
+  'gate.copy':        { en: 'This one is for the family. Connect the wallet holding your Primo and the alley opens up.',
+                        es: 'Esto es para la familia. Conecta la wallet donde tienes tu Primo y el callejón se abre.' },
+  'gate.connect':     { en: 'CONNECT %w', es: 'CONECTAR %w' },
+  'gate.retry':       { en: 'TRY AGAIN', es: 'INTÉNTALO OTRA VEZ' },
+  'gate.noWallet':    { en: 'No Solana wallet in this browser. Install Phantom, Solflare or Backpack, then come back.',
+                        es: 'No hay wallet de Solana en este navegador. Instala Phantom, Solflare o Backpack y vuelve.' },
+  'gate.checking':    { en: 'Asking the chain\u2026', es: 'Preguntando a la cadena\u2026' },
+  'gate.signing':     { en: 'Sign the message in your wallet. It is free and moves nothing.',
+                        es: 'Firma el mensaje en tu wallet. Es gratis y no mueve nada.' },
+  // The good outcome. %n is how many they hold.
+  'gate.welcome':     { en: 'Verified \u2014 %n in the wallet. Welcome back.',
+                        es: 'Verificado \u2014 %n en la wallet. Bienvenido de vuelta.' },
+  // The refusal. Deadpan, not apologetic, and it never implies they did
+  // something wrong \u2014 they just do not have one yet.
+  'gate.noPrimo':     { en: 'That wallet is empty of Primos. Get one and the door is open.',
+                        es: 'Esa wallet no tiene ningún Primo. Consigue uno y la puerta se abre.' },
+  'gate.cancelled':   { en: 'You closed the wallet. Nothing happened.',
+                        es: 'Cerraste la wallet. No pasó nada.' },
+  // \u26a0 NEVER conflated with gate.noPrimo. The chain being unreachable is our
+  // problem, not the holder's, and telling someone who paid for a Primo that
+  // they own nothing because an RPC blinked is the worst sentence here.
+  'gate.chainDown':   { en: 'Could not reach the chain just now \u2014 this is on us, not you. Try again in a moment.',
+                        es: 'No se pudo llegar a la cadena ahora mismo \u2014 es cosa nuestra, no tuya. Inténtalo en un momento.' },
+  'gate.failed':      { en: 'The wallet did not connect. Try again.',
+                        es: 'La wallet no conectó. Inténtalo otra vez.' },
+
   'acct.title':       { en: 'ACCOUNT', es: 'CUENTA' },
   'acct.back':        { en: 'BACK', es: 'ATRÁS' },
   'acct.offBuild':    { en: 'The cloud is not switched on in this build — but your run is saved '

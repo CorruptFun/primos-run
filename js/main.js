@@ -30,7 +30,7 @@ import {
 } from './tiendita.js';
 import { settleRacha, rachaShown, rachaAtRisk, RACHA_TABLE } from './racha.js';
 import { applyJalesRun, jalesStatus, JALE_SWEEP, JALE_REWARD } from './jales.js';
-import { bootstrapCloud } from './cloud.js';
+import { bootstrapCloud, cloudSession } from './cloud.js';
 import { captureRefFromUrl } from './referrals.js';
 // `track` here is the analytics one. js/hud.js exports a `track` too — a HUD
 // drawing helper — and this module imports from both, so if that one is ever
@@ -50,6 +50,7 @@ import { drawTrainer, loadTrainer } from './art/trainer.js';
 import { dayKey, previousDayKey, pruneDays, recordDay } from './raceday.js';
 import { initBoards, refreshBoards, relangBoards, showRunStanding } from './boards.js';
 import { initAccount, refreshAccount, relangAccount, releaseAccount } from './account.js';
+import * as gate from './gate.js';
 import {
   initPrimoBrowser, openPrimoBrowser, releasePrimoBrowser,
 } from './primo-browser.js';
@@ -81,6 +82,9 @@ const sctx = scene.getContext('2d', { alpha: false });
 const $ = (id) => document.getElementById(id);
 const screens = {
   menu: $('screen-menu'),
+  // The NFT gate. Listed here so a state change clears it like any other
+  // screen; it is only ever raised at boot, by gateFirst().
+  gate: $('screen-gate'),
   pause: $('screen-pause'),
   over: $('screen-over'),
   // Owned by js/tiendita.js, listed here so a state change can never leave one
@@ -373,6 +377,11 @@ function showScreen(state) {
   if (state === STATE.MENU) {
     screens.menu.classList.remove('hidden');
     refreshStats();
+  } else if (state === STATE.GATE) {
+    // Deliberately paints nothing else: the gate is the only thing on screen
+    // until it is passed, and refreshing stats behind it would be work for a
+    // menu the player cannot see.
+    screens.gate.classList.remove('hidden');
   } else if (state === STATE.PAUSED) {
     screens.pause.classList.remove('hidden');
   } else if (state === STATE.OVER) {
@@ -1598,6 +1607,92 @@ document.addEventListener('visibilitychange', () => {
 
 // -------------------------------------------------------------------- boot
 
+// ------------------------------------------------------------- the NFT gate
+//
+// Holders only, when js/gate-config.js says so. Everything here is a no-op on
+// the dormant build — gate.enabled() is false, gate.open() answers true, and
+// the menu comes up exactly as it always has.
+//
+// ⚠ THE GATE IS A DOOR HANDLE, NOT A LOCK, and js/gate.js says so at length.
+// This game is static files on a public host: anyone can run it locally with
+// this screen deleted. What the Edge Function behind it makes impossible is
+// FORGING THE CLAIM — nobody convinces the backend they hold a Primo when they
+// do not — so the leaderboard and everything else server-side enforce it for
+// real. Do not add a check here and call the game protected.
+
+/** Wire the wallet buttons for whatever is actually installed. */
+function paintGate() {
+  const wrap = $('gate-wallets');
+  const found = gate.available();
+  wrap.replaceChildren();
+  // No wallet at all is its own answer. A row of buttons that cannot work is a
+  // worse thing to show than a sentence naming the problem.
+  $('gate-none').classList.toggle('hidden', found.length > 0);
+  for (const w of found) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn';
+    b.textContent = t('gate.connect').replace('%w', w.name.toUpperCase());
+    b.addEventListener('click', () => { void runGate(w); });
+    wrap.append(b);
+  }
+}
+
+const gateStatus = (msg, bad = false) => {
+  const el = $('gate-status');
+  el.textContent = msg;
+  el.classList.toggle('bad', bad);
+};
+
+async function runGate(w) {
+  sfx.resume();
+  sfx.uiClick();
+  $('btn-gate-retry').classList.add('hidden');
+  gateStatus(t('gate.signing'));
+
+  const res = await gate.verify(w, cloudSession()?.access_token);
+
+  if (res.ok && res.holder) {
+    gateStatus(t('gate.welcome').replace('%n', String(res.count || 1)));
+    track(EVENTS.GATE_PASS, { count: res.count || 0 });
+    // Straight into the game the player came for. The status line above is
+    // read on the way past, not waited on.
+    setTimeout(() => { showScreen(STATE.MENU); }, 700);
+    return;
+  }
+
+  $('btn-gate-retry').classList.remove('hidden');
+  if (res.ok && !res.holder) {
+    gateStatus(t('gate.noPrimo'), true);
+    track(EVENTS.GATE_FAIL, { why: 'no-primo' });
+    return;
+  }
+  // ⚠ Each of these is a DIFFERENT sentence on purpose. "You cancelled",
+  // "we could not reach the chain" and "you hold none" are three unrelated
+  // events, and collapsing them into one message is how a holder ends up
+  // believing they were refused.
+  const say = {
+    cancelled: ['gate.cancelled', false],
+    'chain-unreachable': ['gate.chainDown', true],
+    'no-challenge': ['gate.chainDown', true],
+  }[res.error] || ['gate.failed', true];
+  gateStatus(t(say[0]), say[1]);
+  track(EVENTS.GATE_FAIL, { why: res.error || 'unknown' });
+}
+
+/**
+ * Does the gate stand in front of the menu on this launch?
+ * @returns {boolean} true when the gate took the screen.
+ */
+function gateFirst() {
+  if (!gate.enabled() || gate.open()) return false;
+  paintGate();
+  gateStatus('');
+  showScreen(STATE.GATE);
+  track(EVENTS.GATE_SHOWN, {});
+  return true;
+}
+
 function boot() {
   resize();
 
@@ -1672,7 +1767,10 @@ function boot() {
     () => { sfx.uiClick(); hideOverlays(true); }
   );
 
-  showScreen(STATE.MENU);
+  // The gate goes up INSTEAD of the menu, and only when it is switched on and
+  // this device has no unexpired pass. Everything above has already been
+  // built, so passing it reveals a finished menu rather than starting a load.
+  if (!gateFirst()) showScreen(STATE.MENU);
   // Not named `t` — that is the translator in this module now.
   requestAnimationFrame((now) => { last = now; frame(now); });
 

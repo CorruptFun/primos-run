@@ -396,6 +396,25 @@
     </div>
   </section>
 
+  <!-- ---------------------------------------------------------- the gate -->
+  <!-- Holders only. Shown INSTEAD of the menu when js/gate-config.js is on and
+       this device has no unexpired pass; the whole section is inert (and never
+       shown) on the dormant build, which is how the game ships. -->
+  <section id="screen-gate" class="screen hidden">
+    <div class="sheet">
+      <h2 data-i18n="gate.title">HOLDERS ONLY</h2>
+      <p class="hint" data-i18n="gate.copy"></p>
+      <div id="gate-wallets" class="gate-wallets"></div>
+      <p class="hint" id="gate-status"></p>
+      <!-- Shown only when no Solana wallet is injected at all: a list of
+           buttons that do nothing is a worse answer than naming the problem. -->
+      <div id="gate-none" class="hidden">
+        <p class="hint" data-i18n="gate.noWallet"></p>
+      </div>
+      <button class="btn btn-ghost hidden" id="btn-gate-retry" data-i18n="gate.retry">TRY AGAIN</button>
+    </div>
+  </section>
+
   <!-- ------------------------------------------------------- the account -->
   <!-- Sign-in, runner name and device backup. The backup block works with no
        account at all, so this screen is useful even before the cloud is

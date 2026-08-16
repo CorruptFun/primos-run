@@ -2103,3 +2103,17 @@ h2 {
 .over-bono b { color: var(--gold); }
 .over-bono.sweep { border-color: rgba(40, 195, 184, 0.36); background: rgba(40, 195, 184, 0.09); }
 .over-bono.sweep b { color: var(--teal); }
+
+
+/* ------------------------------------------------------------ the NFT gate */
+/* Wallet buttons stack like any other sheet's controls. No new container type:
+   the three the interface owns (recessed well, tinted card, pill) already cover
+   this, and the status line is SPOKEN — bold teal, red under .bad — in the same
+   register as #acct-status and #primo-status. See CLAUDE.md. */
+.gate-wallets {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 10px;
+}
+.gate-wallets:empty { margin: 0; }

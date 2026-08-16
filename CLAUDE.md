@@ -438,6 +438,55 @@ the shipped original if you need to compare.
   them, because the qualify stamp goes up on the save push. That is the accepted
   simplification, not a bug.
 
+## The NFT gate (`js/gate.js`, Edge Function, migrations `202608162100xx`)
+
+Hold a Primo in a Solana wallet or you do not get in. **Ships OFF**
+(`GATE_ENABLED` in `js/gate-config.js`), like the whole cloud layer. Full runbook
+in `docs/NFT_GATE.md` — read it before touching any of this.
+
+- **`js/gate.js` IS A DOOR HANDLE, NOT A LOCK, and the distinction is the whole
+  design.** The game is static files on a public host: anyone can download it,
+  delete `gateFirst()` and play, and no client code can change that. What the
+  Edge Function buys is that the CLAIM cannot be forged — nobody convinces the
+  backend they hold a Primo when they do not — so everything server-side (the
+  board today, whatever comes later) enforces it for real. Never describe the
+  game itself as protected. Same distinction `claimStatus()` already draws.
+- **The two migrations are split because the second one RESTRICTS.**
+  `…210000` is additive and safe under the live ungated client. `…210001`
+  tightens the board's write policies and must not be applied until the gated
+  client has been out long enough for holders to verify — otherwise every
+  legitimate score is silently refused. That inverts the usual "schema first,
+  client second" rule and is exactly the scar Viva Maya's 0008 → client → 0009
+  sequence paid for.
+- **`verified` on the collection grouping is the entire ownership check.** Anyone
+  can mint an NFT that *names* the Primos collection; only the collection
+  authority can make that grouping verified. Drop that condition in
+  `countPrimos()` and the gate opens for the price of a fake mint.
+- **The nonce is claimed with a conditional UPDATE, never select-then-update.**
+  Two requests racing the same nonce both pass a read-then-write; only one wins a
+  single statement filtering `used_at is null`. Without it a captured
+  `{wallet, nonce, signature}` is a reusable key to someone else's identity.
+- **`primos_gate_nonces` has RLS on and NO policies, deliberately** — that denies
+  every client, which is right for a table only the function touches. A browser
+  that could mint or read a nonce could replay a signature. `primos_holders` is
+  never client-writable for the same class of reason: writing there is asserting
+  NFT ownership. Both are asserted by self-checks in the migration.
+- **A chain outage is NOT a refusal.** The function fails closed with 502 and the
+  client says `gate.chainDown`, never `gate.noPrimo`. Telling someone who paid
+  for a Primo that they own nothing because an RPC blinked is the worst sentence
+  this screen can produce; the two must never collapse into one message.
+- **`getAssetsByOwner` is paged and the loop matters.** A wallet holding more than
+  a page of *other* NFTs would push its Primos off page one and read as a
+  non-holder. Do not "simplify" it to a single request.
+- **The board's READ policy stays open on purpose.** A leaderboard only holders
+  can see cannot advertise the collection. Gate the write; the read protects
+  nothing and is the gate's only marketing surface.
+- **No wallet address in the event log**, ever — `GATE_PASS`/`GATE_FAIL` carry a
+  count and a reason. A wallet is a fingerprint on a public chain, the same rule
+  `PRIMO_SET` follows for token numbers.
+- `dev/gate-test.html` covers the client half with no wallet and no backend. It
+  cannot test the part that matters, and says so at the top.
+
 ## Analytics (`js/analytics.js`, `stats.html`, migration `0003`)
 
 First-party, no third-party trackers. Ships dormant with the rest of the cloud
@@ -627,6 +676,9 @@ cache a 200 that is not an image, eviction, and the blob → canvas bake staying
 untainted. No network, so it reproduces offline the faults that previously needed
 a real gateway to misbehave. Open it after touching `primo-cache.js`, `GATEWAYS`
 or `loadHead`.
+
+`dev/gate-test.html` covers the NFT gate's client half — base58, the pass store
+and its expiry ceiling, wallet detection — with `fetch` and the wallet stubbed.
 
 `dev/cloud-test.html` asserts every pure module in the browser — day/week keys,
 the merge, name sanitising, the analytics vocabulary pin, the feedback bounds and

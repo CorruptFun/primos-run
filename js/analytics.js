@@ -88,6 +88,16 @@ export const EVENTS = {
   PRIMO_OPEN: 'primo_open',
   PRIMO_SET: 'primo_set',
 
+  // The NFT gate (js/gate.js). GATE_SHOWN is the denominator: how many
+  // arrivals meet the door at all. `why` on a failure separates 'holds
+  // none' from 'chain was down', which are the same screen and completely
+  // different problems — one is a sales funnel, the other is an outage.
+  // ⚠ No wallet address and no token number, ever: both are a wallet
+  // fingerprint on a public chain, which is the same rule PRIMO_SET follows.
+  GATE_SHOWN: 'gate_shown',
+  GATE_PASS: 'gate_pass',
+  GATE_FAIL: 'gate_fail',
+
   SIGN_IN_START: 'sign_in_start',
   SIGN_IN_DONE: 'sign_in_done',
   BOARD_OPEN: 'board_open',

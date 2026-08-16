@@ -26,6 +26,9 @@ export const STATE = {
   PLAYING: 'playing',
   PAUSED: 'paused',
   OVER: 'over',
+  // Holders only. Stands in front of MENU at boot when the NFT gate is on and
+  // this device has no unexpired pass; never reached on the dormant build.
+  GATE: 'gate',
 };
 
 // z-thickness used for hit tests, by prop kind.

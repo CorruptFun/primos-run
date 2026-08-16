@@ -52,6 +52,26 @@ into invite links for exactly this reason, trailing slash included.
 - [ ] **The i18n voice policy still holds** if copy changed: `en` is full English
       all the way down; proper nouns only. Read the header of `js/i18n.js`.
 
+## If the NFT gate is involved
+
+Full runbook: [NFT_GATE.md](NFT_GATE.md). The order is load-bearing and two
+steps lock people out if taken early.
+
+- [ ] **`GATE_ENABLED` is only true on a build whose Edge Function is deployed
+      and answering.** Flipping it first locks out everyone including the owner,
+      with no way back but another deploy.
+- [ ] **`20260816210001_primos_gate_enforce_boards.sql` has NOT been applied
+      before holders have had time to verify.** It is a restricting change under
+      a prompt-mode PWA — the inverse of the schema-first rule. Its own tail
+      carries the rollback.
+- [ ] **The function's secrets are set** (`SOLANA_RPC_URL`, `PRIMOS_COLLECTION`,
+      `GATE_SECRET`) and none of them is in the repo. It fails closed with 503
+      naming the missing one.
+- [ ] **`PRIMOS_COLLECTION` was checked against a block explorer.** Wrong in one
+      direction it refuses every holder; wrong in the other it admits everyone.
+- [ ] **A real wallet completed the flow end to end.** The signing path cannot be
+      probed from outside a wallet — there is no substitute for doing it once.
+
 ## If a migration is involved
 
 Migrations are **applied by hand; CI never applies them.** Applying to production

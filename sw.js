@@ -17,7 +17,7 @@
 */
 
 // 👉 CUSTOMIZE: rename to your app, and bump CACHE_VERSION per deploy (e.g. a build stamp).
-const CACHE_VERSION = "v23-hedged-gateway-walk";
+const CACHE_VERSION = "v24-holders-only";
 const CACHE_NAME    = `primos-run-${CACHE_VERSION}`;
 
 // 👉 CUSTOMIZE: the offline shell, precached at install. Relative paths (resolved against
@@ -47,6 +47,12 @@ const PRECACHE = [
   "./js/tiendita.js",
   "./js/wallet.js",
   "./js/primo-picker.js",
+  // The NFT gate. Imported by main.js, so an offline boot fetches it whether
+  // it is listed or not — leaving it out only guarantees that fetch fails.
+  // Precaching it is safe on the dormant build: gate-config.js ships with
+  // GATE_ENABLED false, so the module loads and does nothing.
+  "./js/gate.js",
+  "./js/gate-config.js",
   // Imported by main.js, so an offline boot fetches it whether it is listed or
   // not — leaving it out only guarantees that fetch fails.
   //

@@ -1,0 +1,81 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>gate test</title>
+<!--
+  The NFT gate's client half, with no wallet and no backend.
+
+  window.fetch and a fake injected wallet are stubbed, so the whole handshake —
+  detect, connect, sign, verify, keep the pass — runs offline and
+  deterministically. What is pinned here is everything that is OURS: base58 of
+  the signature, the pass's expiry ceiling, and the outcome mapping.
+
+  ⚠ THE ONE THING THIS CANNOT TEST IS THE THING THAT MATTERS. Ownership is
+  decided by supabase/functions/primos-gate, from a signature it verifies and a
+  chain lookup it makes. This file only proves the door handle turns. Read
+  docs/NFT_GATE.md before trusting the gate on the strength of a green page
+  here.
+
+  Open after touching js/gate.js or js/gate-config.js.
+-->
+<body style="background:#1d1229;color:#fdf6e6;font:14px ui-monospace,monospace;padding:20px">
+<pre id="out">running…</pre>
+<script type="module">
+const log = [];
+const ok = (n, c, extra = '') => log.push(`${c ? 'ok  ' : 'FAIL'} ${n}${extra ? ' — ' + extra : ''}`);
+
+const gate = await import(`../js/gate.js?v=${Date.now()}`);
+
+// ---- base58, against known Solana vectors
+ok('b58 of 32 zero bytes is 32 ones',
+  gate.b58encode(new Uint8Array(32)) === '1'.repeat(32));
+ok('b58 round-trips a known vector',
+  gate.b58encode(new Uint8Array([0, 0, 1])) === '112',
+  gate.b58encode(new Uint8Array([0, 0, 1])));
+ok('b58 of empty is empty', gate.b58encode(new Uint8Array()) === '');
+// A real ed25519 signature is 64 bytes and base58s to ~86-88 chars.
+const sig = new Uint8Array(64).map((_, i) => (i * 7 + 13) & 0xff);
+const enc = gate.b58encode(sig);
+ok('a 64-byte signature encodes to a plausible length', enc.length >= 85 && enc.length <= 90, `${enc.length}`);
+ok('and only uses the base58 alphabet',
+  /^[1-9A-HJ-NP-Za-km-z]+$/.test(enc));
+
+// ---- the gate is OFF in the repo, and that is the shipping state
+ok('ships dormant', gate.enabled() === false);
+ok('dormant means the door is open', gate.open() === true);
+ok('dormant verify never refuses', (await gate.verify(null)).holder === true);
+
+// ---- the pass store
+localStorage.removeItem('primos-run:gate-pass');
+ok('no pass to start', gate.storedPass() === null);
+localStorage.setItem('primos-run:gate-pass',
+  JSON.stringify({ wallet: 'W', pass: 'p', count: 2, exp: Date.now() - 1000 }));
+ok('an expired pass is not a pass', gate.storedPass() === null);
+localStorage.setItem('primos-run:gate-pass',
+  JSON.stringify({ wallet: 'W', pass: 'p', count: 2, exp: Date.now() + 60000 }));
+ok('a live pass reads back', !!gate.storedPass());
+ok('holder() reports the wallet', gate.holder()?.wallet === 'W');
+gate.clearPass();
+ok('clearPass forgets it', gate.storedPass() === null);
+localStorage.setItem('primos-run:gate-pass', 'not json at all');
+ok('garbage in storage is not a pass', gate.storedPass() === null);
+localStorage.removeItem('primos-run:gate-pass');
+
+// ---- wallet detection
+ok('no wallets injected here', gate.available().length === 0);
+window.phantom = {
+  solana: {
+    connect: async () => ({ publicKey: 'HoLdErWaLLeT11111111111111111111111111111111' }),
+    signMessage: async () => ({ signature: sig }),
+  },
+};
+const found = gate.available();
+ok('a stubbed Phantom is found', found.length === 1 && found[0].id === 'phantom',
+  JSON.stringify(found.map((f) => f.id)));
+window.phantom = { solana: { connect: async () => ({ publicKey: 'X' }) } };   // no signMessage
+ok('a half-injected provider is not offered', gate.available().length === 0);
+
+document.getElementById('out').textContent = log.join('\n');
+window.__done = true;
+window.__fails = log.filter((l) => l.startsWith('FAIL')).length;
+</script>
+</body>
