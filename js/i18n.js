@@ -482,6 +482,24 @@ const STR = {
   'gate.failed':      { en: 'The wallet did not connect. Try again.',
                         es: 'La wallet no conectó. Inténtalo otra vez.' },
 
+  // --- the wallet on the ACCOUNT screen ---
+  // gate.js has exported holder() and clearPass() since the first commit and
+  // nothing ever called either: a connected player could not see which wallet
+  // they were in as, when the pass ran out, or how to get back out. This panel
+  // is that missing handle on the inside of the door.
+  'gate.acctTitle':   { en: 'Wallet', es: 'Cartera' },
+  // %w abbreviated address, %n the count phrase, %t the local expiry time.
+  'gate.acctOn':      { en: 'Connected as %w \u2014 %n. Verified until %t.',
+                        es: 'Conectada como %w \u2014 %n. Verificada hasta %t.' },
+  // Split out of the sentence because '1 Primos' reads wrong and the plural
+  // rule is not the same in both languages.
+  'gate.acctOne':     { en: '1 Primo', es: '1 Primo' },
+  'gate.acctMany':    { en: '%c Primos', es: '%c Primos' },
+  'gate.acctOff':     { en: 'No wallet connected on this device.',
+                        es: 'Ninguna cartera conectada en este dispositivo.' },
+  'gate.acctDisconnect': { en: 'DISCONNECT WALLET', es: 'DESCONECTAR CARTERA' },
+  'gate.acctLeaving': { en: 'Disconnecting\u2026', es: 'Desconectando\u2026' },
+
   'acct.title':       { en: 'ACCOUNT', es: 'CUENTA' },
   'acct.back':        { en: 'BACK', es: 'ATRÁS' },
   'acct.offBuild':    { en: 'The cloud is not switched on in this build — but your run is saved '

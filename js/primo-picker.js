@@ -429,6 +429,12 @@ const EXTRA = {
   'browse.notYours':  { en: '#%n is not in your wallet. That one belongs to somebody else.',
                         es: 'El #%n no está en tu wallet. Ese es de alguien más.' },
   'crew.tileBrowse':  { en: 'BROWSE', es: 'VER' },
+
+  // The YOURS row. %c is how many the pass says are in the wallet. It exists
+  // because proving ownership and SHOWING it are different things: the gate
+  // established which Primos are the player's and then left them to find the
+  // numbers themselves among 3,069 locked tiles.
+  'browse.yours':     { en: 'YOURS \u00b7 %c', es: 'TUYOS \u00b7 %c' },
 };
 
 const PACKS = { en: Object.create(null), es: Object.create(null) };

@@ -2127,3 +2127,56 @@ h2 {
   opacity: 0.42;
   cursor: not-allowed;
 }
+
+/* YOURS — the Primos actually in the wallet, above a grid of 3,069 that are
+   mostly not. Gold because gold is this interface's word for "yours" (the racha
+   chip, the payout rows, .board-me), and a TINTED CARD rather than an accent bar
+   for the reason the v18 pass stripped all nine of those. */
+.yours-row {
+  margin: 0 0 10px;
+  padding: 9px 11px;
+  border-radius: 12px;
+  background: rgba(255, 201, 60, 0.10);
+  border: 1px solid rgba(255, 201, 60, 0.28);
+}
+.yours-label {
+  margin: 0 0 7px;
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+/* Wraps rather than scrolls. A wallet holding thirty Primos should grow the
+   card downward, not hide two thirds of them behind a gesture with no affordance
+   — the whole point of the row is that you can see what is yours at a glance. */
+.yours-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.yours-pill {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 201, 60, 0.45);
+  background: rgba(255, 201, 60, 0.14);
+  color: var(--gold);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: transform 90ms ease, background 120ms ease;
+}
+.yours-pill:hover { background: rgba(255, 201, 60, 0.22); }
+/* ⚠ ONE rule for both, per the ui-feedback contract: iOS Safari withholds
+   :active inside a scrolling .screen until it knows the touch is not a scroll,
+   so .pressed is the only one that fires on a phone. Splitting them is how the
+   two presses drift. */
+.yours-pill:active,
+.yours-pill.pressed {
+  transform: translateY(1px) scale(0.97);
+  background: rgba(255, 201, 60, 0.30);
+}

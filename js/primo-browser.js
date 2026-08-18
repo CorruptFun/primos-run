@@ -39,7 +39,7 @@ import {
   getIndex, cidFor, GATEWAYS, MAX_TOKEN, SUPPLY, loadPrimoArt, claimStatus,
 } from './primo-picker.js';
 import { fetchArt, release } from './primo-cache.js';
-import { enabled as gateOn, owns as gateOwns } from './gate.js';
+import { enabled as gateOn, owns as gateOwns, ownedTokens } from './gate.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -168,6 +168,20 @@ function build() {
     pick(n);
   });
 
+  // The YOURS pills, delegated on their container for the same reason the grid
+  // delegates: the row is rebuilt on every open, and per-pill listeners would
+  // accumulate one set per visit.
+  $('browse-yours-pills').addEventListener('click', (e) => {
+    const pill = e.target.closest('.yours-pill');
+    if (!pill) return;
+    const n = Number(pill.dataset.n);
+    if (!Number.isInteger(n)) return;
+    // Page there first so the grid is showing the tile that is about to light
+    // up; pick() then marks it and raises the preview card.
+    goToPage(Math.floor(n / PAGE_SIZE));
+    pick(n);
+  });
+
   built = true;
 }
 
@@ -277,6 +291,47 @@ async function pick(n) {
   use.disabled = false;
 }
 
+// -------------------------------------------------------------------- yours
+
+/**
+ * The row of Primos this wallet actually holds.
+ *
+ * ⚠ THE LIST COMES FROM ownedTokens(), which reads the SIGNED pass payload —
+ * not the convenience copy in localStorage beside it. That matters more here
+ * than anywhere else in this file: this row is the one surface that says "these
+ * are yours", so a list a console could append to would be a list that offers
+ * a Primo the player does not hold.
+ *
+ * Tapping a pill does BOTH things: pages the grid to that Primo and picks it.
+ * Picking alone would put the preview card up while the grid still showed some
+ * unrelated page, which reads as the wrong tile having been chosen.
+ */
+function paintYours() {
+  const row = $('browse-yours');
+  if (!row) return;
+
+  // Off with the gate off. Every Primo is wearable then, so a row headed
+  // "YOURS" listing all 3,069 would be both enormous and untrue.
+  const mine = gateOn() ? ownedTokens() : [];
+  if (!mine.length) { row.classList.add('hidden'); return; }
+  row.classList.remove('hidden');
+
+  $('browse-yours-label').textContent = t('browse.yours').replace('%c', String(mine.length));
+
+  const pills = $('browse-yours-pills');
+  pills.replaceChildren();
+  const frag = document.createDocumentFragment();
+  for (const n of mine) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'yours-pill';
+    b.dataset.n = String(n);
+    b.textContent = `#${n}`;
+    frag.append(b);
+  }
+  pills.append(frag);
+}
+
 // -------------------------------------------------------------------- api
 
 /**
@@ -328,6 +383,10 @@ export async function openPrimoBrowser(currentNumber) {
     return;
   }
   if (!built) build();
+  // After build() — the row's container must exist before it can be filled —
+  // and on every open rather than once, because the pass can change between
+  // visits (it expires, or the player disconnects and connects another wallet).
+  paintYours();
 
   // Reset the pick card unless they are coming back to the one they are wearing.
   selected = null;

@@ -24,6 +24,7 @@ import * as store from './store.js';
 import { EVENTS, isOptedOut, setOptedOut, track } from './analytics.js';
 import { cachedCount, clearArtCache } from './primo-cache.js';
 import { busy, flashLabel, uiToast } from './ui-feedback.js';
+import { clearPass, enabled as gateOn, holder as gateHolder } from './gate.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -127,6 +128,56 @@ function paintAuth() {
     });
   });
   host.append(btn);
+}
+
+// --- the wallet --------------------------------------------------------------
+
+/**
+ * Who this device is connected as, and the way out.
+ *
+ * ⚠ This reads gate.holder(), which reads the STORED PASS — not the convenience
+ * copy beside it and not the chain. It is a statement about what this device was
+ * told at verification time, which is why the expiry is shown rather than
+ * implied: a pass is a claim with a clock on it, and after it runs out the
+ * wallet is asked again.
+ *
+ * Hidden entirely when the gate is off. With no gate there is no wallet, no
+ * pass and nothing true to say, and an empty "Wallet — not connected" section on
+ * every ungated build is a control that does nothing.
+ */
+function paintWallet() {
+  const box = $('acct-wallet');
+  if (!box) return;
+  if (!gateOn()) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+
+  const h = gateHolder();
+  const copy = $('acct-wallet-copy');
+  const out = $('btn-wallet-out');
+
+  if (!h) {
+    copy.textContent = t('gate.acctOff');
+    out.classList.add('hidden');
+    return;
+  }
+
+  // Abbreviated, not full. The address is already public on-chain so this is
+  // not secrecy — it is that 44 base58 characters wrap to three lines on a
+  // phone and say nothing more than the ends do.
+  const w = h.wallet.length > 12
+    ? `${h.wallet.slice(0, 4)}…${h.wallet.slice(-4)}`
+    : h.wallet;
+  const count = h.count === 1
+    ? t('gate.acctOne')
+    : t('gate.acctMany').replace('%c', String(h.count));
+  const when = new Date(h.exp).toLocaleString(undefined, {
+    weekday: 'short', hour: 'numeric', minute: '2-digit',
+  });
+  copy.textContent = t('gate.acctOn')
+    .replace('%w', w)
+    .replace('%n', count)
+    .replace('%t', when);
+  out.classList.remove('hidden');
 }
 
 // --- race name --------------------------------------------------------------
@@ -492,6 +543,23 @@ export function initAccount() {
     });
   });
 
+  // --- the wallet ---
+  // ⚠ RELOAD, not a repaint, for the same reason signing out of Google does:
+  // half the game is holding state derived from a pass that no longer applies
+  // — which Primos are wearable, whether the door is even open — and working
+  // out which of those to invalidate is strictly harder than starting clean.
+  // The gate screen comes back up on the way in, which is the correct place to
+  // land after disconnecting.
+  const walletOut = $('btn-wallet-out');
+  if (walletOut) {
+    walletOut.addEventListener('click', () => {
+      walletOut.disabled = true;
+      walletOut.textContent = t('gate.acctLeaving');
+      clearPass();
+      location.reload();
+    });
+  }
+
   // --- privacy ---
   const optIn = $('acct-analytics');
   if (optIn) {
@@ -518,6 +586,7 @@ export function initAccount() {
 export function refreshAccount() {
   status('');
   paintAuth();
+  paintWallet();
   paintName();
   paintInvite();
   paintPrivacy();

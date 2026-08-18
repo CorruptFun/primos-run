@@ -374,6 +374,17 @@
                data-i18n-ph="browse.jumpPh" placeholder="Jump to #" spellcheck="false">
         <button class="btn btn-small" id="btn-browse-jump" data-i18n="browse.jump">GO</button>
       </div>
+      <!-- YOURS. The gate already proves WHICH Primos are in the wallet, and
+           until this row existed nothing ever showed them: the ones you own sat
+           unlocked among 3,069 locked tiles, reachable only by already knowing
+           the number. Tapping one picks it AND pages the grid to it, so the
+           selection happens in view rather than off-screen. Empty and hidden
+           when the gate is off — with no gate every Primo is yours to wear, and
+           a "YOURS" row listing 3,069 of them says nothing. -->
+      <div class="yours-row hidden" id="browse-yours">
+        <p class="yours-label" id="browse-yours-label"></p>
+        <div class="yours-pills" id="browse-yours-pills"></div>
+      </div>
       <div class="primo-grid" id="browse-grid"></div>
       <!-- A page at a time, not one 3,069-tile scroll. See the header of
            js/primo-browser.js for what that cost on a real phone. -->
@@ -424,6 +435,19 @@
       <h2 data-i18n="acct.title">ACCOUNT</h2>
 
       <div id="acct-auth"></div>
+
+      <!-- The wallet, when the gate is on. gate.js exported holder() and
+           clearPass() from the first commit and NOTHING ever called either, so a
+           player who connected could not see which wallet they were in as, when
+           the pass expired, or how to leave — a door with no handle on the
+           inside. Hidden entirely when the gate is off, like #acct-invite is
+           without the cloud: there is nothing honest to show. -->
+      <div id="acct-wallet" class="hidden">
+        <p class="sec sep" data-i18n="gate.acctTitle">Wallet</p>
+        <p class="hint" id="acct-wallet-copy"></p>
+        <button class="btn btn-ghost btn-small wide" id="btn-wallet-out"
+                data-i18n="gate.acctDisconnect">DISCONNECT WALLET</button>
+      </div>
 
       <div id="acct-name" class="hidden">
         <p class="sec" data-i18n="acct.nameTitle">Runner name</p>
