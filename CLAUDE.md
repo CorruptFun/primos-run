@@ -60,6 +60,38 @@ go stale here claimed 520 of 3,069 tokens for a day after full coverage landed.
   which shows every trait at once — one at a time in `rig-test.html` is how a
   batch of them shipped unreadable.
 
+- **A HORN IS WIDE AT THE ROOT AND POINTED AT THE TIP, AND THE FIRST ONE WAS
+  BUILT UPSIDE DOWN.** Both edges of the old blade met at a single point where
+  it joined the skull and it was still 0.18rx across at the tip — no root to
+  grow out of, no point to end in — so what stood on the crown was a pair of
+  parallel slivers: the insect antenna its own comment said it must never be.
+  The outline is a SPINE now, with the half-width driven to zero along it, so
+  outer edge and inner edge are one curve offset by a width that can only
+  shrink and the taper cannot be got backwards again. It also has to CURVE:
+  the first fix tapered correctly but swept straight up, and a tapering
+  triangle at the top corner of a round head is a CAT'S EAR whatever colour it
+  is drawn in — the two growth rings low on it promptly became the fold inside
+  one, which is how far the eye will go to finish that picture. They are gone.
+  **Horns are the ONE piece of headwear drawn UNDER the hair**, because they
+  grow out of the skull rather than sit on it; laid on top, a root wide enough
+  to read shows its base as a straight cut across the crown.
+
+- **A KEYLINE ON A NARROW SHAPE IS ONE FLAT FILL, NEVER A `cel()` PASS.**
+  `cel()` offsets its lit copy by `LX`/`LY` of the whole head box, which on
+  something a few pixels across lands the pale tone almost entirely OUTSIDE the
+  shape. The horns shipped with `cel(build(g), { base: hat.light, dark: RIM })`
+  as their backlight and what that draws is a salmon ghost hanging off one side
+  of each horn — at gameplay size the ghost is a third horn, and it is the pale
+  drooping crescents in every screenshot of the bug. Grow the path, fill it once
+  in `RIM`, let the horn's own `cel()` supply the light.
+
+- **The sheen is gated on `capped`, not on "is there a hat".** A visor and a
+  pair of horns both leave the crown WIDE OPEN — that is the whole point of
+  both, and `capped` already says so — but the gate read `!capCol`, so those two
+  traits were the only bare crowns in the collection denied the one pass that
+  guarantees a light value on the head. They rendered as the featureless dark
+  blob the top of this file exists to prevent.
+
 - **`primo-traits.js` hands over structure; the PFP sampler hands over colour.**
   Earrings carry a `kind` as well as a colour (`hoop`/`stud`/`drop`) because
   eight names all rendered as the same gold hoop otherwise. The earring is drawn
