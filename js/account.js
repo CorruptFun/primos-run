@@ -12,7 +12,8 @@
 // only durability on offer before the cloud exists.
 
 import {
-  cloudSession, isCloudConfigured, onCloudChange, signInWithGoogle, signOutCloud,
+  cloudSession, isCloudConfigured, isWalletSession, onCloudChange, signInWithGoogle,
+  signOutCloud,
 } from './cloud.js';
 import { t } from './i18n.js';
 import { anonName, getHandle, sanitizeName, setHandle } from './leaderboard.js';
@@ -73,9 +74,16 @@ function paintAuth() {
 
   const session = cloudSession();
   if (session) {
-    host.append(note(session.email
-      ? t('acct.signedInAs').replace('%s', session.email)
-      : t('acct.signedIn')));
+    // ⚠ A WALLET ACCOUNT'S EMAIL IS NEVER SHOWN. auth.users demanded an address
+    // and a wallet has none, so the Edge Function stores an unroutable stand-in
+    // on the reserved `.invalid` TLD. Rendering it would put a fake email in
+    // front of a player who never gave one — the same instinct the display-name
+    // rule enforces everywhere else, applied to the one screen that prints it.
+    host.append(note(isWalletSession()
+      ? t('acct.signedInWallet')
+      : session.email
+        ? t('acct.signedInAs').replace('%s', session.email)
+        : t('acct.signedIn')));
     const out = document.createElement('button');
     out.className = 'btn btn-ghost btn-small wide';
     out.type = 'button';

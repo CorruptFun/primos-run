@@ -229,6 +229,29 @@ export async function verify(wallet, accessToken) {
 
   keepPass(address, out.body.pass, Date.parse(out.body.expiresAt) || (Date.now() + PASS_TTL_MS),
     out.body.primoCount, out.body.tokens);
+
+  // The wallet is also a login. The function mints a one-time token when this
+  // device had no session, and trading it here is what turns a holder into an
+  // ordinary signed-in player: cloud save, the board and invites all key on
+  // user_id from that point and none of them need to know a wallet was involved.
+  //
+  // ⚠ THE PASS IS ALREADY KEPT ABOVE, BEFORE THIS RUNS, AND THAT ORDER IS THE
+  // POINT. Getting in and having an account are separate goods: a holder whose
+  // session cannot be established — CDN down, storage blocked, a Supabase
+  // hiccup — must still walk through the door they proved they own. Swallowed
+  // for the same reason, and it re-attaches on the next verify.
+  //
+  // Imported lazily so the gate path does not pull supabase-js in for the
+  // players who never get one (already signed in, or the exchange never fires).
+  const tokenHash = out.body.session?.tokenHash;
+  if (tokenHash) {
+    try {
+      const cloud = await import('./cloud.js');
+      await cloud.signInWithWalletToken(tokenHash);
+    } catch {
+      /* in on the pass, account attaches next time */
+    }
+  }
   return {
     ok: true, holder: true, count: out.body.primoCount || 0, address,
     tokens: Array.isArray(out.body.tokens) ? out.body.tokens : [],

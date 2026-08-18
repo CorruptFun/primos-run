@@ -80,6 +80,49 @@ another's Primo, so a bypasser wearing #2933 locally is visible to nobody. The
 moment such a surface exists it must go through `primos_owns_token()`, or the
 guarantee becomes decorative on the only screen where it would matter.
 
+## The wallet is also a login
+
+A verified wallet does not just open the door — it *is* an account. Signing
+proves control of the key, which is a stronger claim than an emailed code, so
+once the signature checks out there is nothing further to ask.
+
+**Why an account rather than teaching everything about wallets.** Cloud save, the
+leaderboard and invites all key on `user_id` from `auth.users`. Minting a real
+Supabase user for the wallet makes every one of them work with **no schema change
+and no new policy**. The alternative — teaching each of those to accept a wallet
+address — would mean Primos-specific policies on `public.game_saves`, which is the
+SHARED table Turbo Maze owns and which this project must not touch.
+
+| the player | what happens |
+|---|---|
+| Already signed in with Google, then connects a wallet | **Links.** `primos_holders.user_id` is set to the existing account. No second identity. |
+| Not signed in, holds a Primo | Wallet account found or created, one-time token returned, client trades it for a session. |
+| Not signed in, holds nothing | Refused. **No account is created** — `auth.users` does not collect a row per passer-by. |
+| Session could not be established | **Still gets in.** The pass is kept before the exchange runs. |
+
+- **An existing session always wins.** Minting a wallet account for someone
+  already signed in with Google would silently strand the progress, boards and
+  invites sitting under their Google user.
+- **The pass is kept BEFORE the session is exchanged, and that order is the
+  point.** Getting through the door and having an account are separate goods; a
+  holder whose session cannot be established — CDN down, storage blocked, a
+  Supabase hiccup — must still walk through the door they proved they own. The
+  account re-attaches on the next verify.
+- **⚠ THE SYNTHETIC ADDRESS IS NOT A CONTACT DETAIL.** `auth.users` demands an
+  email and a wallet has none, so the function stores
+  `<wallet>@wallet.primos.invalid` — the RFC 2606 reserved TLD, which can never
+  resolve and can never be registered, so nothing can be sent to it. It must
+  never reach the player: `paintAuth()` renders `acct.signedInWallet` instead,
+  and `anonName()` already builds display names from the user id. This is the
+  display-name-from-email rule applied to the one screen that prints an address.
+- **The one-time token is a credential.** `generateLink` issues it single-use and
+  it is returned only in the response to a request that already proved the
+  wallet's signature. `signInWithWalletToken()` must never be called with a token
+  from anywhere else.
+- **The wallet → user mapping lives in `primos_holders`,** which is why creating
+  the account needs no `admin.listUsers()` — that call pages the entire user base
+  of a project shared with two other games to answer a question about one row.
+
 ## Rollout, in order
 
 **The order is load-bearing.** Two of these steps lock people out if taken early.

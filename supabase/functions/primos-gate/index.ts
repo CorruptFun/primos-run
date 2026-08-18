@@ -200,6 +200,59 @@ async function countPrimos(
   return { total, tokens };
 }
 
+// ------------------------------------------------------------ the account
+//
+// A verified wallet IS a login. The signature already proves the holder controls
+// the key, which is a stronger claim than an emailed code, so once it checks out
+// there is nothing further to ask: the wallet gets a Supabase account and the
+// client gets a session for it.
+//
+// ⚠ WHY AN ACCOUNT AT ALL, when the pass already opens the door: because the
+// door was never the point. Cloud save, the leaderboard and invites are all
+// keyed on `user_id` from auth.users — so minting a REAL Supabase user is what
+// makes every one of them work for a wallet player with NO schema change and no
+// new policy. The alternative, teaching each of those to accept a wallet
+// address, would mean Primos-specific policies on public.game_saves, which is
+// the SHARED table another game in this project owns.
+//
+// ⚠ THE SYNTHETIC ADDRESS IS NOT A CONTACT DETAIL. auth.users wants an email and
+// a wallet does not have one, so this is a stable, unroutable stand-in on the
+// RFC-2606 `.invalid` TLD — a reserved domain that can never resolve, so nothing
+// can ever be sent to it and nobody can register it. It must never be shown to
+// the player or used to derive a display name; anonName() already builds from
+// the user id instead, and the guard trigger refuses email-derived names anyway.
+const WALLET_EMAIL = (w: string) => `${w.toLowerCase()}@wallet.primos.invalid`;
+
+/**
+ * Find or create the account behind a wallet, and mint a one-time token the
+ * client can exchange for a real session.
+ *
+ * ⚠ The token is a CREDENTIAL. It is returned only in the response to a request
+ * that already proved the wallet's signature, and generateLink issues it
+ * single-use — so a captured one is worth nothing twice.
+ */
+async function walletAccount(db: any, wallet: string) {
+  const email = WALLET_EMAIL(wallet);
+
+  // Create unconditionally and ignore "already registered": the alternative is
+  // admin.listUsers(), which pages the ENTIRE user base of a project shared with
+  // two other games to answer a question about one row.
+  await db.auth.admin.createUser({
+    email,
+    email_confirm: true,          // no confirmation mail — the address is unroutable
+    user_metadata: { wallet, via: 'solana-wallet' },
+  });
+
+  // Serves double duty: hands back the user (whether we just made it or it was
+  // already there) and the one-time token in the same call.
+  const { data, error } = await db.auth.admin.generateLink({ type: 'magiclink', email });
+  if (error) throw new Error(`could not issue a session: ${error.message}`);
+  return {
+    userId: (data?.user?.id as string) ?? null,
+    tokenHash: (data?.properties?.hashed_token as string) ?? null,
+  };
+}
+
 // -------------------------------------------------------------------- serve
 
 Deno.serve(async (req) => {
@@ -291,13 +344,38 @@ Deno.serve(async (req) => {
     }
 
     // Link the wallet to the signed-in account when there is one, so the board
-    // policy can ask "is the user writing this row a holder?". Optional by
-    // design: the game plays local-only without an account.
+    // policy can ask "is the user writing this row a holder?".
+    //
+    // ⚠ AN EXISTING SESSION ALWAYS WINS. Someone already signed in with Google
+    // who then connects a wallet is LINKING the two, not starting a second
+    // identity — minting a wallet account here would silently strand the
+    // progress, boards and invites already sitting under their Google user.
     let userId: string | null = null;
     const auth = req.headers.get('Authorization');
     if (auth?.startsWith('Bearer ')) {
       const { data } = await db.auth.getUser(auth.slice(7));
       userId = data?.user?.id ?? null;
+    }
+
+    // No session and they hold: the wallet becomes the login. Gated on
+    // `count > 0` deliberately — a wallet that holds nothing is turned away
+    // below, and handing it an account first would litter auth.users with a row
+    // per passer-by and mean a non-holder had "an account" for a game it cannot
+    // open.
+    let sessionToken: string | null = null;
+    if (!userId && count > 0) {
+      try {
+        const acct = await walletAccount(db, wallet);
+        userId = acct.userId;
+        sessionToken = acct.tokenHash;
+      } catch (e) {
+        // ⚠ NOT FATAL, and that is the point. The pass below is what opens the
+        // door; the account is what makes progress follow them. Failing the
+        // whole verify here would lock a genuine holder out of a game they can
+        // play perfectly well offline, over a cloud feature that is optional
+        // everywhere else in this codebase.
+        console.error('wallet account failed', String(e));
+      }
     }
 
     const now = new Date().toISOString();
@@ -327,6 +405,10 @@ Deno.serve(async (req) => {
       tokens,
       pass: await issuePass(SECRET!, wallet, count, tokens, exp),
       expiresAt: new Date(exp).toISOString(),
+      // Present only when this request minted one: absent for a player who was
+      // already signed in (their session stands) and for anyone the account
+      // step failed for (they still get in on the pass alone).
+      ...(sessionToken ? { session: { tokenHash: sessionToken } } : {}),
     });
   }
 

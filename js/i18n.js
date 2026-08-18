@@ -487,6 +487,10 @@ const STR = {
   // nothing ever called either: a connected player could not see which wallet
   // they were in as, when the pass ran out, or how to get back out. This panel
   // is that missing handle on the inside of the door.
+  // Shown INSTEAD of acct.signedInAs for a wallet account. There is a stand-in
+  // address behind it and the player must never see it — see paintAuth().
+  'acct.signedInWallet': { en: 'Signed in with your wallet \u2014 your progress syncs on its own.',
+                        es: 'Sesi\u00f3n iniciada con tu cartera \u2014 tu progreso se sincroniza solo.' },
   'gate.acctTitle':   { en: 'Wallet', es: 'Cartera' },
   // %w abbreviated address, %n the count phrase, %t the local expiry time.
   'gate.acctOn':      { en: 'Connected as %w \u2014 %n. Verified until %t.',

@@ -223,6 +223,45 @@ export async function signInWithGoogle() {
   }
 }
 
+/**
+ * Finish signing in as a wallet.
+ *
+ * The Edge Function has already checked the signature and minted a one-time
+ * token against the wallet's account; this trades it for a real session. From
+ * here the wallet player is an ordinary signed-in user — cloud save, the board
+ * and invites all key on `user_id` and none of them know or care how the
+ * session was obtained.
+ *
+ * ⚠ NEVER CALLED WITH A TOKEN FROM ANYWHERE BUT THE GATE'S OWN RESPONSE. It is
+ * a credential: whoever holds it becomes that wallet's account.
+ *
+ * Failure is survivable on purpose — js/gate.js keeps the pass either way, so a
+ * holder whose session could not be established still gets into the game and
+ * still plays locally. The account attaches on the next verify.
+ */
+export async function signInWithWalletToken(tokenHash) {
+  const c = await sb();
+  if (!c) return { ok: false, error: 'Cloud save isn’t set up on this build.' };
+  try {
+    const { error } = await c.auth.verifyOtp({ token_hash: tokenHash, type: 'magiclink' });
+    return error ? { ok: false, error: error.message } : { ok: true };
+  } catch {
+    return { ok: false, error: 'Couldn’t finish signing in with that wallet.' };
+  }
+}
+
+/**
+ * Is this session a wallet account rather than a Google one?
+ *
+ * ⚠ The check is on the DOMAIN, and the address it matches is unroutable by
+ * construction (RFC 2606 reserves `.invalid`). This exists so the ACCOUNT screen
+ * never renders that address at a player: it is a stand-in auth.users demanded,
+ * not a contact detail, and showing it would be both meaningless and alarming.
+ */
+export function isWalletSession() {
+  return !!session?.email && session.email.endsWith('@wallet.primos.invalid');
+}
+
 export async function signOutCloud() {
   const c = await sb();
   if (!c) return;
