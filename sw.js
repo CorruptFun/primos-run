@@ -17,7 +17,7 @@
 */
 
 // 👉 CUSTOMIZE: rename to your app, and bump CACHE_VERSION per deploy (e.g. a build stamp).
-const CACHE_VERSION = "v25-wallet-is-your-login";
+const CACHE_VERSION = "v26-holders-only";
 const CACHE_NAME    = `primos-run-${CACHE_VERSION}`;
 
 // 👉 CUSTOMIZE: the offline shell, precached at install. Relative paths (resolved against

@@ -27,7 +27,7 @@
 //    ones who hold. Doing 4 before 2 closes the game to everyone.
 
 /** The master switch. False = no gate, no wallet prompt, game as usual. */
-export const GATE_ENABLED = false;
+export const GATE_ENABLED = true;
 
 /**
  * Where the verifier lives. Derived from the Supabase project rather than

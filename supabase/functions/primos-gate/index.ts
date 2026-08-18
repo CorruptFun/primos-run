@@ -231,6 +231,24 @@ const WALLET_EMAIL = (w: string) => `${w.toLowerCase()}@wallet.primos.invalid`;
  * that already proved the wallet's signature, and generateLink issues it
  * single-use — so a captured one is worth nothing twice.
  */
+// ⚠ A HANG HERE WOULD REFUSE A GENUINE HOLDER, which is the one outcome this
+// whole file exists to avoid. The account step makes two calls to the auth admin
+// API from inside a request the player is watching a spinner for, and a THROW is
+// already survivable — it is caught, the pass is kept, they get in without an
+// account. A hang is not: it would run out the client's 20s fence and surface as
+// "the wallet did not connect" to somebody who plainly holds one. So the step is
+// bounded and a timeout is made to look exactly like a failure, which is a path
+// with a known-good ending.
+const ACCOUNT_BUDGET_MS = 8000;
+
+function withBudget<T>(work: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    work,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`account step exceeded ${ms}ms`)), ms)),
+  ]);
+}
+
 async function walletAccount(db: any, wallet: string) {
   const email = WALLET_EMAIL(wallet);
 
@@ -365,7 +383,7 @@ Deno.serve(async (req) => {
     let sessionToken: string | null = null;
     if (!userId && count > 0) {
       try {
-        const acct = await walletAccount(db, wallet);
+        const acct = await withBudget(walletAccount(db, wallet), ACCOUNT_BUDGET_MS);
         userId = acct.userId;
         sessionToken = acct.tokenHash;
       } catch (e) {
