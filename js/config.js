@@ -16,6 +16,18 @@ export const CAM = {
   height: 2.25,        // eye height above the asphalt
   back: 4.25,          // how far behind the runner the camera sits
   focal: 1.15,         // multiplied by canvas width to get focal length px
+  // ...and the ceiling on that, multiplied by canvas HEIGHT. See resizeCamera:
+  // width alone decides the focal length, so a wide window silently zooms the
+  // runner in until their legs leave the screen. At 1.00 the cap does not bind
+  // until the frame is wider than ~4:3, so every portrait phone keeps the exact
+  // framing this camera was tuned against, and everything from a phone in
+  // landscape to a 2560x1080 ultrawide lands on ONE framing: runner ~34% of
+  // frame height, feet at ~87%, wall tops still above the frame so the alley
+  // stays enclosed. Lower it and the runner shrinks and you start seeing over
+  // the walls to the skyline — 0.80 was tried and gives that away for road you
+  // do not need. Check any change at BOTH aspects; one always lies about the
+  // other.
+  focalH: 1.00,
   horizon: 0.40,       // fraction of canvas height where y=camHeight lands
   lag: 0.34,           // how much of the runner's sideways move the camera copies
   near: 0.35,          // anything closer than this is clipped away
@@ -208,10 +220,26 @@ export const HITBOX = {
 };
 
 // ------------------------------------------------------------- mobile budget
-// Fill rate, not logic, is what drops a phone under 60 here — the alley is
-// hundreds of overlapping path fills per frame. Both levers below take away
-// pixels and never geometry, so a struggling device gets a softer picture
-// rather than an emptier alley.
+// ⚠ THE LEVER BELOW IS NEARLY INERT, AND THE REASON IS THAT THIS FILE USED TO
+// HAVE THE DIAGNOSIS BACKWARDS. It read "fill rate, not logic, is what drops a
+// phone under 60 here", and both knobs were built to take away pixels and never
+// geometry so a struggling device got a softer picture rather than an emptier
+// alley. Measured 2026-08-18 against a frozen late-game frame: dropping the
+// scene buffer from 1280x800 to 448x280 — an EIGHTH of the pixels — bought
+// 1.9%, which is inside the noise. Same story on a phone viewport.
+//
+// The cost is per-PATH, not per-pixel. The alley is ~2,300 fills and strokes a
+// frame and each one carries its own setup; how many pixels it ends up covering
+// barely registers. So resolution buys nothing and the only thing that does is
+// drawing fewer paths — which is what DRESS_ALPHA in js/art/scenery.js does, and
+// it is the shape every future optimisation here has to take.
+//
+// Caveat, stated because it is the reason these numbers are still here: that was
+// measured on desktop Chrome/Skia, where rasterising is cheap. A real phone GPU
+// may weigh it differently, and nothing has profiled one. The knobs are LEFT AS
+// THEY WERE on purpose — do not disable a safety net on evidence from the wrong
+// device — but do not reach for them expecting a rescue, and do not add a third
+// one that also only takes away pixels.
 export const MOBILE = {
   dprCap: 1.5,          // past this, retina buys nothing you can see at arm's length
   scaleMin: 0.7,        // floor for the dynamic scene scale

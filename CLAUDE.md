@@ -67,6 +67,43 @@ go stale here claimed 520 of 3,069 tokens for a day after full coverage landed.
   dark oval is another face, and drawn before the hair the hair covers the half
   that says "this hangs off an ear".
 
+- **THE FOCAL LENGTH IS CAPPED AGAINST HEIGHT, AND WITHOUT THAT CAP THE RUNNER
+  WALKS OFF THE BOTTOM OF EVERY DESKTOP.** `baseFocal` was `w * CAM.focal` —
+  width and nothing else — so the runner's on-screen size scaled with WIDTH
+  while the frame it had to fit in was the HEIGHT. Tuned to ~21% of frame
+  height on a phone in portrait, the same camera measured 63% on a 1280x800
+  laptop, 70% at 1080p, 85% on a phone in landscape and 94% on an ultrawide,
+  with the feet projected to 128–170% — i.e. the legs, the slide and the
+  skateboard stance were all off-screen on every landscape device. `CAM.focalH`
+  (1.00, against height) is the ceiling. It BINDS ONLY PAST ~4:3, so every
+  portrait phone keeps the exact framing the camera was tuned against —
+  verified by `capBinding: false` at 375x812 — and everything from a 844x390
+  phone in landscape to a 2560x1080 ultrawide settles on one framing: runner
+  34% of height, feet at 87%, wall tops still above the frame so the alley
+  stays enclosed. Judge any change to this at BOTH aspects; one of them is
+  always lying to you about the other.
+
+- **RESOLUTION IS NOT THE LEVER. PATH COUNT IS.** `MOBILE.scaleMin` /
+  `dprCap` / the whole `perf.js` ladder shed PIXELS, and pixels are close to
+  free here: measured against a frozen late-game frame, an eighth of the pixels
+  (1280x800 -> 448x280) bought 1.9%, inside the noise, on both a desktop and a
+  phone viewport. The frame is ~2,300 fills and strokes and it is the per-path
+  setup that costs, not the area covered. So a struggling device today gets a
+  soft picture and the same frame rate. Anything that actually helps has to
+  draw FEWER PATHS — `DRESS_ALPHA` in `js/art/scenery.js` is the worked
+  example, and `js/config.js`'s MOBILE block carries the measurement and the
+  caveat (it was taken on desktop Skia, never on a real phone).
+
+- **THE WALLS ARE THE FRAME BUDGET — half of it.** Phase-timed at 1280x800:
+  walls 51%, of which the per-kind dressing alone is 25% of the whole frame;
+  then blit 13%, HUD 8%, skyline 7%, props 7%, sky 4%, ground 4%. Everything
+  else rounds to nothing. Optimise anything but `drawWallSegment` and its
+  `kind*` helpers and you are polishing the 4%. The dressing is already
+  LOD-thinned per tier — what it was missing was that past the haze it kept
+  drawing sub-pixel detail under a fog wash that had taken more than half of it
+  away, which is what `DRESS_ALPHA` cuts. That gate is on the fog ALPHA, not a
+  distance, so it stays honest if `FOG_START` or `DRAW_DIST` move.
+
 - **A COLLISION TEST THAT SAMPLES A WINDOW IS FRAME-RATE DEPENDENT, AND THIS
   GAME MOVES FAST ENOUGH FOR THAT TO MATTER.** The drone shipped asking whether
   it was within 0.6u of the player on the frame it was sampled, while closing at

@@ -376,6 +376,11 @@ function addArc(zc, yc, rz, ry, a0, a1, steps, move) {
 
 // -------------------------------------------------------------------- walls
 
+// Fog alpha below which a wall segment stops being dressed — see the comment
+// at the call site in drawWallSegment. Sits between FOG_START and DRAW_DIST,
+// i.e. in the band where the alley is already reading as haze.
+const DRESS_ALPHA = 0.55;
+
 /**
  * One 4-unit slab of alley wall on one side, decorated deterministically from
  * `seed` so the same stretch always looks the same.
@@ -422,13 +427,22 @@ export function drawWallSegment(ctx, P, side, z0, z1, seed, alpha) {
   // with two full throw-ups fighting over four metres.
   S.tagged = false;
 
-  switch (kind) {
-    case 0: kindGarage(); break;
-    case 1: kindWindows(); break;
-    case 2: kindMural(); break;
-    case 3: kindBrick(); break;
-    case 4: kindStorefront(); break;
-    default: kindCanvas(); break;
+  // Past the haze a wall is colour and shading and nothing else. The dressing
+  // — doors, murals, brick coursing, storefronts — is already thinned by LOD,
+  // but at the far end of the alley it is drawing sub-pixel detail underneath
+  // a fog wash that has taken more than half of it away, which measured at
+  // roughly a quarter of the whole frame. Gated on the fog ALPHA rather than a
+  // distance so it stays honest if FOG_START or DRAW_DIST ever move: the test
+  // is "can this still be seen", not "how far away is it".
+  if (alpha > DRESS_ALPHA) {
+    switch (kind) {
+      case 0: kindGarage(); break;
+      case 1: kindWindows(); break;
+      case 2: kindMural(); break;
+      case 3: kindBrick(); break;
+      case 4: kindStorefront(); break;
+      default: kindCanvas(); break;
+    }
   }
 
   // Paint, THEN grime, THEN the hardware. Grime laid over the tags is half of
@@ -1120,6 +1134,28 @@ function wallLamp(z) {
 // ------------------------------------------------------------------ skyline
 
 /** Rooftop clutter poking above the wall line — silhouetted against the sun. */
+// The backlit rooftop ramp is a function of ONE number — the projected scale —
+// and it was being rebuilt for every silhouette on screen, some forty a frame,
+// each an allocation plus a colour ramp for the rasteriser to build. Bucketed
+// to the nearest half unit the same handful serve the whole frame; that moves
+// the ramp's ends by under two pixels at the sizes these draw at, which is
+// nothing you can see. Gradient coordinates are read in the user space in
+// force at FILL time, and every caller fills after translating to the
+// silhouette's base, so a shared object still lands in the right place.
+const SIL_CACHE = new Map();
+function silGradient(ctx, u) {
+  const key = Math.round(u * 2);
+  let g = SIL_CACHE.get(key);
+  if (g) return g;
+  const uu = key / 2;
+  g = ctx.createLinearGradient(0, -uu * 3.4, 0, uu * 0.1);
+  g.addColorStop(0, '#553060');
+  g.addColorStop(0.45, '#2d1934');
+  g.addColorStop(1, '#160b1a');
+  SIL_CACHE.set(key, g);
+  return g;
+}
+
 export function drawSkyline(ctx, P, side, z0, seed, alpha) {
   const r = hash01(seed * 11.3);
   if (r > 0.72) return;
@@ -1137,10 +1173,7 @@ export function drawSkyline(ctx, P, side, z0, seed, alpha) {
 
   const near = u > 11;
   // Backlit: dark at the base, picking up sky glow toward the top.
-  const sil = ctx.createLinearGradient(0, -u * 3.4, 0, u * 0.1);
-  sil.addColorStop(0, '#553060');
-  sil.addColorStop(0.45, '#2d1934');
-  sil.addColorStop(1, '#160b1a');
+  const sil = silGradient(ctx, u);
   const rim = 'rgba(255,184,112,0.45)';
   const rimW = Math.max(0.5, u * 0.02);
   const solid = (fill) => {

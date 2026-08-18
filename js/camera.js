@@ -23,8 +23,20 @@ let rollV = 0;        // roll velocity, for the lane-change spring
 export function resizeCamera(w, h) {
   W = w;
   H = h;
-  // Keep the focal length tied to width so the alley reads the same on any aspect.
-  baseFocal = w * CAM.focal;
+  // Focal from WIDTH so the three lanes fill the frame the same way on any
+  // screen — but capped against HEIGHT, because width alone is only half the
+  // frame. `w * CAM.focal` makes the runner's on-screen size proportional to
+  // WIDTH, so the wider the window the bigger they get: tuned to ~21% of frame
+  // height on a phone in portrait, the same camera puts them at 63% on a
+  // laptop, 70% at 1080p and 94% on an ultrawide — with the feet, and most of
+  // the legs, projected clean off the bottom of the screen. You cannot see
+  // your own slide on a desktop.
+  //
+  // The cap binds only once the frame is wider than roughly 4:3, so every
+  // portrait phone keeps exactly the framing the camera was tuned against and
+  // landscape settles at a constant share of height instead of running away
+  // with the width.
+  baseFocal = Math.min(w * CAM.focal, h * CAM.focalH);
   focal = baseFocal * fovK;
   horizon = h * CAM.horizon;
 }

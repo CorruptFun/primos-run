@@ -147,8 +147,35 @@ compositing and would make the perf governor chase its own tail.
 retina buys nothing at arm's length) and scales the scene buffer between
 `scaleMin` and `scaleMax` based on a 24-frame window. Both levers take away
 *pixels* and never *geometry*, so a struggling phone gets a softer picture
-rather than an emptier alley. Fill rate, not logic, is what drops a phone under
-60 here.
+rather than an emptier alley.
+
+⚠ **And that is why it barely works.** The design above rests on "fill rate, not
+logic, is what drops a phone under 60 here", and that premise was measured on
+2026-08-18 and did not survive. Against a frozen late-game frame, cutting the
+scene buffer from 1280×800 to 448×280 — an eighth of the pixels — bought **1.9%**,
+inside the noise, and the same held on a phone viewport. The frame is ~2,300
+fills and strokes and the cost is the per-path setup, not the area covered. So
+the governor's only lever is close to inert: a struggling device gets the soft
+picture *and* the same frame rate.
+
+The knobs are deliberately left where they are — that measurement is desktop
+Chrome/Skia, where rasterising is cheap, and no real phone has been profiled —
+but the practical consequence is that **anything which actually speeds this up
+has to draw fewer paths.** `DRESS_ALPHA` in `scenery.js` is the worked example.
+
+Where the frame actually goes, phase-timed at 1280×800:
+
+| phase | share |
+|---|---|
+| alley walls | **51%** (the per-`kind` dressing alone is 25%) |
+| blit (scene buffer → display canvas) | 13% |
+| HUD | 8% |
+| skyline | 7% |
+| props | 7% |
+| sky | 4% |
+| ground | 4% |
+
+Optimise anything but `drawWallSegment` and you are polishing the 4%.
 
 ## The renderer
 
@@ -160,9 +187,19 @@ sky + skyline → alley walls + graffiti + fixtures → road + wet pass
 ```
 
 The camera is a pseudo-3D projection (`js/camera.js`): world `(x, y, z)` →
-screen, with focal length `CAM.focal × canvasWidth`. There is no matrix stack
-and no z-buffer — draw order *is* the depth test, which is why every prop
-carries a `z` and the sort is not optional.
+screen, with focal length `min(CAM.focal × canvasWidth, CAM.focalH × canvasHeight)`.
+There is no matrix stack and no z-buffer — draw order *is* the depth test, which
+is why every prop carries a `z` and the sort is not optional.
+
+**The height term is a cap, and it is load-bearing.** Focal came off the width
+alone, which made the runner's on-screen size scale with WIDTH while the frame
+they had to fit into was the HEIGHT: tuned to ~21% of frame height on a phone in
+portrait, the identical camera put them at 63% on a 1280×800 laptop, 70% at
+1080p, 85% on a phone in landscape and 94% on an ultrawide — feet at 128–170%,
+so the legs, the slide and the whole skateboard stance were off-screen on every
+landscape device. `CAM.focalH` (1.00) binds only past roughly 4:3, so portrait
+phones are untouched and every landscape size lands on one framing: runner 34%
+of height, feet at 87%, wall tops still above the frame.
 
 `CAM.back` is 4.25 and `CAM.height` 2.25, deliberately close and low. Sitting
 further back shrinks the runner to a sixteenth of the screen, which on a phone
