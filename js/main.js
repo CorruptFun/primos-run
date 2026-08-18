@@ -1620,22 +1620,157 @@ document.addEventListener('visibilitychange', () => {
 // do not — so the leaderboard and everything else server-side enforce it for
 // real. Do not add a check here and call the game protected.
 
-/** Wire the wallet buttons for whatever is actually installed. */
+/**
+ * Is this a phone, as far as the gate is concerned?
+ *
+ * Deliberately a capability query and not a user-agent sniff, which is a list
+ * that goes stale the week it is written. What it costs when it is wrong: a
+ * touch laptop with no extension is offered a link that opens the wallet's own
+ * website, which is a fair place for someone with no wallet to land. What it
+ * would cost the other way is worse — a phone told to "install Phantom" while
+ * Phantom sits on its home screen.
+ */
+const looksHandheld = () => matchMedia('(pointer: coarse)').matches;
+
+/** Wire the wallet buttons for whatever this device can actually reach. */
 function paintGate() {
   const wrap = $('gate-wallets');
   const found = gate.available();
   wrap.replaceChildren();
-  // No wallet at all is its own answer. A row of buttons that cannot work is a
-  // worse thing to show than a sentence naming the problem.
-  $('gate-none').classList.toggle('hidden', found.length > 0);
-  for (const w of found) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'btn';
-    b.textContent = t('gate.connect').replace('%w', w.name.toUpperCase());
-    b.addEventListener('click', () => { void runGate(w); });
-    wrap.append(b);
+  $('btn-gate-cancel').classList.add('hidden');
+
+  // ⚠ AN INJECTED PROVIDER WINS OUTRIGHT. Inside a wallet's own browser BOTH
+  // routes look available, and offering the handoff there is a button that opens
+  // the app you are already standing in.
+  if (found.length) {
+    $('gate-copy').textContent = t('gate.copy');
+    $('gate-none').classList.add('hidden');
+    for (const w of found) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn';
+      b.textContent = t('gate.connect').replace('%w', w.name.toUpperCase());
+      b.addEventListener('click', () => { void runGate(w); });
+      wrap.append(b);
+    }
+    return;
   }
+
+  // Nothing injected. On a phone that is not a missing wallet — it is a wallet
+  // living in another app, which is the ORDINARY case there and not an error.
+  // Saying "no Solana wallet in this browser" to someone whose home screen has
+  // Phantom on it is the sentence that made the gate look broken on mobile.
+  const viaLink = gate.canHandoff() && looksHandheld();
+  $('gate-none').classList.toggle('hidden', viaLink);
+  $('gate-copy').textContent = t(viaLink ? 'gate.mobileCopy' : 'gate.copy');
+  if (viaLink) void armHandoff();
+}
+
+/**
+ * Get a challenge and turn it into links the player can tap.
+ *
+ * ⚠ THE CHALLENGE IS FETCHED BEFORE THE TAP, NOT AFTER IT, AND THE CONTROL IS A
+ * REAL ANCHOR. iOS hands an https URL to an installed app only when the
+ * navigation comes from a genuine link activation; a `location.href` assigned
+ * after an await has lost the user gesture, and the OS falls back to opening the
+ * WEBSITE instead — which drops the player on phantom.app rather than in
+ * Phantom, with the game left behind. So the round trip happens while they are
+ * reading, and what they press is a link with an href already in it.
+ *
+ * ⚠ AND IT IS A PLAIN TOP-LEVEL LINK — no target="_blank" — which is a trade
+ * made with eyes open. `_blank` would keep the game's page alive, but it can
+ * land the URL in an in-app browser sheet, and in-app browsers do not hand
+ * universal links to apps: the player with Phantom installed would end up
+ * looking at phantom.app's WEBSITE. That is a silent failure of the path that
+ * matters. A top-level navigation triggers the app reliably; the cost is that a
+ * player WITHOUT the wallet installed has the game replaced by phantom.app,
+ * which is a fair place for them to land and is recoverable — the handoff was
+ * written to storage before they left, so reopening the game picks it straight
+ * back up.
+ */
+async function armHandoff() {
+  gateStatus(t('gate.waitingBack'));
+  const res = await gate.startHandoff(cloudSession()?.access_token);
+  if (!res.ok) {
+    gateStatus(t('gate.chainDown'), true);
+    $('btn-gate-retry').classList.remove('hidden');
+    track(EVENTS.GATE_FAIL, { why: res.error || 'handoff-start', how: 'link' });
+    return;
+  }
+  gateStatus('');
+  const wrap = $('gate-wallets');
+  wrap.replaceChildren();
+  for (const w of gate.handoffWallets()) {
+    const a = document.createElement('a');
+    a.className = 'btn';
+    a.href = gate.handoffUrl(w, res.handoff);
+    a.rel = 'noopener';
+    a.textContent = t('gate.openIn').replace('%w', w.name.toUpperCase());
+    // The tap is the only proof we get that they actually left, and polling
+    // before that would be a request every couple of seconds on behalf of a
+    // player who is still deciding.
+    a.addEventListener('click', () => {
+      gateStatus(t('gate.waiting'));
+      $('btn-gate-cancel').classList.remove('hidden');
+      watchHandoff();
+    });
+    wrap.append(a);
+  }
+}
+
+// How often to ask whether the wallet has answered. Slow enough to be polite to
+// a phone radio, fast enough that coming back to the app does not feel like
+// waiting — and the visibility poke below means the tick almost never decides it.
+const HANDOFF_POLL_MS = 2500;
+
+let handoffTimer = 0;
+let collecting = false;
+
+function stopWatching() {
+  if (handoffTimer) clearInterval(handoffTimer);
+  handoffTimer = 0;
+}
+
+async function collectNow() {
+  const h = gate.pendingHandoff();
+  if (!h) {
+    // The handoff aged out on its own clock. ⚠ NOT phrased as a refusal:
+    // nobody said no, we stopped listening — the same rule that keeps
+    // gate.chainDown away from gate.noPrimo.
+    stopWatching();
+    if (!gate.open()) {
+      gateStatus(t('gate.handoffTimeout'), true);
+      $('btn-gate-retry').classList.remove('hidden');
+      $('btn-gate-cancel').classList.add('hidden');
+      track(EVENTS.GATE_FAIL, { why: 'handoff-timeout', how: 'link' });
+    }
+    return;
+  }
+  if (document.hidden || collecting) return;   // still in the wallet, or already asking
+
+  collecting = true;
+  const res = await gate.collect(h, cloudSession()?.access_token);
+  collecting = false;
+
+  if (res.pending) return;                     // keep asking
+  stopWatching();
+  $('btn-gate-cancel').classList.add('hidden');
+  if (res.ok && res.holder) return gateEnter(res, 'link');
+
+  $('btn-gate-retry').classList.remove('hidden');
+  if (res.ok && !res.holder) {
+    gateStatus(t('gate.noPrimo'), true);
+    track(EVENTS.GATE_FAIL, { why: 'no-primo', how: 'link' });
+    return;
+  }
+  gateStatus(t('gate.failed'), true);
+  track(EVENTS.GATE_FAIL, { why: res.error || 'unknown', how: 'link' });
+}
+
+function watchHandoff() {
+  stopWatching();
+  handoffTimer = setInterval(() => { void collectNow(); }, HANDOFF_POLL_MS);
+  void collectNow();
 }
 
 const gateStatus = (msg, bad = false) => {
@@ -1652,14 +1787,7 @@ async function runGate(w) {
 
   const res = await gate.verify(w, cloudSession()?.access_token);
 
-  if (res.ok && res.holder) {
-    gateStatus(t('gate.welcome').replace('%n', String(res.count || 1)));
-    track(EVENTS.GATE_PASS, { count: res.count || 0 });
-    // Straight into the game the player came for. The status line above is
-    // read on the way past, not waited on.
-    setTimeout(() => { showScreen(STATE.MENU); }, 700);
-    return;
-  }
+  if (res.ok && res.holder) return gateEnter(res, 'injected');
 
   $('btn-gate-retry').classList.remove('hidden');
   if (res.ok && !res.holder) {
@@ -1677,7 +1805,53 @@ async function runGate(w) {
     'no-challenge': ['gate.chainDown', true],
   }[res.error] || ['gate.failed', true];
   gateStatus(t(say[0]), say[1]);
-  track(EVENTS.GATE_FAIL, { why: res.error || 'unknown' });
+  track(EVENTS.GATE_FAIL, { why: res.error || 'unknown', how: 'injected' });
+}
+
+/**
+ * The one way in, whichever road got here.
+ *
+ * `how` rides on the event rather than becoming an event of its own: GATE_SHOWN
+ * is the denominator for this funnel, and a second one per route would quietly
+ * make every rate below it wrong.
+ */
+function gateEnter(res, how) {
+  gateStatus(t('gate.welcome').replace('%n', String(res.count || 1)));
+  track(EVENTS.GATE_PASS, { count: res.count || 0, how });
+  // The pass decides which Primos are wearable, so the panel behind the gate is
+  // out of date the instant one lands.
+  syncPrimoPanel();
+  // Straight into the game the player came for. The status line above is read
+  // on the way past, not waited on.
+  setTimeout(() => { showScreen(STATE.MENU); }, 700);
+}
+
+/**
+ * The gate, answered without a wallet.
+ *
+ * ⚠ THIS IS WHAT KEEPS A PHONE FROM DOING THE WHOLE DANCE EVERY DAY. A pass
+ * lasts 24h, and on iOS renewing it means the app-switch trip again — forever,
+ * because an installed web app's storage jar is not the one the wallet hands
+ * back to. A signed-in holder never has to: the session proves who they are and
+ * the Edge Function re-asks the chain on their behalf.
+ *
+ * Runs after bootstrapCloud() because there is no session to offer before it.
+ */
+async function gateSilent() {
+  if (!gate.enabled() || gate.open()) return;
+  // Only while they are actually standing at the door, and never over a handoff
+  // already in flight — two answers racing to open the same screen.
+  if (screens.gate.classList.contains('hidden') || gate.pendingHandoff()) return;
+  const token = cloudSession()?.access_token;
+  if (!token) return;
+
+  gateStatus(t('gate.checking'));
+  const res = await gate.refresh(token);
+  if (res.ok && res.holder) return gateEnter(res, 'refresh');
+  // Anything else is not an outcome worth showing: they are simply at the gate,
+  // which is where they already were. `not-linked` is the common one — a Google
+  // player who has never connected a wallet.
+  gateStatus('');
 }
 
 /**
@@ -1690,8 +1864,42 @@ function gateFirst() {
   gateStatus('');
   showScreen(STATE.GATE);
   track(EVENTS.GATE_SHOWN, {});
+
+  // ⚠ A HANDOFF SURVIVES THE APP BEING KILLED, and picking it back up here is
+  // the difference between a verdict collected and a player sent round again.
+  // A phone is perfectly happy to reclaim a backgrounded PWA while its owner is
+  // approving a signature in another app, and what they come back to is a cold
+  // boot — with a perfectly good answer sitting uncollected on the server.
+  if (gate.pendingHandoff()) {
+    gateStatus(t('gate.waiting'));
+    $('btn-gate-cancel').classList.remove('hidden');
+    watchHandoff();
+  }
   return true;
 }
+
+// TRY AGAIN had no listener at all from the day it shipped: it was shown after
+// every refusal, on the one screen a turned-away player is looking at, and did
+// nothing when pressed.
+$('btn-gate-retry').addEventListener('click', () => {
+  $('btn-gate-retry').classList.add('hidden');
+  gateStatus('');
+  paintGate();
+});
+
+$('btn-gate-cancel').addEventListener('click', () => {
+  stopWatching();
+  gate.clearHandoff();
+  gateStatus('');
+  paintGate();
+});
+
+// Coming back from the wallet is the moment the answer is most likely to be
+// waiting, and a tick that happens to land just before it is two and a half
+// seconds of somebody staring at a screen that already knows.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && handoffTimer) void collectNow();
+});
 
 function boot() {
   resize();
@@ -1791,6 +1999,9 @@ function boot() {
     // It is inside the .then() and not after it for that reason alone; the call
     // itself is instant and no-ops entirely on the dormant build.
     initAnalytics();
+    // A signed-in holder gets in without touching a wallet. It can only run once
+    // the session exists, which is why it is here and not in gateFirst().
+    void gateSilent();
   });
 }
 

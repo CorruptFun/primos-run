@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Primos: Barrio Run — wallet</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1a1024">
+<link rel="icon" href="favicon.png" sizes="64x64">
+<link rel="stylesheet" href="css/style.css">
+
+<!--
+  THE HANDOFF PAGE. It is opened inside a WALLET'S OWN BROWSER, on a phone, by a
+  universal link the game just followed. Its entire job is: sign the challenge
+  the game is waiting on, hand the signature to the Edge Function, and tell the
+  player to go back.
+
+  ⚠ WHY THIS EXISTS AT ALL. No wallet injects a provider into mobile Safari or
+  mobile Chrome, so a phone had no route to the gate except the wallet's in-app
+  browser — and an in-app browser has no Add to Home Screen. The gate made this
+  PWA uninstallable on mobile, which is exactly backwards for a game meant to
+  live on a home screen. Here the excursion into the wallet lasts seconds, and
+  the game the player installs stays where they installed it.
+
+  ⚠ IT DOES NOT BOOT THE GAME, AND MUST NOT. This document is downloaded on a
+  connection the player is standing still on, in a browser they are about to
+  close; pulling in the runner, the world generator and the art pipeline to draw
+  three sentences would be paid for twice and enjoyed never. Nothing is imported
+  here but the gate and the strings.
+
+  ⚠ NO SERVICE WORKER, NO pwa-register.js. Registering one from the wallet's
+  browser would install the game's shell into a jar nobody will ever open again,
+  and the update prompt it carries would fire in a context with no game to
+  update.
+
+  ⚠ AND NO PASS IS EVER KEPT HERE. The Edge Function answers a handoff without
+  one on purpose: this browser is not the one that plays, and a pass left behind
+  in it is a credential in a context nobody will clean up. The verdict is parked
+  server-side and collected by the device that asked — which is also the only
+  way it can reach an installed iOS web app, since that app has its own storage
+  jar and cannot see anything written here.
+-->
+</head>
+<body>
+
+<main class="screen">
+  <div class="sheet">
+    <h2 id="ttl">HOLDERS ONLY</h2>
+    <p class="hint" id="copy"></p>
+    <div id="acts"></div>
+    <p class="hint" id="status"></p>
+  </div>
+</main>
+
+<script type="module">
+import * as gate from './js/gate.js';
+import { initLang, t } from './js/i18n.js';
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+
+// The language came along in the link, because the choice the player made in
+// the game lives in a storage jar this browser cannot read. Falls back to the
+// device's own preference, which is what initLang does with a null.
+const lang = initLang(params.get('l'));
+document.documentElement.lang = lang;
+$('ttl').textContent = t('gate.title');
+
+const say = (key, bad = false) => {
+  const el = $('status');
+  el.textContent = key ? t(key) : '';
+  el.classList.toggle('bad', bad);
+};
+
+const nonce = params.get('n') || '';
+
+/** One button, because this page only ever has one thing to offer. */
+function offer(label, run) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn';
+  b.textContent = label;
+  b.addEventListener('click', () => { b.disabled = true; void run(b); });
+  $('acts').replaceChildren(b);
+  return b;
+}
+
+async function sign(wallet, button) {
+  say('gate.signing');
+  // `adopt` is what makes this the SAME challenge the game is waiting on. The
+  // message itself still comes back from the Edge Function — this page never
+  // builds the text it asks a wallet to sign, and never takes it from the URL,
+  // which is the shape of every wallet phishing page ever written.
+  const res = await gate.verify(wallet, undefined, { adopt: nonce });
+
+  if (res.ok && res.handoff && res.holder) {
+    $('acts').replaceChildren();
+    $('copy').textContent = t('gate.handoffDone');
+    say('gate.handoffGoBack');
+    return;
+  }
+  button.disabled = false;
+  if (res.ok && !res.holder) return say('gate.noPrimo', true);
+  say({
+    cancelled: 'gate.cancelled',
+    'handoff-stale': 'gate.handoffStale',
+    'chain-unreachable': 'gate.chainDown',
+    'no-challenge': 'gate.chainDown',
+  }[res.error] || 'gate.failed', res.error !== 'cancelled');
+}
+
+function start() {
+  if (!gate.enabled()) {
+    $('copy').textContent = t('gate.handoffOff');
+    return;
+  }
+  if (!nonce) {
+    // Somebody opened this page directly. It is not a screen with anything of
+    // its own to do, so it says so rather than pretending to be a gate.
+    $('copy').textContent = t('gate.handoffNoCode');
+    return;
+  }
+
+  const found = gate.available();
+  if (!found.length) {
+    // In a wallet's browser there is always a provider. Getting here means the
+    // link was opened somewhere else — pasted into Safari, or followed from a
+    // desktop — so the useful thing to say is where this page is supposed to be
+    // opened, not "install a wallet".
+    $('copy').textContent = t('gate.handoffWrongBrowser');
+    return;
+  }
+
+  $('copy').textContent = t('gate.handoffCopy');
+  const w = found[0];
+  offer(t('gate.connect').replace('%w', w.name.toUpperCase()), (b) => sign(w, b));
+}
+
+start();
+</script>
+</body>
+</html>

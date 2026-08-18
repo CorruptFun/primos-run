@@ -482,6 +482,45 @@ const STR = {
   'gate.failed':      { en: 'The wallet did not connect. Try again.',
                         es: 'La wallet no conectó. Inténtalo otra vez.' },
 
+  // --- the mobile handoff (js/gate.js, wallet.html) ---
+  // No wallet injects a provider into mobile Safari or Chrome, so on a phone
+  // the gate opens the wallet's own browser for a moment and collects the
+  // verdict through the server. Every string here is about a JOURNEY, and the
+  // one thing they all have to get across is that the player must COME BACK:
+  // an app that sends someone somewhere else and then goes quiet has lost them.
+  'gate.openIn':      { en: 'OPEN %w', es: 'ABRIR %w' },
+  'gate.mobileCopy':  { en: 'On a phone the wallet lives in its own app. Tap below, sign there, '
+                          + 'and come straight back here — the alley opens on its own.',
+                        es: 'En el teléfono la wallet vive en su propia app. Toca abajo, firma allí '
+                          + 'y vuelve aquí — el callejón se abre solo.' },
+  // Shown while the player is away. It has to survive being read on the way
+  // back, so it says what to do rather than only what is happening.
+  'gate.waiting':     { en: 'Waiting for the wallet… sign there, then come back to this screen.',
+                        es: 'Esperando a la wallet… firma allí y vuelve a esta pantalla.' },
+  'gate.waitingBack': { en: 'Checking…', es: 'Comprobando…' },
+  // ⚠ A timeout is NOT a refusal, same rule as gate.chainDown. Nobody was
+  // told no here — we simply stopped listening, and saying otherwise to a
+  // holder who signed is the worst outcome this path has.
+  'gate.handoffTimeout': { en: 'We stopped hearing back from the wallet. Nothing was refused — give it another go.',
+                        es: 'Dejamos de recibir respuesta de la wallet. No se rechazó nada — inténtalo otra vez.' },
+  'gate.handoffCancel': { en: 'START OVER', es: 'EMPEZAR DE NUEVO' },
+
+  // --- wallet.html, which runs inside the wallet's browser ---
+  'gate.handoffCopy': { en: 'Sign here and the game opens on the other side. This takes one tap.',
+                        es: 'Firma aquí y el juego se abre del otro lado. Es un solo toque.' },
+  'gate.handoffDone': { en: 'Done — that is all this page needed.',
+                        es: 'Listo — eso es todo lo que hacía falta aquí.' },
+  'gate.handoffGoBack': { en: 'Go back to Barrio Run. It is already letting you in.',
+                        es: 'Vuelve a Barrio Run. Ya te está dejando entrar.' },
+  'gate.handoffStale': { en: 'That took a while and the code went stale. Start again from the game.',
+                        es: 'Tardó demasiado y el código caducó. Empieza otra vez desde el juego.' },
+  'gate.handoffNoCode': { en: 'Nothing to sign here. This page is opened by the game, not on its own.',
+                        es: 'Aquí no hay nada que firmar. Esta página la abre el juego, no se abre sola.' },
+  'gate.handoffWrongBrowser': { en: 'Open this from inside your wallet app — the game does it for you.',
+                        es: 'Abre esto desde tu app de wallet — el juego lo hace por ti.' },
+  'gate.handoffOff':  { en: 'The gate is not switched on in this build.',
+                        es: 'La puerta no está activada en esta versión.' },
+
   // --- the wallet on the ACCOUNT screen ---
   // gate.js has exported holder() and clearPass() since the first commit and
   // nothing ever called either: a connected player could not see which wallet

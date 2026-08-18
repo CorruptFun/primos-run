@@ -2118,6 +2118,19 @@ h2 {
 }
 .gate-wallets:empty { margin: 0; }
 
+/* The mobile handoff's control is a REAL ANCHOR wearing .btn, and that is not a
+   markup preference. iOS hands an https URL to an installed app only when the
+   navigation comes from a genuine link activation — a location.href assigned
+   from script after an await has already lost the user gesture, and the OS opens
+   the WEBSITE instead, dropping the player on phantom.app rather than in
+   Phantom. So the element has to be a link, and a link needs the three
+   properties a <button> gets for free. */
+a.btn {
+  box-sizing: border-box;
+  text-align: center;
+  text-decoration: none;
+}
+
 /* A Primo somebody else holds. Dimmed and desaturated rather than hidden — the
    browser stays a shop window for the whole collection (same reasoning as the
    leaderboard's open read policy), it just will not let you wear one that is

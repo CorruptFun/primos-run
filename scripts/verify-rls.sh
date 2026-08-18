@@ -437,6 +437,38 @@ else
   bad "anonymous callers can re-file or bury reports" "HTTP $C"
 fi
 
+# --- the NFT gate -----------------------------------------------------------
+# primos_gate_nonces has RLS on and ZERO policies, which denies every client.
+# That was always the design; the handoff migration made it load-bearing in a
+# second way, because the row now also carries a WALLET and the token numbers it
+# holds. A readable one would leak exactly what primos_holders is closed to, and
+# a WRITABLE one would let a browser mint its own challenge — which is a replay
+# of somebody else's signature.
+echo
+echo "the NFT gate — a table only the Edge Function may touch"
+R="$(anon "$REST/primos_gate_nonces?select=nonce")"
+[ "$R" = "[]" ] && bad "the challenge table is readable — RLS with zero policies is the whole design" "$R" \
+                || ok "anonymous SELECT on primos_gate_nonces is refused"
+
+# The handoff's own columns, named explicitly. A future migration that adds a
+# select policy "to make polling work" would pass the check above only if it
+# also hid these, which it would not.
+R="$(anon "$REST/primos_gate_nonces?select=wallet,primo_count,tokens,claim_hash")"
+case "$R" in
+  '['*']') bad "the handoff's wallet and holdings are readable" "$R" ;;
+  *)       ok "the parked finding (wallet, count, tokens, claim_hash) is not readable" ;;
+esac
+
+C="$(code -X POST "$REST/primos_gate_nonces" \
+     -d '[{"nonce":"verify-probe","expires_at":"2099-01-01T00:00:00Z"}]')"
+{ [ "$C" = "401" ] || [ "$C" = "403" ] || [ "$C" = "404" ]; } \
+  && ok "anonymous INSERT of a challenge refused (HTTP $C) — a self-minted nonce is a replayable signature" \
+  || bad "a browser can mint its own gate challenge" "HTTP $C"
+
+R="$(anon "$REST/primos_holders?select=wallet,user_id")"
+[ "$R" = "[]" ] && bad "primos_holders is readable — it joins a Google identity to a wallet on a public chain" "$R" \
+                || ok "anonymous SELECT on primos_holders is refused"
+
 # --- cross-game collision ----------------------------------------------------
 # Viva Maya lives in this same project and owns UNPREFIXED events / app_admins /
 # admin_analytics / prune_events. If 0003 had shipped unprefixed it would have

@@ -7,17 +7,42 @@
 // decided in this file, from a signature this file checks and a chain lookup
 // this file makes, using a key the browser never sees.
 //
-// TWO ACTIONS:
+// FOUR ACTIONS. The first two are the whole gate; the last two exist because a
+// phone cannot do the first two in one browser context.
 //
-//   POST { action: "challenge" }
-//     → { nonce, expiresAt }
+//   POST { action: "challenge", claimHash?, adopt? }
+//     → { nonce, expiresAt, message }
 //     A one-time string to sign. Stored, so it can be spent exactly once.
+//     `claimHash` turns it into a HANDOFF (below). `adopt` asks for the message
+//     belonging to a nonce already issued, instead of minting a new one.
 //
 //   POST { action: "verify", wallet, nonce, signature }
 //     → { ok, holder, primoCount, pass, expiresAt }
 //     Checks the signature against `wallet`, claims the nonce, counts the
 //     wallet's Primos on-chain, records the result, and issues `pass` — an
 //     HMAC-signed token the client keeps until it expires.
+//     On a handoff challenge it returns NO pass: it parks the finding instead.
+//
+//   POST { action: "claim", nonce, claimToken }
+//     → { ok, holder, primoCount, pass, expiresAt } | { ok: false, pending: true }
+//     Collects a parked finding. This is the step that crosses a browser
+//     boundary the client cannot cross by itself.
+//
+//   POST { action: "refresh" }   (Authorization: the player's Supabase session)
+//     → { ok, holder, primoCount, pass, expiresAt } | { ok: false, linked: false }
+//     A new pass for an already-linked wallet, with no wallet interaction at
+//     all — the chain is re-asked, so it is a re-check and not a rubber stamp.
+//
+// ⚠ WHY A HANDOFF EXISTS AT ALL. No wallet injects a provider into mobile Safari
+// or mobile Chrome, so on a phone the gate's only route was the wallet's own
+// in-app browser — which has no Add to Home Screen. Gating the door made the PWA
+// uninstallable on mobile. Wallets can be reached from an ordinary browser by
+// universal link, but the answer returns to whichever browser the OS picks, and
+// on iOS that is never the installed web app: a home screen web app is not a
+// universal-link handler and it gets its own storage jar, so a pass written on
+// the way back lands where the app cannot see it. The verdict therefore travels
+// through the one place both contexts can reach — this function — and the nonce
+// row, already single-use and already service-role only, is what carries it.
 //
 // WHY A SIGNATURE AT ALL, when the client could just send a wallet address:
 // because a public chain means every holder's address is public. Without a
@@ -48,6 +73,29 @@ const PASS_TTL_MS = 24 * 60 * 60 * 1000;
 // A challenge is signed within seconds of being handed out. Anything longer is
 // only widening the window in which a captured one is worth stealing.
 const NONCE_TTL_MS = 5 * 60 * 1000;
+
+// A handoff genuinely takes longer, and the tight window above would refuse
+// honest players: the challenge is issued in the game, then the player switches
+// app, waits for a wallet browser to load a page, unlocks, approves a connect
+// and approves a signature. Five minutes is a fumbled passcode away from
+// expiring. Widened only for the handoff — the in-page path never leaves the
+// tab and keeps the short window, because a longer one there buys nothing but a
+// bigger target.
+const HANDOFF_NONCE_TTL_MS = 10 * 60 * 1000;
+
+// How long a parked finding may sit uncollected. Generous against the nonce's
+// own life because the asking device may have been backgrounded or killed while
+// the player was in the wallet — coming back to a dead result would send them
+// through the whole dance again for no reason. Short against the pass it mints:
+// this is a window on a result, not on access.
+const CLAIM_WINDOW_MS = 15 * 60 * 1000;
+
+// A refresh re-asks the chain, and the chain costs money per question. A holder
+// verified within this window gets a pass minted from the record rather than a
+// fresh RPC round trip — which also bounds what a session can spend by asking
+// repeatedly. Short enough that a sold Primo still loses access the same day,
+// because the pass it mints expires on PASS_TTL_MS regardless.
+const REFRESH_TRUST_MS = 60 * 1000;
 
 // What the wallet is actually asked to sign. Human-readable on purpose: wallet
 // software shows this text to the player, and an opaque blob is exactly what a
@@ -120,6 +168,11 @@ async function issuePass(
   const payload = b64url(new TextEncoder().encode(JSON.stringify({ w: wallet, n: count, t: tokens, exp })));
   const sig = await crypto.subtle.sign('HMAC', await hmacKey(secret), new TextEncoder().encode(payload));
   return `${payload}.${b64url(new Uint8Array(sig))}`;
+}
+
+async function sha256hex(s: string) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 // ------------------------------------------------------------------- chain
@@ -271,6 +324,96 @@ async function walletAccount(db: any, wallet: string) {
   };
 }
 
+// ⚠ THE THREE PATHS THAT ISSUE A PASS SHARE THESE, and that is the point.
+// `verify`, `claim` and `refresh` all end at "this wallet holds N Primos, let
+// them in" — three copies of that ending would be three places for the holder
+// record, the account link and the pass's contents to drift apart, and a drift
+// here is not cosmetic: it is who gets in.
+
+/** The signed-in user behind this request, or null. Never throws. */
+async function callerUserId(db: any, req: Request): Promise<string | null> {
+  const auth = req.headers.get('Authorization');
+  if (!auth?.startsWith('Bearer ')) return null;
+  try {
+    const { data } = await db.auth.getUser(auth.slice(7));
+    return data?.user?.id ?? null;
+  } catch {
+    // The anon key is a perfectly valid JWT with no user behind it, which is
+    // what an unsigned-in client sends. Not an error — just nobody.
+    return null;
+  }
+}
+
+/**
+ * Write down what the chain said.
+ *
+ * ⚠ `user_id` IS OMITTED WHEN UNKNOWN, NEVER WRITTEN AS NULL. PostgREST only
+ * sets the columns present in the payload, so leaving it out preserves a link
+ * made earlier. Sending null instead would mean any verify from a signed-out
+ * context — which is EVERY handoff, since the wallet's browser never has a
+ * session — silently unlinks a wallet from the Google account it belongs to,
+ * and the board policy that asks "is this user a holder?" would start answering
+ * no for somebody who plainly is.
+ */
+async function recordHolder(
+  db: any, wallet: string, userId: string | null, count: number, tokens: number[],
+) {
+  const row: Record<string, unknown> = {
+    wallet, primo_count: count, tokens, verified_at: new Date().toISOString(),
+  };
+  if (userId) row.user_id = userId;
+  await db.from('primos_holders').upsert(row, { onConflict: 'wallet' });
+}
+
+/**
+ * Link the wallet to a session if there is one, mint an account if there is not.
+ *
+ * ⚠ AN EXISTING SESSION ALWAYS WINS. Someone already signed in with Google who
+ * then connects a wallet is LINKING the two, not starting a second identity —
+ * minting a wallet account here would silently strand the progress, boards and
+ * invites already sitting under their Google user.
+ *
+ * Gated on `count > 0` deliberately: a wallet that holds nothing is turned away,
+ * and handing it an account first would litter auth.users with a row per
+ * passer-by and mean a non-holder had "an account" for a game it cannot open.
+ */
+async function attachAccount(db: any, wallet: string, userId: string | null, count: number) {
+  let sessionToken: string | null = null;
+  if (!userId && count > 0) {
+    try {
+      const acct = await withBudget(walletAccount(db, wallet), ACCOUNT_BUDGET_MS);
+      userId = acct.userId;
+      sessionToken = acct.tokenHash;
+    } catch (e) {
+      // ⚠ NOT FATAL, and that is the point. The pass is what opens the door; the
+      // account is what makes progress follow them. Failing here would lock a
+      // genuine holder out of a game they can play perfectly well offline, over
+      // a cloud feature that is optional everywhere else in this codebase.
+      console.error('wallet account failed', String(e));
+    }
+  }
+  return { userId, sessionToken };
+}
+
+/** The one shape a "you are in" answer has, wherever it was decided. */
+async function passResponse(
+  secret: string, wallet: string, count: number, tokens: number[], sessionToken: string | null,
+) {
+  const exp = Date.now() + PASS_TTL_MS;
+  return json({
+    ok: true,
+    holder: true,
+    primoCount: count,
+    tokens,
+    pass: await issuePass(secret, wallet, count, tokens, exp),
+    expiresAt: new Date(exp).toISOString(),
+    // Present only when this request minted one: absent for a player who was
+    // already signed in (their session stands) and for anyone the account step
+    // failed for (they still get in on the pass alone).
+    ...(sessionToken ? { session: { tokenHash: sessionToken } } : {}),
+  });
+}
+
 // -------------------------------------------------------------------- serve
 
 Deno.serve(async (req) => {
@@ -297,9 +440,54 @@ Deno.serve(async (req) => {
 
   // ---------------------------------------------------------- challenge
   if (body.action === 'challenge') {
+    // ADOPT: the handoff page is handed a nonce in its URL and must sign the
+    // very one the game is waiting on, so it asks for that challenge instead of
+    // minting a fresh one.
+    //
+    // ⚠ IT ASKS FOR THE MESSAGE RATHER THAN BUILDING IT. A client that assembled
+    // the text locally would be one template edit away from signing something
+    // this function will not verify — and, worse, one URL parameter away from
+    // being TOLD what to sign, which is the shape of every wallet phishing page
+    // ever written. The text shown in the wallet comes from the same place that
+    // checks it. Nothing is revealed by answering: the message is a pure
+    // function of a nonce the caller is already holding.
+    if (body.adopt !== undefined) {
+      const adopt = String(body.adopt ?? '');
+      const { data: rows, error } = await db
+        .from('primos_gate_nonces')
+        .select('nonce, expires_at')
+        .eq('nonce', adopt)
+        .is('used_at', null)
+        .gt('expires_at', new Date().toISOString())
+        .limit(1);
+      if (error) return json({ error: 'could not read that challenge' }, 500);
+      if (!rows || rows.length === 0) {
+        return json({ error: 'that challenge is expired or already used' }, 410);
+      }
+      return json({ nonce: adopt, expiresAt: rows[0].expires_at, message: MESSAGE(adopt) });
+    }
+
+    // A claim hash makes this a HANDOFF: the answer will be collected by
+    // whoever can produce the matching token, not handed to whoever signs.
+    // Malformed is a 400 rather than a silent downgrade to an ordinary
+    // challenge — the quiet version leaves the asking device polling a row that
+    // will never be marked ready, which looks exactly like a wallet that never
+    // answered.
+    let claimHash: string | null = null;
+    if (body.claimHash !== undefined) {
+      claimHash = String(body.claimHash ?? '');
+      if (!/^[0-9a-f]{64}$/.test(claimHash)) {
+        return json({ error: 'claimHash must be a sha256 hex digest' }, 400);
+      }
+    }
+
     const nonce = crypto.randomUUID() + crypto.randomUUID().replaceAll('-', '');
-    const expiresAt = new Date(Date.now() + NONCE_TTL_MS).toISOString();
-    const { error } = await db.from('primos_gate_nonces').insert({ nonce, expires_at: expiresAt });
+    const expiresAt = new Date(
+      Date.now() + (claimHash ? HANDOFF_NONCE_TTL_MS : NONCE_TTL_MS),
+    ).toISOString();
+    const { error } = await db.from('primos_gate_nonces').insert({
+      nonce, expires_at: expiresAt, ...(claimHash ? { claim_hash: claimHash } : {}),
+    });
     if (error) return json({ error: 'could not issue a challenge' }, 500);
     return json({ nonce, expiresAt, message: MESSAGE(nonce) });
   }
@@ -328,11 +516,15 @@ Deno.serve(async (req) => {
       .eq('nonce', nonce)
       .is('used_at', null)
       .gt('expires_at', new Date().toISOString())
-      .select('nonce');
+      .select('nonce, claim_hash');
     if (claimErr) return json({ error: 'challenge lookup failed' }, 500);
     if (!claimed || claimed.length === 0) {
       return json({ error: 'that challenge is expired or already used' }, 401);
     }
+    // Whether this challenge was issued for a handoff is decided by the ROW, not
+    // by anything in this request. A client cannot talk its way into the handoff
+    // branch (or out of it) after the fact.
+    const handoff = !!claimed[0].claim_hash;
 
     // Ed25519 over the exact message the wallet was shown. Deno's WebCrypto
     // implements Ed25519 directly, so there is no third-party curve library in
@@ -361,73 +553,148 @@ Deno.serve(async (req) => {
       return json({ error: `could not reach the chain: ${e}`, retryable: true }, 502);
     }
 
-    // Link the wallet to the signed-in account when there is one, so the board
-    // policy can ask "is the user writing this row a holder?".
-    //
-    // ⚠ AN EXISTING SESSION ALWAYS WINS. Someone already signed in with Google
-    // who then connects a wallet is LINKING the two, not starting a second
-    // identity — minting a wallet account here would silently strand the
-    // progress, boards and invites already sitting under their Google user.
-    let userId: string | null = null;
-    const auth = req.headers.get('Authorization');
-    if (auth?.startsWith('Bearer ')) {
-      const { data } = await db.auth.getUser(auth.slice(7));
-      userId = data?.user?.id ?? null;
+    // ⚠ ON A HANDOFF THE ACCOUNT STEP IS SKIPPED, and that is not tidiness.
+    // The browser signing here is the WALLET'S browser — a throwaway context the
+    // player closes in a moment, never signed in to anything. Minting a wallet
+    // account from it would give a player who is already signed in with Google a
+    // SECOND identity, with their progress, boards and invites stranded under
+    // the first. The device that COLLECTS is the device that plays, so the
+    // account is attached there, where a session can actually be seen.
+    const { userId, sessionToken } = handoff
+      ? { userId: null as string | null, sessionToken: null as string | null }
+      : await attachAccount(db, wallet, await callerUserId(db, req), count);
+
+    // The list, not just the count, so primos_owns_token() can answer "is this
+    // player allowed to run as #2933" from the database rather than from
+    // anything a browser said. A count of 0 is recorded too, on purpose — a
+    // wallet that asked and was turned away is worth knowing about, and it is
+    // the only signal the owner has that people are trying to get in without
+    // holding.
+    await recordHolder(db, wallet, userId, count, tokens);
+
+    if (handoff) {
+      // ⚠ THE FINDING IS PARKED, NEVER THE PASS. A pass is a bearer token for
+      // the door and this row outlives the request; what goes in the row is what
+      // the chain said, and the pass is minted fresh in the claim from a secret
+      // the database never holds.
+      const { error: parkErr } = await db
+        .from('primos_gate_nonces')
+        .update({ primo_count: count, tokens, pass_ready_at: new Date().toISOString() })
+        .eq('nonce', nonce);
+      // A holder who cannot be handed back is worse than one who was never
+      // asked: they would sit watching a spinner in the other app forever. Say
+      // so, so the wallet browser can tell them to try again.
+      if (parkErr) return json({ error: 'could not hand that result back', retryable: true }, 500);
+      // No pass and no session in this answer, deliberately: this browser is not
+      // the one that plays, and a pass left in it is a credential in a context
+      // nobody will ever clean up.
+      return json({ ok: true, holder: count > 0, primoCount: count, handoff: true });
     }
 
-    // No session and they hold: the wallet becomes the login. Gated on
-    // `count > 0` deliberately — a wallet that holds nothing is turned away
-    // below, and handing it an account first would litter auth.users with a row
-    // per passer-by and mean a non-holder had "an account" for a game it cannot
-    // open.
-    let sessionToken: string | null = null;
-    if (!userId && count > 0) {
+    if (count <= 0) return json({ ok: true, holder: false, primoCount: 0 });
+
+    return await passResponse(SECRET!, wallet, count, tokens, sessionToken);
+  }
+
+  // -------------------------------------------------------------- collect
+  //
+  // The other half of a handoff: the game asks for the verdict the wallet's
+  // browser left behind.
+  if (body.action === 'claim') {
+    const nonce = String(body.nonce ?? '');
+    const claimToken = String(body.claimToken ?? '');
+    if (!nonce || !claimToken) return json({ error: 'nonce and claimToken are required' }, 400);
+
+    // ⚠ CLAIMED WITH ONE CONDITIONAL UPDATE, exactly like the nonce above, and
+    // for the same reason: a read-then-write lets two requests both pass. Here
+    // that would mean one verdict handed to two devices.
+    const { data: rows, error } = await db
+      .from('primos_gate_nonces')
+      .update({ pass_claimed_at: new Date().toISOString() })
+      .eq('nonce', nonce)
+      .eq('claim_hash', await sha256hex(claimToken))
+      .not('pass_ready_at', 'is', null)
+      .is('pass_claimed_at', null)
+      .gt('pass_ready_at', new Date(Date.now() - CLAIM_WINDOW_MS).toISOString())
+      .select('wallet, primo_count, tokens');
+    if (error) return json({ error: 'could not collect that result', retryable: true }, 500);
+
+    // ⚠ EVERY MISS IS "NOT YET", INCLUDING THE ONES THAT ARE REALLY "NEVER".
+    // Wrong token, expired window, already collected and still-waiting all
+    // answer the same way. The client polls and eventually gives up on its own
+    // clock, which costs a caller with a stolen nonce exactly nothing to learn —
+    // whereas telling the three apart would turn this endpoint into an oracle
+    // for which nonces are live and which tokens are close.
+    if (!rows || rows.length === 0) return json({ ok: false, pending: true });
+
+    const row = rows[0];
+    const wallet = String(row.wallet ?? '');
+    const count = Number(row.primo_count ?? 0);
+    const tokens: number[] = Array.isArray(row.tokens) ? row.tokens : [];
+    if (!wallet) return json({ ok: false, pending: true });
+
+    if (count <= 0) return json({ ok: true, holder: false, primoCount: 0 });
+
+    // Now — and only now — is there a device with a session worth linking to.
+    const { userId, sessionToken } = await attachAccount(db, wallet, await callerUserId(db, req), count);
+    if (userId) await recordHolder(db, wallet, userId, count, tokens);
+
+    return await passResponse(SECRET!, wallet, count, tokens, sessionToken);
+  }
+
+  // -------------------------------------------------------------- refresh
+  //
+  // A new pass for a wallet that has already been proved, with no wallet
+  // interaction at all.
+  //
+  // ⚠ THIS IS WHAT KEEPS THE HANDOFF FROM BEING A DAILY CHORE. A pass lasts a
+  // day by design, and on iOS every renewal would otherwise mean the whole
+  // app-switch dance again, forever. The signature proved the key once; the
+  // SESSION carries it from then on, and the session lives in the installed
+  // app's own storage where it renews silently.
+  //
+  // It is not a rubber stamp: the chain is re-asked, so a sold Primo closes the
+  // door on the next refresh exactly as it would on the next signature. What is
+  // NOT re-asked is control of the key — which is the same trade every "stay
+  // signed in" checkbox makes, and strictly stronger than the 24h pass it
+  // replaces.
+  if (body.action === 'refresh') {
+    const userId = await callerUserId(db, req);
+    if (!userId) return json({ error: 'no session' }, 401);
+
+    const { data: rows, error } = await db
+      .from('primos_holders')
+      .select('wallet, primo_count, tokens, verified_at')
+      .eq('user_id', userId)
+      .order('verified_at', { ascending: false })
+      .limit(1);
+    if (error) return json({ error: 'could not read your wallet', retryable: true }, 500);
+    // No wallet ever linked to this account. Not a refusal — the caller simply
+    // has nothing to refresh, and the client falls through to asking for one.
+    if (!rows || rows.length === 0) return json({ ok: false, linked: false });
+
+    const row = rows[0];
+    const wallet = String(row.wallet ?? '');
+    const freshEnough = Date.parse(row.verified_at ?? '') > Date.now() - REFRESH_TRUST_MS;
+
+    let count = Number(row.primo_count ?? 0);
+    let tokens: number[] = Array.isArray(row.tokens) ? row.tokens : [];
+    if (!freshEnough) {
       try {
-        const acct = await withBudget(walletAccount(db, wallet), ACCOUNT_BUDGET_MS);
-        userId = acct.userId;
-        sessionToken = acct.tokenHash;
+        ({ total: count, tokens } = await countPrimos(RPC!, COLLECTION!, wallet));
       } catch (e) {
-        // ⚠ NOT FATAL, and that is the point. The pass below is what opens the
-        // door; the account is what makes progress follow them. Failing the
-        // whole verify here would lock a genuine holder out of a game they can
-        // play perfectly well offline, over a cloud feature that is optional
-        // everywhere else in this codebase.
-        console.error('wallet account failed', String(e));
+        // ⚠ 502, NOT "you hold nothing" — the same rule verify follows. Here it
+        // matters more, not less: this path runs unattended at launch, so a
+        // collapsed distinction would throw a holder back to the wallet screen
+        // for no reason they could see.
+        return json({ error: `could not reach the chain: ${e}`, retryable: true }, 502);
       }
+      await recordHolder(db, wallet, userId, count, tokens);
     }
 
-    const now = new Date().toISOString();
-    await db.from('primos_holders').upsert({
-      wallet,
-      user_id: userId,
-      primo_count: count,
-      // The list, not just the count, so primos_owns_token() can answer "is this
-      // player allowed to run as #2933" from the database rather than from
-      // anything a browser said.
-      tokens,
-      verified_at: now,
-    }, { onConflict: 'wallet' });
-
-    if (count <= 0) {
-      // Recorded above with a count of 0 on purpose — a wallet that asked and
-      // was turned away is worth knowing about, and it is the only signal the
-      // owner has that people are trying to get in without holding.
-      return json({ ok: true, holder: false, primoCount: 0 });
-    }
-
-    const exp = Date.now() + PASS_TTL_MS;
-    return json({
-      ok: true,
-      holder: true,
-      primoCount: count,
-      tokens,
-      pass: await issuePass(SECRET!, wallet, count, tokens, exp),
-      expiresAt: new Date(exp).toISOString(),
-      // Present only when this request minted one: absent for a player who was
-      // already signed in (their session stands) and for anyone the account
-      // step failed for (they still get in on the pass alone).
-      ...(sessionToken ? { session: { tokenHash: sessionToken } } : {}),
-    });
+    if (count <= 0) return json({ ok: true, holder: false, primoCount: 0 });
+    // No session token: this request arrived with one.
+    return await passResponse(SECRET!, wallet, count, tokens, null);
   }
 
   return json({ error: 'unknown action' }, 400);

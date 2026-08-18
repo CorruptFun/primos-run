@@ -414,15 +414,25 @@
   <section id="screen-gate" class="screen hidden">
     <div class="sheet">
       <h2 data-i18n="gate.title">HOLDERS ONLY</h2>
-      <p class="hint" data-i18n="gate.copy"></p>
+      <!-- Written by paintGate(), not by the i18n sweep: the sentence depends on
+           whether this device has a wallet in the page or in another app, and
+           those need different instructions. data-i18n stays off it for that
+           reason — the sweep would put the desktop copy back on a phone. -->
+      <p class="hint" id="gate-copy"></p>
       <div id="gate-wallets" class="gate-wallets"></div>
       <p class="hint" id="gate-status"></p>
-      <!-- Shown only when no Solana wallet is injected at all: a list of
-           buttons that do nothing is a worse answer than naming the problem. -->
+      <!-- Shown only when no wallet can be reached AT ALL — nothing injected and
+           no handoff available, i.e. a desktop with no extension. On a phone
+           this sentence is simply false: the wallet is not in the browser
+           because it never is, it is in the app next door. -->
       <div id="gate-none" class="hidden">
         <p class="hint" data-i18n="gate.noWallet"></p>
       </div>
       <button class="btn btn-ghost hidden" id="btn-gate-retry" data-i18n="gate.retry">TRY AGAIN</button>
+      <!-- Only while a handoff is in flight. A player who tapped through to a
+           wallet and changed their mind is otherwise stuck watching a status
+           line until the challenge times out. -->
+      <button class="btn btn-ghost hidden" id="btn-gate-cancel" data-i18n="gate.handoffCancel">START OVER</button>
     </div>
   </section>
 

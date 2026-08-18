@@ -6,8 +6,9 @@ Hold a Primo in a Solana wallet, or you do not get in.
 |---|---|
 | Switch | `js/gate-config.js` → `GATE_ENABLED` (**ships `false`**) |
 | Client | `js/gate.js`, screen `#screen-gate`, wired in `js/main.js` (`gateFirst`) |
+| On a phone | `wallet.html` — the handoff page, opened inside the wallet's browser |
 | Verifier | `supabase/functions/primos-gate/index.ts` |
-| Schema | `20260816210000_primos_nft_gate.sql`, then `20260816210001_primos_gate_enforce_boards.sql` |
+| Schema | `20260816210000_primos_nft_gate.sql`, then `…210001_primos_gate_enforce_boards.sql`; `20260818210000_primos_gate_handoff.sql` is additive and independent |
 | Harness | `dev/gate-test.html` |
 
 ---
@@ -123,6 +124,135 @@ SHARED table Turbo Maze owns and which this project must not touch.
   the account needs no `admin.listUsers()` — that call pages the entire user base
   of a project shared with two other games to answer a question about one row.
 
+## Mobile, PWAs and the wallet browser
+
+**The problem, stated exactly.** No wallet injects a provider into mobile Safari
+or mobile Chrome. Before the handoff existed, the gate's only route on a phone
+was the wallet's own in-app browser — and an in-app browser has no *Add to Home
+Screen*. Turning the gate on did not merely make this PWA harder to install on
+mobile; **it made it impossible**, which is backwards for a game meant to live on
+a home screen. Worse, `#gate-none` told a player whose home screen has Phantom on
+it that there was "no Solana wallet in this browser".
+
+**Why the obvious fix does not work.** Phantom and Solflare both publish
+universal links, so the wallet *can* be reached from an ordinary browser. But the
+answer comes back to whichever browser context the OS picks, and on iOS that is
+never the installed web app:
+
+- a home screen web app is **not a universal-link handler**, so the return lands
+  in Safari;
+- iOS gives each home screen web app **its own storage jar** — separate cookies,
+  localStorage, IndexedDB and service worker.
+
+So a pass written on the way back is written where the installed app will never
+see it. No amount of client cleverness crosses that line. (Android is friendlier:
+a WebAPK shares Chrome's storage. The design below does not depend on knowing
+which one you are on, which is the point.)
+
+### The shape: sign over there, collect over here
+
+```
+  game (PWA)                 wallet's browser              Edge Function
+  ──────────                 ────────────────              ─────────────
+  challenge + claimHash ─────────────────────────────────▶ mints nonce, stores hash
+  ◀───────────────────────────────────────────────────────  nonce
+  open wallet ──▶ wallet.html?n=<nonce>
+                             adopt ──────────────────────▶ returns the message
+                             connect + sign
+                             verify ─────────────────────▶ checks sig, asks the chain,
+                                                            PARKS the finding on the row
+  claim(nonce, claimToken) ──────────────────────────────▶ mints the pass, returns it
+```
+
+The verdict travels through the backend, which is the only ground both browser
+contexts share. Once it does, **where the wallet hands back stops mattering** —
+which is what makes this work on every phone instead of on the ones that happen
+to route links kindly.
+
+### The rules that hold it up
+
+- **The nonce travels; the claim token never leaves the device.** The nonce is
+  carried into another app's browser in a URL — visible to that app, to its
+  history, and to anything that can watch a deeplink. The claim demands the nonce
+  *and* a random token that stayed home, and the database stores only its
+  **sha256**. Put the token in the link "to keep it simple" and anyone who sees
+  that link collects somebody else's pass.
+- **Nothing in the row is a credential at rest.** The obvious design parks the
+  minted pass for the app to fetch. It does not: a pass is a bearer token for the
+  door, and one sitting in a row until the pruner runs has a lifetime nobody
+  chose. What is parked is the *finding* — wallet, count, token numbers — and the
+  pass is minted in the claim, from a secret the database never holds. The
+  one-time session token is generated for the device that collects, never stored
+  for it.
+- **Every miss on `claim` answers "pending", including the ones that mean
+  "never".** Wrong token, expired window, already collected and genuinely
+  still-waiting are indistinguishable from outside. Telling them apart would turn
+  the endpoint into an oracle for which nonces are live; the cost is that the
+  only honest way to stop is a clock (`HANDOFF_TTL_MS`).
+- **The handoff page never builds the message it asks a wallet to sign.** It is
+  handed a nonce in a URL and asks the function for that challenge's text
+  (`adopt`). A page that assembled the sentence locally would be one URL
+  parameter away from being *told* what to sign, which is the shape of every
+  wallet phishing page ever written.
+- **The account step is skipped on a handoff and done at collect time.** The
+  browser that signs is the wallet's — a throwaway context, never signed in.
+  Minting a wallet account from it would give a Google player a second identity
+  with their progress stranded under the first. The device that collects is the
+  device that plays.
+- **`user_id` is omitted, never written as null.** PostgREST only sets the
+  columns present in the payload, so leaving it out preserves an earlier link.
+  Writing null instead would mean every handoff silently unlinks a wallet from
+  the account it belongs to — and the board policy that asks "is this user a
+  holder?" would start answering no for somebody who plainly is.
+- **The control is a real `<a href>`, fetched before the tap.** iOS hands an
+  https URL to an installed app only when the navigation comes from a genuine
+  link activation; a `location.href` assigned after an `await` has lost the user
+  gesture and the OS opens the *website* instead — dropping the player on
+  phantom.app rather than in Phantom. So the challenge round trip happens while
+  they are reading. And there is deliberately **no `target="_blank"`**: it would
+  keep the game's page alive, but it can land the URL in an in-app browser sheet,
+  and in-app browsers do not hand universal links to apps. A player without the
+  wallet installed loses the page to phantom.app instead — recoverable, because
+  the handoff is written to storage before they leave and `gateFirst()` picks it
+  straight back up.
+- **The two browse paths are not the same shape.** Phantom is
+  `https://phantom.app/ul/browse/<url>?ref=<ref>`; Solflare is
+  `https://solflare.com/ul/v1/browse/<url>?ref=<ref>`. Copying one over the other
+  gives a link that 404s inside the wallet. Backpack publishes no browse
+  deeplink, so it is offered only where it is injected.
+- **`wallet.html` is skipped by `sw.js` outright**, like `stats.html`. Without
+  it, an offline navigation falls into the network-first branch and is answered
+  with `cache.match("./")` — i.e. the game — so a player who tapped through to
+  sign would land in a second copy of the game showing them the gate they were
+  trying to get past.
+- **The handoff URL is built from `location`, which is the opposite of
+  `js/referrals.js`.** An invite link *is* the payload and goes to somebody
+  else's phone, so it is hardcoded. This link goes five centimetres and the
+  verdict returns through the function, so the origin carries nothing — and
+  pinning it would only mean a test build sending players to production.
+
+### `refresh`: why this is not a daily chore
+
+A pass lasts 24h, so on iOS every renewal would be the whole app-switch trip
+again, forever. It is not: a holder who is signed in gets a new pass from
+`{action: "refresh"}` with **no wallet interaction at all**, on the strength of
+their Supabase session. The chain is still re-asked server-side (bounded by
+`REFRESH_TRUST_MS`, so repeated calls cannot run up an RPC bill), so a sold Primo
+closes the door on the next launch exactly as it would have. What is not re-asked
+is control of the key — the same trade every "stay signed in" makes, and strictly
+stronger than the 24h pass it replaces.
+
+It runs after `bootstrapCloud()`, because there is no session to offer before it.
+
+### What it does not fix
+
+Nothing here makes the *first* verification disappear on a phone: a new player
+still takes one trip to the wallet. What it buys is that the trip lasts seconds
+instead of being permanent, the game they install stays installed, and — via
+`refresh` — they do not take it again.
+
+---
+
 ## Rollout, in order
 
 **The order is load-bearing.** Two of these steps lock people out if taken early.
@@ -211,6 +341,17 @@ Flip `GATE_ENABLED` to `true` in `js/gate-config.js`, bump `CACHE_VERSION` and
 > ⚠ Doing this before step 4 **locks out everyone including you**, with no way
 > back but another deploy.
 
+### 6b. Apply the handoff migration
+
+```bash
+supabase db query --linked -f supabase/migrations/20260818210000_primos_gate_handoff.sql
+```
+
+Additive: it creates no policy, tightens none, and changes no existing column, so
+it is safe under a client already in the field — an older client never sends
+`claimHash` and never calls `claim`. It can go before or after step 6; the mobile
+route simply does not work until both it and the client are out.
+
 ### 7. Wait, then close the boards
 
 Give holders time to open the game and verify — a day at least. The PWA is
@@ -258,6 +399,9 @@ supabase db query --linked -f supabase/migrations/20260816210001_primos_gate_enf
 - **No wallet address in the event log.** `GATE_PASS`/`GATE_FAIL` carry a count and
   a reason, never the address — a wallet is a fingerprint on a public chain, the
   same rule `PRIMO_SET` follows for token numbers.
+- **The claim is a conditional UPDATE too.** Same reason as the nonce: a
+  read-then-write lets two requests both pass, which here would mean one verdict
+  handed to two devices.
 - **The board's read policy stays open, on purpose.** A leaderboard only holders
   can see cannot advertise the collection. Gating the write is the point; gating
   the read costs the gate its only marketing surface and protects nothing.

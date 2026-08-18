@@ -1,6 +1,9 @@
 // The NFT gate's switch. THIS FILE IS MEANT TO BE COMMITTED.
 //
-// ⚠ IT SHIPS OFF, AND THAT IS NOT TIMIDITY — IT IS THE ONLY SAFE DEFAULT.
+// ⚠ IT IS NOW TRUE, AND IT SHIPPED FALSE FOR A REASON THAT HAS NOT GONE AWAY.
+// Everything below is why the switch exists and the order it has to be thrown
+// in — read it before setting it back to true after any deploy that turns the
+// backend off, and before assuming a fresh clone is safe to run gated.
 //
 // The gate's verdict comes from a Supabase Edge Function that has to be
 // deployed, holding secrets that have to be set, against a migration that has
@@ -52,6 +55,17 @@ export const GATE_FUNCTION = 'primos-gate';
 export const PASS_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * The page the wallet is sent to on a phone, relative to the game.
+ *
+ * It is a separate document rather than a mode of index.html on purpose: it
+ * opens in the WALLET'S browser, where booting a whole game to draw one line of
+ * text would mean downloading the game twice on a connection the player is
+ * standing still on. Empty disables the handoff and leaves the gate exactly as
+ * it was: injected providers only.
+ */
+export const HANDOFF_PAGE = 'wallet.html';
+
+/**
  * Wallets offered, in the order the buttons appear.
  *
  * `path` is where the provider is injected. Phantom moved to
@@ -59,9 +73,27 @@ export const PASS_TTL_MS = 24 * 60 * 60 * 1000;
  * also claim, so the namespaced path is checked first and the bare one is the
  * fallback — reading `window.solana` alone is how you end up asking Solflare to
  * sign while telling the player it is Phantom.
+ *
+ * `browse` is the universal link that opens a page inside that wallet's own
+ * browser — `%u` is the destination and `%r` is us, both URL-encoded. It is what
+ * makes the mobile handoff possible, because NOTHING is injected into mobile
+ * Safari or mobile Chrome and without it a phone has no route to a wallet at
+ * all.
+ *
+ * ⚠ THE TWO PATHS ARE NOT THE SAME SHAPE and copying one over the other gives a
+ * link that silently 404s inside the wallet: Phantom is `/ul/browse/`, Solflare
+ * is `/ul/v1/browse/`. Backpack publishes no browse deeplink, so it has none
+ * here — a button that cannot work is worse than one that is absent, and
+ * handoffWallets() filters on exactly this field.
  */
 export const WALLETS = [
-  { id: 'phantom', name: 'Phantom', path: ['phantom.solana', 'solana'], url: 'https://phantom.app/' },
-  { id: 'solflare', name: 'Solflare', path: ['solflare'], url: 'https://solflare.com/' },
+  {
+    id: 'phantom', name: 'Phantom', path: ['phantom.solana', 'solana'],
+    url: 'https://phantom.app/', browse: 'https://phantom.app/ul/browse/%u?ref=%r',
+  },
+  {
+    id: 'solflare', name: 'Solflare', path: ['solflare'],
+    url: 'https://solflare.com/', browse: 'https://solflare.com/ul/v1/browse/%u?ref=%r',
+  },
   { id: 'backpack', name: 'Backpack', path: ['backpack'], url: 'https://backpack.app/' },
 ];

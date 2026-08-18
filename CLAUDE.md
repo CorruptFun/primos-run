@@ -321,6 +321,7 @@ of having tested on a deploy.
 | `js/art/primo-head.js` | PFP → head sprite (crop, mask, palette, lighting) |
 | `js/art/scenery.js` | sky + alley walls |
 | `js/art/sprites.js` | painted cut-out rig (unused for the body) + prop sprites |
+| `js/gate.js`, `wallet.html` | the NFT gate's door handle, and the mobile handoff page |
 | `js/primo-cache.js` | the local art cache — fetch a Primo's pixels once per device |
 | `js/store.js` | localStorage + backup code — the AUTHORITATIVE save |
 | `js/cloud.js` | Google sign-in, cloud save pull/merge/push |
@@ -475,11 +476,64 @@ the shipped original if you need to compare.
   them, because the qualify stamp goes up on the save push. That is the accepted
   simplification, not a bug.
 
-## The NFT gate (`js/gate.js`, Edge Function, migrations `202608162100xx`)
+## The NFT gate (`js/gate.js`, `wallet.html`, Edge Function, migrations `2026081x21xxxx`)
 
-Hold a Primo in a Solana wallet or you do not get in. **Ships OFF**
-(`GATE_ENABLED` in `js/gate-config.js`), like the whole cloud layer. Full runbook
-in `docs/NFT_GATE.md` — read it before touching any of this.
+Hold a Primo in a Solana wallet or you do not get in. Full runbook in
+`docs/NFT_GATE.md` — read it before touching any of this.
+
+- **NO WALLET INJECTS A PROVIDER INTO MOBILE SAFARI OR MOBILE CHROME, AND THAT
+  MADE THE PWA UNINSTALLABLE.** The gate's only mobile route was the wallet's own
+  in-app browser, which has no Add to Home Screen — so turning the gate on took
+  away the home screen icon for every phone player, and `#gate-none` told someone
+  with Phantom on their home screen there was "no Solana wallet in this browser".
+  The fix is the HANDOFF: a universal link into the wallet's browser
+  (`wallet.html`), and the verdict collected back through the Edge Function.
+- **THE VERDICT TRAVELS THROUGH THE BACKEND BECAUSE ON iOS NOTHING ELSE CAN.** A
+  home screen web app is not a universal-link handler, so the wallet's redirect
+  lands in Safari — and iOS gives the installed app its OWN storage jar, so a
+  pass written on the way back is written where the app will never see it. Carry
+  the answer in the return URL "because it is simpler" and it works on Android
+  and silently never works on an installed iOS app. Once it goes through the
+  server, WHERE the wallet hands back stops mattering at all, which is the
+  property worth protecting.
+- **THE NONCE TRAVELS, THE CLAIM TOKEN NEVER LEAVES THE DEVICE.** The nonce goes
+  into another app's browser in a URL; the claim demands the nonce AND a random
+  token that stayed home, and the database stores only its sha256. Put the token
+  in the link and anyone who sees it collects somebody else's pass. Relatedly:
+  **every miss on `claim` answers `pending`**, including wrong-token and expired
+  — telling them apart makes the endpoint an oracle for live nonces.
+- **NOTHING IS PARKED THAT IS A CREDENTIAL.** The obvious design stores the
+  minted pass for the app to fetch; a pass is a bearer token for the door and one
+  sitting in a row until the pruner runs has a lifetime nobody chose. The row
+  holds the FINDING (wallet, count, tokens) and the pass is minted in the claim.
+  Same for the one-time session token — generated for the collecting device,
+  never stored for it.
+- **`user_id` IS OMITTED, NEVER WRITTEN AS NULL, in `recordHolder`.** PostgREST
+  only sets the columns present in the payload. Writing null instead means every
+  handoff — which is signed from a context that is never logged in — silently
+  unlinks a wallet from its Google account, and the board policy that asks "is
+  this user a holder?" starts answering no for someone who plainly is. The
+  account step is skipped on a handoff and done at COLLECT time for the same
+  family of reason: the device that collects is the device that plays.
+- **THE WALLET LINK IS A REAL `<a href>`, FETCHED BEFORE THE TAP, AND HAS NO
+  `target="_blank"`.** iOS hands an https URL to an app only on a genuine link
+  activation — a `location.href` set after an `await` has lost the gesture and
+  opens the WEBSITE, dropping the player on phantom.app instead of in Phantom.
+  `_blank` fails the same way via in-app browser sheets, which do not honour
+  universal links. Losing the page when the wallet is absent is the accepted
+  cost, and it is recoverable because the handoff is stored before they leave.
+- **`refresh` IS WHAT STOPS THIS BEING A DAILY CHORE.** A pass lasts 24h and on
+  iOS every renewal would be the whole app-switch trip again. A signed-in holder
+  renews on their session with no wallet in the loop; the chain is still re-asked
+  server-side, so a sold Primo still closes the door. It runs after
+  `bootstrapCloud()` because there is no session before it.
+- **`wallet.html` is skipped by `sw.js` outright, like `stats.html`.** Without
+  the skip an offline navigation is answered with `cache.match("./")` — the GAME
+  — so a player who tapped through to sign lands in a second copy of the game
+  showing them the gate they were trying to get past.
+- **Phantom is `/ul/browse/`, Solflare is `/ul/v1/browse/`.** Not the same path;
+  copying one over the other 404s inside the wallet. Backpack publishes none, so
+  it is offered only where it is injected.
 
 - **`js/gate.js` IS A DOOR HANDLE, NOT A LOCK, and the distinction is the whole
   design.** The game is static files on a public host: anyone can download it,
@@ -744,7 +798,12 @@ a real gateway to misbehave. Open it after touching `primo-cache.js`, `GATEWAYS`
 or `loadHead`.
 
 `dev/gate-test.html` covers the NFT gate's client half — base58, the pass store
-and its expiry ceiling, wallet detection — with `fetch` and the wallet stubbed.
+and its expiry ceiling, wallet detection, and the mobile handoff (the claim token
+never reaching the link, a conclusive answer ending the handoff, a timeout not
+being read as a refusal, and `refresh` keeping 502 apart from "you hold none") —
+with `fetch` and the wallet stubbed. It reads `gate.enabled()` rather than
+pinning it: it used to assert the gate ships dormant, and went red the day it
+went live while saying nothing about the code.
 
 `dev/cloud-test.html` asserts every pure module in the browser — day/week keys,
 the merge, name sanitising, the analytics vocabulary pin, the feedback bounds and

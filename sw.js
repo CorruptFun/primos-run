@@ -17,7 +17,7 @@
 */
 
 // 👉 CUSTOMIZE: rename to your app, and bump CACHE_VERSION per deploy (e.g. a build stamp).
-const CACHE_VERSION = "v26-holders-only";
+const CACHE_VERSION = "v27-wallet-handoff";
 const CACHE_NAME    = `primos-run-${CACHE_VERSION}`;
 
 // 👉 CUSTOMIZE: the offline shell, precached at install. Relative paths (resolved against
@@ -173,6 +173,15 @@ self.addEventListener("fetch", (event) => {
   // which looks exactly like the dashboard being broken. Letting it through
   // untouched also keeps it out of the cache players carry around.
   if (url.pathname.endsWith("/stats.html") || url.pathname.includes("/js/stats/")) return;
+
+  // The wallet handoff page, for the same reason and with a sharper edge. It is
+  // opened in a WALLET'S browser to reach the Edge Function, so it is worthless
+  // without the network — and an offline navigation to it would fall into the
+  // branch below and be answered with `cache.match("./")`, i.e. THE GAME. A
+  // player who tapped through to sign would land in a second copy of the game
+  // showing them the gate they were trying to get past. Never cached, never
+  // substituted, always the network.
+  if (url.pathname.endsWith("/wallet.html")) return;
 
   if (req.mode === "navigate") {                          // pages → network-first
     event.respondWith((async () => {

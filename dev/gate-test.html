@@ -39,10 +39,20 @@ ok('a 64-byte signature encodes to a plausible length', enc.length >= 85 && enc.
 ok('and only uses the base58 alphabet',
   /^[1-9A-HJ-NP-Za-km-z]+$/.test(enc));
 
-// ---- the gate is OFF in the repo, and that is the shipping state
-ok('ships dormant', gate.enabled() === false);
-ok('dormant means the door is open', gate.open() === true);
-ok('dormant verify never refuses', (await gate.verify(null)).holder === true);
+// ---- the switch, whichever way it is currently thrown
+//
+// ⚠ NOT PINNED TO ONE STATE. This used to assert `enabled() === false` because
+// the gate shipped dormant; the day it went live the harness went red and said
+// nothing useful about the code. What matters is that BOTH states are coherent,
+// so the switch is read and the consequences are checked against it.
+const LIVE = gate.enabled();
+ok(`the gate reads as ${LIVE ? 'ON' : 'dormant'} in this build`, typeof LIVE === 'boolean');
+if (!LIVE) {
+  ok('dormant means the door is open', gate.open() === true);
+  ok('dormant verify never refuses', (await gate.verify(null)).holder === true);
+} else {
+  ok('a live gate needs a pass', gate.open() === (gate.storedPass() !== null));
+}
 
 // ---- the pass store
 localStorage.removeItem('primos-run:gate-pass');
@@ -91,9 +101,12 @@ putPass([4, 2933]);
 ok('reads the owned list out of the signed payload',
   JSON.stringify(gate.ownedTokens()) === '[4,2933]', JSON.stringify(gate.ownedTokens()));
 
-// ⚠ The gate is OFF in the repo, so owns() must say yes to everything — the
-// ungated game has always let any Primo be worn and must keep doing so.
-ok('gate off: every Primo is wearable', gate.owns(7) === true && gate.owns(2933) === true);
+// With the gate OFF, owns() must say yes to everything — the ungated game has
+// always let any Primo be worn and must keep doing so. With it ON, the pass is
+// the authority and nothing else is.
+ok(LIVE ? 'gate on: only the pass\'s Primos are wearable' : 'gate off: every Primo is wearable',
+  LIVE ? (gate.owns(2933) === true && gate.owns(7) === false)
+       : (gate.owns(7) === true && gate.owns(2933) === true));
 
 // Token 0 exists (the collection is 0..3068) and must not be lost to falsiness.
 putPass([0]);
@@ -123,6 +136,132 @@ ok('a tampered convenience copy does not grant ownership',
 
 localStorage.removeItem('primos-run:gate-pass');
 ok('no pass owns nothing', gate.ownedTokens().length === 0);
+
+// ---- the mobile handoff
+//
+// ⚠ WHAT THIS PINS IS THE PART THAT CAN BE GOT WRONG SILENTLY: that the claim
+// token never leaves this device, that a conclusive answer ends the handoff, and
+// that a timed-out one is not mistaken for a refusal. The journey itself — a
+// universal link, another app, another browser — cannot be driven from here at
+// all, which is the same caveat this whole file opens with.
+localStorage.removeItem('primos-run:gate-pass');
+localStorage.removeItem('primos-run:gate-handoff');
+
+ok('phantom and solflare can be reached by link, backpack cannot',
+  JSON.stringify(gate.handoffWallets().map((w) => w.id)) === '["phantom","solflare"]',
+  JSON.stringify(gate.handoffWallets().map((w) => w.id)));
+
+// The two browse paths are NOT the same shape, and copying one over the other
+// gives a link that 404s inside the wallet.
+const [ph, sf] = gate.handoffWallets();
+const phUrl = gate.handoffUrl(ph, { nonce: 'NONCE-1' });
+const sfUrl = gate.handoffUrl(sf, { nonce: 'NONCE-1' });
+ok('phantom browse link is /ul/browse/', phUrl.startsWith('https://phantom.app/ul/browse/'), phUrl);
+ok('solflare browse link is /ul/v1/browse/', sfUrl.startsWith('https://solflare.com/ul/v1/browse/'), sfUrl);
+ok('the link points at the handoff page carrying the nonce',
+  decodeURIComponent(phUrl).includes('wallet.html?n=NONCE-1'), decodeURIComponent(phUrl));
+ok('and names us as the referrer', phUrl.includes('?ref=http'), phUrl);
+// Scheme-agnostic on purpose: this harness is served over http and the game is
+// served over https, and a check that pinned one of them would be a test that
+// only passes where it was written.
+ok('the destination is URL-ENCODED into the path, not appended raw',
+  phUrl.indexOf('%3A%2F%2F') > 0 && !phUrl.slice(30).includes('://'), phUrl);
+
+// ---- the wire, stubbed
+const sent = [];
+let reply = { status: 200, body: {} };
+const realFetch = window.fetch;
+window.fetch = async (url, opts) => {
+  sent.push(JSON.parse(opts.body));
+  return new Response(JSON.stringify(reply.body), {
+    status: reply.status, headers: { 'Content-Type': 'application/json' },
+  });
+};
+
+reply = { status: 200, body: { nonce: 'N-2', expiresAt: new Date(Date.now() + 6e5).toISOString() } };
+const started = await gate.startHandoff();
+ok('startHandoff gets a challenge', started.ok === true && started.handoff.nonce === 'N-2');
+ok('...and asks for it as a handoff', sent.at(-1).action === 'challenge' && !!sent.at(-1).claimHash);
+ok('...sending a sha256 HEX DIGEST, never the token itself',
+  /^[0-9a-f]{64}$/.test(sent.at(-1).claimHash) && sent.at(-1).claimHash !== started.handoff.claimToken);
+// ⚠ THE WHOLE SAFETY OF THE HANDOFF. The nonce travels through another app's
+// browser in a URL; the token does not travel at all. Put the token in the link
+// and anyone who sees it collects somebody else's pass.
+ok('the claim token is NOT in the link that leaves this device',
+  !gate.handoffUrl(ph, started.handoff).includes(started.handoff.claimToken));
+ok('the handoff is written down before the player leaves',
+  gate.pendingHandoff()?.nonce === 'N-2');
+
+// Still waiting.
+reply = { status: 200, body: { pending: true } };
+const waiting = await gate.collect(gate.pendingHandoff());
+ok('a pending collect says so', waiting.pending === true && waiting.ok === false);
+ok('...and the handoff survives it', gate.pendingHandoff()?.nonce === 'N-2');
+ok('collect sends the nonce AND the token', sent.at(-1).action === 'claim'
+  && sent.at(-1).nonce === 'N-2' && sent.at(-1).claimToken === started.handoff.claimToken);
+
+// The wallet answered, and holds.
+const passFor = (tokens) => `${btoa(JSON.stringify(
+  { w: 'HoLdEr', n: tokens.length, t: tokens, exp: Date.now() + 6e5 },
+)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}.sig`;
+reply = { status: 200, body: {
+  ok: true, holder: true, primoCount: 2, tokens: [4, 2933], pass: passFor([4, 2933]),
+  expiresAt: new Date(Date.now() + 6e5).toISOString(),
+} };
+const won = await gate.collect(started.handoff);
+ok('collecting a holder lets them in', won.ok === true && won.holder === true && won.count === 2);
+ok('...keeps the pass', gate.storedPass() !== null);
+ok('...reads the wallet out of the SIGNED payload, not a field beside it',
+  gate.holder()?.wallet === 'HoLdEr', String(gate.holder()?.wallet));
+ok('...and ends the handoff', gate.pendingHandoff() === null);
+
+// The wallet answered, and holds nothing. Conclusive, so it must also end.
+localStorage.removeItem('primos-run:gate-pass');
+localStorage.setItem('primos-run:gate-handoff',
+  JSON.stringify({ nonce: 'N-3', claimToken: 'tok', at: Date.now() }));
+reply = { status: 200, body: { ok: true, holder: false, primoCount: 0 } };
+const empty = await gate.collect(gate.pendingHandoff());
+ok('an empty wallet is answered, not left pending', empty.ok === true && empty.holder === false);
+ok('...and that ends the handoff too', gate.pendingHandoff() === null);
+
+// A stale handoff is dropped on its own clock rather than polled forever.
+localStorage.setItem('primos-run:gate-handoff', JSON.stringify(
+  { nonce: 'N-4', claimToken: 'tok', at: Date.now() - gate.HANDOFF_TTL_MS - 1000 },
+));
+ok('an aged-out handoff is not pending any more', gate.pendingHandoff() === null);
+localStorage.setItem('primos-run:gate-handoff', 'not json');
+ok('garbage is not a handoff, and does not throw', gate.pendingHandoff() === null);
+gate.clearHandoff();
+
+// ---- refresh: a pass with no wallet in the loop
+localStorage.removeItem('primos-run:gate-pass');
+ok('refresh with no session asks for nothing',
+  (await gate.refresh('')).error === 'no-session');
+
+reply = { status: 200, body: { ok: false, linked: false } };
+ok('a session with no wallet behind it is not-linked, not a refusal',
+  (await gate.refresh('tok')).error === 'not-linked');
+
+// ⚠ 502 IS NOT "YOU HOLD NOTHING". This path runs unattended at launch, so a
+// collapsed distinction throws a holder back to the wallet screen for no reason
+// they could see.
+reply = { status: 502, body: { error: 'rpc down', retryable: true } };
+const down = await gate.refresh('tok');
+ok('a chain outage is its own outcome', down.error === 'chain-unreachable' && down.retryable === true);
+ok('...and no pass is kept over it', gate.storedPass() === null);
+
+reply = { status: 200, body: {
+  ok: true, holder: true, primoCount: 1, tokens: [2933], pass: passFor([2933]),
+  expiresAt: new Date(Date.now() + 6e5).toISOString(),
+} };
+const renewed = await gate.refresh('tok');
+ok('a linked holder gets back in without a wallet', renewed.ok === true && renewed.holder === true);
+ok('...and the renewed pass carries their Primos',
+  JSON.stringify(gate.ownedTokens()) === '[2933]', JSON.stringify(gate.ownedTokens()));
+
+window.fetch = realFetch;
+localStorage.removeItem('primos-run:gate-pass');
+localStorage.removeItem('primos-run:gate-handoff');
 
 document.getElementById('out').textContent = log.join('\n');
 window.__done = true;

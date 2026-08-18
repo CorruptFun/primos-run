@@ -64,11 +64,20 @@ steps lock people out if taken early.
       before holders have had time to verify.** It is a restricting change under
       a prompt-mode PWA — the inverse of the schema-first rule. Its own tail
       carries the rollback.
+- [ ] **`20260818210000_primos_gate_handoff.sql` is applied before the client
+      that needs it.** Additive and safe under an older client, but without it
+      every phone's `claim` fails and the mobile route silently never completes —
+      which looks like a wallet that never answered.
 - [ ] **The function's secrets are set** (`SOLANA_RPC_URL`, `PRIMOS_COLLECTION`,
       `GATE_SECRET`) and none of them is in the repo. It fails closed with 503
       naming the missing one.
 - [ ] **`PRIMOS_COLLECTION` was checked against a block explorer.** Wrong in one
       direction it refuses every holder; wrong in the other it admits everyone.
+- [ ] **A real wallet completed the flow end to end ON A PHONE, from the
+      installed home screen icon** — not only in a desktop extension. The
+      handoff is the only route a phone has, and the one thing it depends on
+      (which browser the OS hands the wallet's answer back to) cannot be
+      reproduced on a desktop at all.
 - [ ] **A real wallet completed the flow end to end.** The signing path cannot be
       probed from outside a wallet — there is no substitute for doing it once.
 
