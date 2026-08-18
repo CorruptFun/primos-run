@@ -169,6 +169,11 @@ export function drawBackHead(ctx, size, rig, pose, skinCol) {
 
   // ------------------------------------------------------------ hair mass
   const skull = skullPath(cx, cy, rx, ry);
+  // Horns go UNDER the hair, unlike every other piece of headwear here. They
+  // GROW out of the skull rather than sitting on it, so the crown has to close
+  // over the root — laid on top, a horn is a horn glued to a head, and its wide
+  // base shows as a straight cut across the hair.
+  if (worn === 'horns') horns(ctx, cx, cy, rx, ry, capCol, size);
   if (!sealed) {
     cel(ctx, capped ? skull : crownPath(style, cx, cy, rx, ry), hair, size);
     nape(ctx, cx, cy, rx, ry, hair, skull);
@@ -187,7 +192,14 @@ export function drawBackHead(ctx, size, rig, pose, skinCol) {
   // back of the head, which is the exact thing this file exists to avoid. Under
   // a hat it is skipped outright rather than moved to the nape, where it read as
   // a chin.
-  if (!hat && !capCol) sheen(ctx, cx, cy, rx, ry, hair, style);
+  //
+  // Gated on `capped`, NOT on "is there a hat": a visor and a pair of horns
+  // both leave the crown wide open, so their hair needs the sheen exactly as
+  // much as a bare head does — and gating on capCol was silently denying it to
+  // the two traits whose whole point is that you can still see the hair. It is
+  // safe under horns because the horn's root is already buried by the hair mass
+  // above, and the sheen never reaches past 0.91 of the skull.
+  if (!hat && !capped) sheen(ctx, cx, cy, rx, ry, hair, style);
 
   // ------------------------------------------------------------------ hat
   // A cap comes a long way DOWN the skull from behind — most of what you see of
@@ -202,9 +214,7 @@ export function drawBackHead(ctx, size, rig, pose, skinCol) {
     helmet(ctx, cx, cy, rx, ry, capCol, size);
   } else if (worn === 'visor') {
     visor(ctx, cx, cy, rx, ry, capCol, size, skull);
-  } else if (worn === 'horns') {
-    horns(ctx, cx, cy, rx, ry, capCol, size);
-  } else if (capCol) {
+  } else if (capCol && worn !== 'horns') {
     cap(ctx, cx, cy, rx, ry, capCol, size, skull, hair);
   }
 
@@ -963,59 +973,111 @@ function visor(ctx, cx, cy, rx, ry, hat, size, skull) {
 }
 
 /**
- * Horns. Two of them, off the crown, curving out and back.
+ * Horns. Two of them, growing out of the crown, thick at the root and tapering
+ * to a point.
  *
- * Thick at the base and short. Long thin ones read as insect antennae — which
- * is what they were: two slivers a few pixels wide standing well clear of the
- * head with no visible join to it.
+ * WHICH END IS WIDE IS THE WHOLE TRAIT, and the first version had it exactly
+ * backwards: both edges of the blade met at ONE POINT where it joined the
+ * skull, and it was still 0.18rx across at the tip. A horn built upside down
+ * has no root to grow out of and no point to end in, so what stood on the crown
+ * was a long parallel-sided sliver — the insect antenna the note above it said
+ * it must never be, and beside a second one, a pair of rabbit ears.
+ *
+ * So the outline is no longer two hand-authored bezier edges that can disagree
+ * about which end is which. A SPINE is swept up and out of the crown and the
+ * half-width is driven to zero along it: outer edge and inner edge are the same
+ * curve offset by a width that can only shrink, so the taper is structural and
+ * cannot be got the wrong way round again.
+ *
+ * Drawn UNDER the hair (see drawBackHead). A horn painted on top of the crown
+ * is a horn glued to a head; one the hair closes over is one the head grew —
+ * and it means the root can be as wide as it needs to be without its base
+ * showing as a straight cut across the hair.
+ *
+ * NOTHING IS DRAWN INSIDE IT. The growth rings that used to run across the root
+ * were the last thing holding the ear read together — two marks low on a
+ * tapering shape are the fold inside an ear, and the eye will take that reading
+ * over "horn" every time. The cel pass carries the form on its own; the
+ * silhouette is the trait, here as everywhere else in this file.
  */
 function horns(ctx, cx, cy, rx, ry, hat, size) {
+  const N = 14;
   for (const s of [-1, 1]) {
-    const bx = cx + s * rx * 0.56, by = cy - ry * 0.80;
-    // Base, tucked into the hair so the join never shows as a seam.
+    // Root sunk a third of a head INSIDE the skull; the control well OUTBOARD
+    // of both ends; the tip brought back in over it. That is the whole
+    // difference between a horn and a cat's ear, and it is worth more than any
+    // amount of shading: a shape that widens to a straight-sided base sitting
+    // on top of a round head IS an ear, whichever colour it is drawn in and
+    // however sharp the point. What a curve buys is that no ear does this.
+    //
+    // First attempt after the taper was fixed swept almost straight up, and
+    // came out as two red ears — the growth rings on them promptly read as the
+    // fold inside one, which is how far the eye will go to finish that picture.
+    const P = [
+      [cx + s * rx * 0.34, cy - ry * 0.62],
+      [cx + s * rx * 1.02, cy - ry * 1.06],
+      [cx + s * rx * 0.64, cy - ry * 1.86],
+    ];
+    // Half-width at the root. It leaves the crown around a fifth of a head
+    // wide, which is what buys the horn a join you can see; the old one arrived
+    // at the hairline with nothing there at all. Against the length that is
+    // about one to two and a half, and the ratio matters as much as the curve —
+    // an ear is as tall as its base is wide.
+    const W = rx * 0.28;
+    const spine = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, u = 1 - t;
+      const dx = 2 * u * (P[1][0] - P[0][0]) + 2 * t * (P[2][0] - P[1][0]);
+      const dy = 2 * u * (P[1][1] - P[0][1]) + 2 * t * (P[2][1] - P[1][1]);
+      const m = Math.hypot(dx, dy) || 1;
+      spine.push({
+        x: u * u * P[0][0] + 2 * u * t * P[1][0] + t * t * P[2][0],
+        y: u * u * P[0][1] + 2 * u * t * P[1][1] + t * t * P[2][1],
+        tx: dx / m, ty: dy / m,
+        // Slightly faster than linear, so the horn keeps its mass through the
+        // first half and does its narrowing in the last — a linear taper is a
+        // triangle, and a triangle on a head is one of the messy cut's spikes.
+        w: W * Math.pow(u, 1.25),
+      });
+    }
+    // ONE path, like every other cut and hat in this file: up the outer edge,
+    // round the tip, back down the inner one. `g` grows it evenly for the
+    // keyline, tip included, because it is added to the width rather than to a
+    // handful of the control points — which is how the old grow ended up
+    // lop-sided.
     const build = (p, g) => {
-      p.moveTo(bx - s * rx * 0.26 - s * g, by + ry * 0.24);
-      // outer edge, out and up
-      p.bezierCurveTo(bx + s * rx * 0.36 + s * g, by - ry * 0.10,
-        bx + s * rx * 0.50 + s * g, by - ry * 0.54,
-        bx + s * rx * 0.34 + s * g, by - ry * 0.92 - g);
-      // the tip
-      p.quadraticCurveTo(bx + s * rx * 0.22, by - ry * 0.96 - g,
-        bx + s * rx * 0.16, by - ry * 0.84);
-      // inner edge, back down
-      p.bezierCurveTo(bx + s * rx * 0.24, by - ry * 0.50,
-        bx + s * rx * 0.10, by - ry * 0.16,
-        bx - s * rx * 0.26 - s * g, by + ry * 0.24);
+      const out = [], inn = [];
+      for (const q of spine) {
+        const w = q.w + g;
+        out.push([q.x - s * q.ty * w, q.y + s * q.tx * w]);
+        inn.push([q.x + s * q.ty * w, q.y - s * q.tx * w]);
+      }
+      p.moveTo(out[0][0], out[0][1]);
+      smooth(p, out);
+      const tip = spine[N];
+      p.quadraticCurveTo(tip.x + tip.tx * g * 1.5, tip.y + tip.ty * g * 1.5,
+        inn[N][0], inn[N][1]);
+      inn.reverse();
+      smooth(p, inn);
       p.closePath();
     };
-    // A keyline of sky along the outer curve, laid down BEFORE the horn and
-    // slightly outside it. These are usually dark red on dark hair and the two
-    // silhouettes fuse — the horn stops being an object and becomes a bump on
-    // the head. A rim of the alley's own backlight is what separates them, and
-    // it is the same treatment the head itself gets from RIM.
-    ctx.save();
-    ctx.globalAlpha = 0.85;
-    cel(ctx, (p) => build(p, Math.max(1, size * 0.016)), {
-      base: withA(hat.light, 0.95), dark: RIM,
-    }, size);
-    ctx.restore();
-    cel(ctx, build, hat, size);
-    // Two growth rings near the base — the one bit of surface that survives,
-    // because it runs across the horn and reads as texture on a solid form.
-    ctx.save();
+
+    // A keyline of the alley's own backlight, laid down before the horn and
+    // just outside it. These are dark red on dark hair and the two silhouettes
+    // fuse otherwise — the horn stops being an object and becomes a bump on the
+    // head. Same treatment the head itself gets from RIM.
+    //
+    // ONE FLAT FILL, never a cel pass. cel() offsets its lit copy by LX/LY of
+    // the head box, which on a shape this narrow lands the pale tone almost
+    // entirely OUTSIDE the horn: what shipped was a salmon ghost hanging off
+    // one side of each horn, and at gameplay size the ghost read as a third
+    // horn rather than as an edge.
+    ctx.fillStyle = RIM;
     ctx.beginPath();
-    build(ctx, 0);
-    ctx.clip();
-    ctx.strokeStyle = withA(hat.dark, 0.75);
-    ctx.lineWidth = Math.max(0.8, size * 0.012);
-    for (const k of [0.06, 0.26]) {
-      ctx.beginPath();
-      ctx.moveTo(bx - s * rx * 0.24, by + ry * (0.20 - k));
-      ctx.quadraticCurveTo(bx + s * rx * 0.06, by + ry * (0.10 - k),
-        bx + s * rx * 0.16, by - ry * (0.06 + k));
-      ctx.stroke();
-    }
-    ctx.restore();
+    build(ctx, Math.max(0.8, size * 0.009));
+    ctx.fill();
+
+    cel(ctx, build, hat, size);
   }
 }
 

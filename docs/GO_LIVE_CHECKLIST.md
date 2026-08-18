@@ -64,10 +64,15 @@ steps lock people out if taken early.
       before holders have had time to verify.** It is a restricting change under
       a prompt-mode PWA — the inverse of the schema-first rule. Its own tail
       carries the rollback.
-- [ ] **`20260818210000_primos_gate_handoff.sql` is applied before the client
-      that needs it.** Additive and safe under an older client, but without it
-      every phone's `claim` fails and the mobile route silently never completes —
-      which looks like a wallet that never answered.
+- [ ] **`20260818210000_primos_gate_handoff.sql` is applied BEFORE the function
+      that reads it is deployed.** This is the sharp edge in the whole handoff.
+      The migration is additive and safe under any client, but `verify` in the
+      new function does `select('nonce, claim_hash')` — so deploying the function
+      first makes every verification fail with "challenge lookup failed", which
+      takes the gate down for DESKTOP HOLDERS TOO, not just phones. Order:
+      migration → function → client. The client is safe out in front of both (an
+      old function makes only the new mobile route dead-end, and `refresh`
+      degrades to silence).
 - [ ] **The function's secrets are set** (`SOLANA_RPC_URL`, `PRIMOS_COLLECTION`,
       `GATE_SECRET`) and none of them is in the repo. It fails closed with 503
       naming the missing one.

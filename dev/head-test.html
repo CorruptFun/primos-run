@@ -159,7 +159,7 @@ cell($('acc'), 'sunglasses', { hat: 'None', hair: 'Short Black', glasses: 'Sungl
 cell($('acc'), 'gold blues', { hat: 'None', hair: 'Short Black', glasses: 'Gold Blues' });
 cell($('acc'), 'reading', { hat: 'None', hair: 'Short Black', glasses: 'Reading Glasses' });
 cell($('acc'), 'alien skin', { hat: 'None', hair: 'Messy Green', base: 'Alien' });
-cell($('acc'), 'demon skin', { hat: 'None', hair: 'Messy Black', base: 'Demon', hat: 'Horns' });
+cell($('acc'), 'demon skin', { hat: 'Horns', hair: 'Messy Black', base: 'Demon' });
 cell($('acc'), 'everything', { hat: 'Primos', hair: 'Long Black', bandana: 'Red Bandana',
   glasses: 'Gold Blues', earring: 'Gold Hoop', base: 'Tan' });
 
@@ -169,7 +169,8 @@ const COMBOS = [
   ['Cowboy Hat', 'Mullet Brown'], ['Mariachi Hat', 'Mullet Brown'],
   ['Mariachi Hat', 'Long Purple'], ['Construction Helmet', 'Bushy Brown'],
   ['Poker Visor', 'Messy Blonde'], ['Black Bandana', 'Mullet Black'],
-  ['Horns', 'Long Black'], ['Snake Skin', 'Messy White'], ['Love Gun', 'Messy Pink'],
+  ['Horns', 'Long Black'], ['Horns', 'Bushy Black'],
+  ['Snake Skin', 'Messy White'], ['Love Gun', 'Messy Pink'],
 ];
 for (const [hat, hair] of COMBOS) {
   cell($('combo'), `${hat.split(' ')[0]} / ${hair.split(' ')[0]}`, { hat, hair });

@@ -349,8 +349,14 @@ supabase db query --linked -f supabase/migrations/20260818210000_primos_gate_han
 
 Additive: it creates no policy, tightens none, and changes no existing column, so
 it is safe under a client already in the field — an older client never sends
-`claimHash` and never calls `claim`. It can go before or after step 6; the mobile
-route simply does not work until both it and the client are out.
+`claimHash` and never calls `claim`.
+
+⚠ **It must go in before the function that reads it, though.** The new `verify`
+selects `claim_hash` when it claims the nonce, so a function deployed against the
+old schema fails *every* verification with "challenge lookup failed" — desktop
+holders included, not just phones. The client is safe out in front of both: under
+an old function the mobile route dead-ends and `refresh` degrades to silence,
+while the injected-provider path is untouched.
 
 ### 7. Wait, then close the boards
 
