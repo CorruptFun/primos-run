@@ -251,6 +251,27 @@ script mark on the cap read as a scribble, knit ribbing turned a do-rag into a
 barrel, and three ruled lines down a mullet made it a wooden keg. All three are
 gone. See the header of `head-back.js` for the full list.
 
+**Horns are the exception to the draw order, and the only one.** Every other
+piece of headwear is painted over the hair, because that is where a hat sits. A
+horn does not sit on a skull, it grows out of one, so it goes down BEFORE the
+hair mass and the crown closes over its root — which is what lets the root be
+wide enough to read without its base showing as a straight cut across the hair.
+Its outline is still one path filled once, like everything else here, but it is
+built from a SPINE with the half-width driven to zero along it rather than from
+two hand-authored edges: the pair that shipped met at a point where they joined
+the skull and were still 0.18rx apart at the tip, i.e. a horn assembled upside
+down, and two of those on a dark crown read as insect antennae. Taper alone does
+not finish the job either — the shape has to curve, because a tapering triangle
+at the top corner of a round head is a cat's ear whatever colour it is drawn in.
+
+Two general rules fell out of that fix. A KEYLINE ON A NARROW SHAPE is one flat
+fill of the grown path, never a `cel()` pass — `cel()` offsets its lit copy by
+`LX`/`LY` of the whole head box, so on something a few pixels across the pale
+tone lands almost entirely outside the shape and hangs off it as a ghost. And
+the hair's SHEEN is gated on `capped`, not on whether a hat exists: a visor and
+a pair of horns leave the crown wide open, so their hair needs the pass that
+guarantees a light value on the head exactly as much as a bare head does.
+
 **Two harnesses, and they answer different questions.**
 
 - **`dev/rig-test.html` — the POSE.** The whole run cycle plus air, slide, lean
