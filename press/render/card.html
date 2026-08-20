@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Primos: Barrio Run — card render</title>
+<!--
+  Source for the static marketing images. Rendered to PNG by
+  `scripts/render-cards.mjs`, which sizes a headless Chrome window to the exact
+  card and screenshots it — so the type is laid out by the same engine the game
+  is, in the game's own font stack, rather than approximated by a drawing
+  library.
+
+  ?v=og      1200x630  share card (og:image / twitter:image)
+  ?v=square  1080x1080 feed post
+  ?v=wide    2400x800  website hero strip
+
+  The screenshots are real frames off the live build (see dev/marketing-shots.js).
+-->
+<style>
+  :root {
+    --ink: #fdf6e6;
+    --ink-dim: rgba(253, 246, 230, 0.62);
+    --ink-faint: rgba(253, 246, 230, 0.40);
+    --gold: #ffc93c;
+    --gold-hi: #ffe89a;
+    --gold-lo: #e08c10;
+    --gold-deep: #a86a09;
+    --teal: #28c3b8;
+    --bg: #1a1024;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { background: #0d0812; }
+
+  body {
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color: var(--ink);
+    overflow: hidden;
+  }
+
+  .card {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    background: var(--bg);
+  }
+
+  /* Sizes. Each is exactly the window headless Chrome opens, so the render is
+     a 1:1 screenshot with no scaling step to soften the type. */
+  body[data-v="og"]     .card { width: 1200px; height: 630px;  padding: 0 64px; gap: 26px; }
+  body[data-v="square"] .card { width: 1080px; height: 1080px; padding: 54px 64px; gap: 0; flex-direction: column; justify-content: center; text-align: center; }
+  body[data-v="wide"]   .card { width: 2400px; height: 800px;  padding: 0 140px; gap: 90px; }
+
+  /* --------------------------------------------------------- backdrop */
+
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(120% 150% at 76% 116%, rgba(255, 138, 30, 0.34) 0%, rgba(255, 77, 157, 0.15) 34%, transparent 66%),
+      radial-gradient(90% 120% at 6% -12%, rgba(84, 42, 122, 0.66) 0%, transparent 62%),
+      linear-gradient(165deg, #241634 0%, #1a1024 46%, #120a1a 100%);
+  }
+
+  body[data-v="square"] .card::before {
+    background:
+      radial-gradient(120% 90% at 50% 108%, rgba(255, 138, 30, 0.34) 0%, rgba(255, 77, 157, 0.15) 36%, transparent 68%),
+      radial-gradient(90% 70% at 50% -14%, rgba(84, 42, 122, 0.66) 0%, transparent 62%),
+      linear-gradient(180deg, #241634 0%, #1a1024 46%, #120a1a 100%);
+  }
+
+  /* The alley floor, in perspective. Texture, not a diagram. */
+  .card::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 46%;
+    background: repeating-linear-gradient(90deg, transparent 0 62px, rgba(255, 201, 60, 0.075) 62px 64px);
+    -webkit-mask-image: linear-gradient(180deg, transparent, #000 88%);
+    transform: perspective(320px) rotateX(52deg);
+    transform-origin: bottom center;
+  }
+
+  body[data-v="wide"] .card::after {
+    background: repeating-linear-gradient(90deg, transparent 0 108px, rgba(255, 201, 60, 0.075) 108px 112px);
+  }
+
+  /* ------------------------------------------------------------- copy */
+
+  .copy { position: relative; z-index: 2; flex: 1 1 auto; min-width: 0; }
+  body[data-v="square"] .copy { flex: 0 0 auto; }
+
+  .mark {
+    display: block;
+    width: 86px;
+    height: 86px;
+    margin-bottom: 22px;
+    border-radius: 50%;
+    background: url("../../art/primos-logo.png") center / 100% 100% no-repeat;
+    box-shadow:
+      0 0 0 2px rgba(255, 201, 60, 0.26),
+      0 0 40px rgba(255, 201, 60, 0.22),
+      0 14px 34px rgba(0, 0, 0, 0.5);
+  }
+
+  body[data-v="square"] .mark { width: 98px; height: 98px; margin: 0 auto 22px; }
+  body[data-v="wide"]   .mark { width: 104px; height: 104px; margin-bottom: 26px; }
+
+  .top {
+    display: block;
+    font-weight: 900;
+    line-height: 0.86;
+    letter-spacing: 0.04em;
+    background: linear-gradient(105deg,
+      #ffe9a8 0%, #fffaea 16%, var(--gold) 34%, #e0761f 56%, var(--gold) 74%, #ffe9a8 100%);
+    -webkit-background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.34)) drop-shadow(0 12px 30px rgba(255, 138, 30, 0.32));
+  }
+
+  body[data-v="og"]     .top { font-size: 104px; }
+  body[data-v="square"] .top { font-size: 118px; }
+  body[data-v="wide"]   .top { font-size: 148px; }
+
+  .bot {
+    display: block;
+    margin-top: 10px;
+    padding-left: 0.34em;
+    font-weight: 800;
+    letter-spacing: 0.34em;
+    color: var(--teal);
+    text-shadow: 0 0 22px rgba(40, 195, 184, 0.5), 0 2px 0 rgba(0, 0, 0, 0.35);
+  }
+
+  body[data-v="og"]     .bot { font-size: 29px; }
+  body[data-v="square"] .bot { font-size: 37px; }
+  body[data-v="wide"]   .bot { font-size: 42px; }
+
+  .kicker {
+    margin-top: 26px;
+    padding-left: 0.14em;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  body[data-v="og"]     .kicker { font-size: 15px; }
+  body[data-v="square"] .kicker { font-size: 19px; }
+  body[data-v="wide"]   .kicker { font-size: 21px; }
+
+  .pitch {
+    max-width: 21ch;
+    margin-top: 20px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--ink-dim);
+  }
+
+  .pitch b { font-weight: 800; color: var(--ink); }
+
+  body[data-v="og"]     .pitch { font-size: 25px; }
+  body[data-v="square"] .pitch { font-size: 30px; max-width: 26ch; margin: 20px auto 0; }
+  body[data-v="wide"]   .pitch { font-size: 34px; max-width: 24ch; }
+
+  /* --------------------------------------------------------------- cta */
+
+  .cta {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    margin-top: 34px;
+  }
+
+  body[data-v="square"] .cta { justify-content: center; margin-top: 38px; }
+
+  .btn {
+    position: relative;
+    overflow: hidden;
+    display: inline-block;
+    flex: 0 0 auto;
+    white-space: nowrap;     /* "PLAY FREE" is one line or it is not a button */
+    border-radius: 16px;
+    font-weight: 900;
+    letter-spacing: 0.14em;
+    text-indent: 0.14em;
+    color: #2a1a08;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+    background: linear-gradient(180deg, var(--gold-hi), var(--gold) 52%, var(--gold-lo));
+    box-shadow:
+      0 5px 0 var(--gold-deep),
+      0 12px 26px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+
+  .btn::after {
+    content: "";
+    position: absolute;
+    inset: 1px 1px 52%;
+    border-radius: 15px 15px 7px 7px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0));
+  }
+
+  body[data-v="og"]     .btn { padding: 19px 36px; font-size: 21px; }
+  body[data-v="square"] .btn { padding: 24px 46px; font-size: 26px; }
+  body[data-v="wide"]   .btn { padding: 24px 46px; font-size: 27px; }
+
+  /* The gate, said plainly — teal spoken status, never a boxed callout. */
+  .gate {
+    margin-top: 14px;
+    font-weight: 800;
+    color: var(--teal);
+  }
+
+  body[data-v="og"]     .gate { font-size: 17px; }
+  body[data-v="square"] .gate { font-size: 21px; }
+  body[data-v="wide"]   .gate { font-size: 23px; }
+
+  .url {
+    flex: 0 1 auto;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  body[data-v="og"]     .url { font-size: 16px; }
+  body[data-v="square"] .url { font-size: 19px; }
+  body[data-v="wide"]   .url { font-size: 21px; }
+
+  /* ------------------------------------------------------------ phones */
+
+  .art {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex: 0 0 auto;
+  }
+
+  body[data-v="square"] .art { margin-top: 38px; }
+
+  .phone {
+    position: relative;
+    aspect-ratio: 1290 / 2796;
+    border-radius: 26px;
+    border: 2px solid rgba(255, 255, 255, 0.16);
+    background-color: #0b0710;
+    background-position: center;
+    background-size: cover;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.42), 0 34px 80px rgba(0, 0, 0, 0.66);
+  }
+
+  /* A screen has a sheen; without it the shots read as flat stickers. */
+  .phone::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(158deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 38%);
+  }
+
+  body[data-v="og"]     .phone { height: 464px; }
+  body[data-v="square"] .phone { height: 386px; }
+  body[data-v="wide"]   .phone { height: 640px; }
+
+  /* Overlap by negative margin, never by translate — a translated phone still
+     measures full width and pushes the fan out of the card. */
+  .p-a { background-image: url("../web/02-drone.jpg"); margin-right: -13%; transform: rotate(-7deg) translateY(3%) scale(0.86); }
+  .p-b { background-image: url("../web/01-jump.jpg");  z-index: 2; }
+  .p-c { background-image: url("../web/03-rampage.jpg"); margin-left: -13%;  transform: rotate(7deg) translateY(3%) scale(0.86); }
+
+  body[data-v="og"] .p-c { display: none; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="copy">
+      <span class="mark"></span>
+      <h1 class="top">PRIMOS</h1>
+      <span class="bot">BARRIO RUN</span>
+      <p class="kicker">Los Angeles &middot; 3 lanes &middot; no brakes</p>
+      <p class="pitch">Grab chelas, eat tacos, dodge the checkpoints &mdash; and <b>outrun ICE</b>.</p>
+      <p class="gate">This one is for the family &mdash; hold a Primo to run.</p>
+      <div class="cta">
+        <span class="btn">CONNECT WALLET</span>
+        <span class="url">corrupt.solutions/games/primos</span>
+      </div>
+    </div>
+    <div class="art">
+      <div class="phone p-a"></div>
+      <div class="phone p-b"></div>
+      <div class="phone p-c"></div>
+    </div>
+  </div>
+
+<script>
+  // The renderer passes the variant in the query string; everything above keys
+  // off this one attribute.
+  document.body.dataset.v = new URLSearchParams(location.search).get('v') || 'og';
+</script>
+</body>
+</html>

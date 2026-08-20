@@ -408,6 +408,10 @@ of having tested on a deploy.
 | `scripts/make-icons.js` | PWA icons, zero dependencies |
 | `scripts/verify-rls.sh` | RLS audit — run after any migration |
 | `scripts/verify-chunks.mjs` | alley fairness audit — the authoring rules, enforced |
+| `press/` | the marketing pack — CTA banner, screenshots, share cards |
+| `dev/marketing-shots.js` | capture harness — autopilots a real run, shoots the canvas |
+| `scripts/capture-sink.py` | receives those PNGs (a 2880×1620 blob is too big to eval back) |
+| `scripts/render-cards.mjs` | renders `press/render/card.html` to the static cards |
 
 ## El fit, la racha and los jales (the retention loop)
 
