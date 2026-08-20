@@ -207,6 +207,20 @@ is the difference between a character you play as and a sprite you supervise.
 The cost is less warning before an obstacle, and `RUN.startSpeed` plus the chunk
 spacing in `world.js` are what pay for it.
 
+**That closeness is also why `js/particles.js` has a near guard of its own.**
+`CAM.back` 4.25 with a focal length near the frame's width is the largest scale
+anything in the alley ever gets — and *every* burst the game fires goes off
+there: a pickup is collected where the player is standing, a smash lands against
+their chest, the landing puff is under their feet. A 0.13u spark projects to
+sixty-odd pixels at that range, and eighteen of them spawned on the same point
+draw as ONE opaque square over the runner's neck. That was the flat slab of
+powerup colour on the frame a powerup is collected — for years read as the glow
+ring surviving `drawProps`'s cull, which it does not: `takePickup` marks the
+prop dead before `renderScene` ever sees the frame. `SIZE_NEAR` sizes a spark as
+though it were never nearer than 12u, and `LEAD` gives each one a random
+sub-frame head start down its own path so a burst is never N sparks on one
+pixel. `dev/frame-probe.js` is what stops on that exact frame.
+
 ## The character is real 3D
 
 This is the single most important "do not simplify" in the repo.

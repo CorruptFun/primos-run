@@ -136,6 +136,25 @@ go stale here claimed 520 of 3,069 tokens for a day after full coverage landed.
   away, which is what `DRESS_ALPHA` cuts. That gate is on the fog ALPHA, not a
   distance, so it stays honest if `FOG_START` or `DRAW_DIST` move.
 
+- **EVERY BURST IN THE GAME GOES OFF AT THE PLAYER'S OWN PLANE, WHICH IS THE
+  BIGGEST SCALE IN THE SCENE.** A pickup is collected where the player is
+  standing, a smash lands on their chest, the landing puff is under their feet —
+  all eight `burst()` sites in `game.js` plus `dust()` are within a unit of
+  `player.z`, so `CAM.back`'s 4.25u is not the far case for particles, it is the
+  only one. A 0.13u spark projects to sixty-odd pixels there, and eighteen of
+  them spawned on ONE point draw as ONE opaque square: the hard-edged flat slab
+  of powerup colour over the runner's neck on the frame a powerup is collected
+  (`#ff4d9d` magnet, `#9ee34f` taco). `SIZE_NEAR` and `LEAD` in
+  `js/particles.js` are the guard, and both halves are needed — capped but
+  coincident is a smaller slab, spread but uncapped is sparks the size of the
+  head. **It was NOT `drawProps`'s `dz < 2.6` cull**, which is the natural
+  reading and is wrong twice over: that guard says CAMERA and means it, and
+  `takePickup` sets `dead` before `renderScene` ever sees the frame, so the
+  collected prop is not drawn at all. Raising it toward `CAM.back` would make an
+  obstacle vanish beside the runner mid-collision and fix nothing.
+  `dev/frame-probe.js` stops on that frame; `probe.blob()` scores FILL RATIO,
+  because a burst and a slab differ in coverage, not in pixel count.
+
 - **A COLLISION TEST THAT SAMPLES A WINDOW IS FRAME-RATE DEPENDENT, AND THIS
   GAME MOVES FAST ENOUGH FOR THAT TO MATTER.** The drone shipped asking whether
   it was within 0.6u of the player on the frame it was sampled, while closing at
@@ -377,6 +396,7 @@ of having tested on a deploy.
 | `js/referrals.js` | invite codes, `?ref=` capture, qualify + payout |
 | `js/merge.js`, `js/raceday.js` | pure: save reconciliation, day/week keys |
 | `js/racha.js`, `js/jales.js` | pure: daily streak + daily missions — see below |
+| `js/particles.js` | pooled sparks + footfall dust — see the near guard at the top |
 | `js/art/gear.js` | el fit draw code (shop icons + worn mask/chain) |
 | `js/account.js`, `js/boards.js` | the ACCOUNT and LEADERBOARD screens |
 | `js/ui-feedback.js` | what a DOM button does when pressed — see below |
@@ -844,6 +864,14 @@ cache a 200 that is not an image, eviction, and the blob → canvas bake staying
 untainted. No network, so it reproduces offline the faults that previously needed
 a real gateway to misbehave. Open it after touching `primo-cache.js`, `GATEWAYS`
 or `loadHead`.
+
+`dev/frame-probe.js` drives a real run to a frame you cannot press a key on —
+`await probe.collect('magnet')` stops on the frame the pickup lands, `probe.blob()`
+measures how solid one colour is there, `probe.sheet(8)` tiles the next eight
+frames over the page because an automated browser shoots one viewport and cannot
+scrub. Paste it into the console or `import('/dev/frame-probe.js')`. Reach for it
+after touching `particles.js`, a `burst()` call, or anything drawn at the
+player's own plane.
 
 `dev/gate-test.html` covers the NFT gate's client half — base58, the pass store
 and its expiry ceiling, wallet detection, and the mobile handoff (the claim token
