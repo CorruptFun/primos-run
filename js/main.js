@@ -734,6 +734,11 @@ function paintCrew() {
   roster.forEach((c, i) => {
     const cv = tiles[i];
     if (!cv) return;
+    // With a wallet connected the row IS the wallet: a slot with no owned
+    // token behind it disappears, rather than being filled with a stranger or
+    // a stand-in. The flex row simply centres what remains.
+    cv.hidden = !slotLive(i);
+    if (cv.hidden) return;
     const c2 = cv.getContext('2d');
     c2.clearRect(0, 0, 132, 132);
     const grad = c2.createLinearGradient(0, 0, 0, 132);
@@ -752,19 +757,24 @@ function paintCrew() {
       c2.fillText('+', 66, 40);
     } else {
       const art = isCustom ? customImg : crewImgs.get(c.id);
-      if (!art && !isCustom && crewArtPending) {
-        // ⚠ NOT the drawn stand-in, for this brief moment only.
+      if (!art && !isCustom && (crewArtPending || crewOwned)) {
+        // ⚠ NOT the drawn stand-in — briefly when ungated, EVER when gated.
         //
-        // The cartoons used to be painted immediately and then swapped for real
-        // collection art a moment later, which read as the game glitching on
-        // every single launch — four faces visibly changing identity is a much
-        // louder event than four faces arriving. The stand-ins are still the
-        // fallback and still the reason the menu is never empty; they just stop
-        // being shown during the window where they are about to be replaced.
+        // Ungated (crewArtPending): the cartoons used to be painted
+        // immediately and then swapped for real collection art a moment
+        // later, which read as the game glitching on every single launch —
+        // four faces visibly changing identity is a much louder event than
+        // four faces arriving. They are still the fallback and still the
+        // reason the menu is never empty; they just hold back during the
+        // window where they are about to be replaced. The window closes the
+        // instant the art lands, and in any case after CREW_ART_GRACE, so a
+        // cold or offline device gets its cartoons inside a second.
         //
-        // See crewArtPending: the window closes the instant the art lands, and
-        // in any case after CREW_ART_GRACE, so a cold or offline device gets its
-        // cartoons and never sits looking at placeholders.
+        // Gated (crewOwned): this tile is a specific Primo the player OWNS,
+        // and painting Rosa's cartoon on it because a gateway is slow is the
+        // one thing the row must never do — it reads as the game handing you
+        // somebody else's runner. The silhouette holds until the real art
+        // lands, however long that takes.
         c2.fillStyle = 'rgba(253,246,230,0.10)';
         c2.beginPath();
         c2.arc(66, 60, 26, 0, Math.PI * 2);
@@ -882,6 +892,41 @@ const status = (msg) => { $('primo-status').textContent = msg; };
 const CREW_DRAW_KEY = 'primos-run:crew-draw';
 
 /**
+ * The crew the menu offers while the NFT gate is on: the wallet's own Primos,
+ * in place of the daily strangers. Ascending and capped at the row — a wallet
+ * holding more than four still shows its first four here, and the browser
+ * (owned-first, see js/primo-browser.js) is where the rest live.
+ *
+ * null when the gate is off, when there is no pass yet, or when the pass is
+ * unreadable — every case where the ungated draw should carry on unchanged.
+ *
+ * Read once per pass change rather than per paint (decoding the signed pass is
+ * a JSON+base64 parse, and paintCrew runs on every selection and language
+ * switch). The numbers go into crewNums IMMEDIATELY, not when the art lands:
+ * with a wallet connected a tile IS that Primo from the first frame, and the
+ * label must never spend the index fetch introducing itself as ROSA.
+ */
+let crewOwned = null;
+
+function readCrewOwned() {
+  const owned = gate.enabled() ? gate.ownedTokens() : [];
+  crewOwned = owned.length
+    ? [...new Set(owned)].sort((a, b) => a - b).slice(0, CREW.length).map(String)
+    : null;
+  if (crewOwned) crewOwned.forEach((n, i) => crewNums.set(CREW[i].id, n));
+}
+
+/**
+ * Is this roster slot backed by anything the menu should offer? With a wallet
+ * connected, a stock slot with no owned token behind it is not.
+ */
+function slotLive(i) {
+  const c = roster[i];
+  if (!c) return false;
+  return c.id === CUSTOM_ID || !crewOwned || i < crewOwned.length;
+}
+
+/**
  * How long the crew tiles will hold a placeholder rather than show a stand-in
  * that is about to be replaced. See the branch in paintCrew().
  *
@@ -901,6 +946,15 @@ function endCrewGrace() {
 }
 
 function crewDraw(idx) {
+  // A connected wallet replaces the draw outright: the crew is the Primos the
+  // pass says are theirs. No day key and no localStorage memory — the owned
+  // set is already stable across launches, which is all the daily rotation
+  // ever existed to buy the art cache.
+  if (crewOwned) return crewOwned;
+  // Gate up, nobody through it yet. Four strangers fetched now would be
+  // thrown away the moment the pass lands (refreshCrew), and the menu is
+  // behind the gate screen with nobody looking at it — so draw nothing.
+  if (gate.enabled() && !gate.open()) return [];
   const today = dayKey();
   try {
     const saved = JSON.parse(localStorage.getItem(CREW_DRAW_KEY) || 'null');
@@ -932,6 +986,9 @@ async function loadRealCrew() {
 
   await Promise.all(CREW.map(async (c, i) => {
     const num = tokens[i];
+    // The gated draw is as long as the wallet, which can be shorter than the
+    // row — those slots are hidden by paintCrew, not filled.
+    if (num === undefined) return;
     const cid = cidFor(idx, num);
     if (!cid) return;
     const result = await loadPrimoArt(cid);
@@ -949,8 +1006,33 @@ async function loadRealCrew() {
   }));
   // Every token has resolved one way or the other. Any tile still without art
   // is one whose gateway never answered, and it should show its stand-in now
-  // rather than wait out the rest of the grace window.
+  // rather than wait out the rest of the grace window. (Gated tiles keep their
+  // silhouette regardless — see the crewOwned branch in paintCrew.)
   endCrewGrace();
+}
+
+/**
+ * Re-draw the crew for a pass that just landed.
+ *
+ * Called from gateEnter(), whichever of the three routes won. The boot-time
+ * draw ran before there was a pass, so it deliberately drew nothing (see
+ * crewDraw) and the tiles behind the gate screen are still the seeded
+ * cartoons — this is the moment they become the wallet's own Primos, while
+ * the welcome line is still on screen. Wallet DISCONNECT needs no twin:
+ * account.js reloads the page outright, for exactly this class of reason.
+ */
+function refreshCrew() {
+  crewImgs.clear();
+  crewNums.clear();
+  for (const c of CREW) crewRigs.set(c.id, { ...headFromCharacter(c), pants: c.pants });
+  readCrewOwned();
+  crewArtPending = true;
+  setTimeout(endCrewGrace, CREW_ART_GRACE);
+  // Before the repaint inside selectCrew, which is what applies the hidden
+  // states — and the remembered selection may point at a slot this wallet
+  // does not fill.
+  selectCrew(slotLive(selectedIdx) ? selectedIdx : 0);
+  void loadRealCrew();
 }
 
 /**
@@ -1819,8 +1901,10 @@ function gateEnter(res, how) {
   gateStatus(t('gate.welcome').replace('%n', String(res.count || 1)));
   track(EVENTS.GATE_PASS, { count: res.count || 0, how });
   // The pass decides which Primos are wearable, so the panel behind the gate is
-  // out of date the instant one lands.
+  // out of date the instant one lands — and so is the crew row, which becomes
+  // the wallet's own Primos.
   syncPrimoPanel();
+  refreshCrew();
   // Straight into the game the player came for. The status line above is read
   // on the way past, not waited on.
   setTimeout(() => { showScreen(STATE.MENU); }, 700);
@@ -1918,6 +2002,9 @@ function boot() {
   // Bake head sprites for the drawn crew so the in-game head is always a
   // sprite, whether it came from code or from the collection.
   for (const c of CREW) crewRigs.set(c.id, { ...headFromCharacter(c), pants: c.pants });
+  // Which Primos the pass says are this wallet's, before anything paints or
+  // draws: it decides the crew draw, the hidden slots and the tile labels.
+  readCrewOwned();
   // Upgrade the roster to real collection art in the background. The grace
   // timer is the backstop: loadRealCrew() ends the window itself when it
   // finishes, but a gateway that stalls holds it open for its full fence, and
@@ -1931,8 +2018,11 @@ function boot() {
   sfx.setMuted(!!saved.muted);
   setHaptics(!saved.muted);
 
+  // slotLive: with a wallet connected the remembered character may be a stock
+  // slot this wallet does not fill, and selecting a hidden tile runs you as a
+  // cartoon the row no longer shows.
   const idx = roster.findIndex((c) => c.id === saved.character);
-  selectCrew(idx >= 0 ? idx : 0);
+  selectCrew(idx >= 0 && slotLive(idx) ? idx : 0);
 
   // After selectCrew, so the crew labels it just wrote are the ones that get
   // localised — and it is what fills in the mute button too.
@@ -1993,7 +2083,7 @@ function boot() {
     refreshStats();
     syncPrimoPanel();              // the merge can bring a Primo in with it
     const i = roster.findIndex((c) => c.id === saved.character);
-    if (i >= 0 && i !== selectedIdx) selectCrew(i);
+    if (i >= 0 && i !== selectedIdx && slotLive(i)) selectCrew(i);
     // AFTER the auth restore, so a returning signed-in player's very first
     // events carry their user id instead of a null that later events contradict.
     // It is inside the .then() and not after it for that reason alone; the call

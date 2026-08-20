@@ -12,6 +12,18 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["scripts/dev-server.py", "4177"],
       "port": 4177
+    },
+    {
+      "//": "Same server, second port — for when another session (often one in",
+      "//2": "a .claude/worktrees/ checkout) already owns 4177. A worktree's",
+      "//3": "server on 4177 serves THAT tree's files: an edit made here keeps",
+      "//4": "'not working' because the page is running a different checkout.",
+      "//5": "Verify who owns a port before debugging: lsof -nP -iTCP:4177",
+      "//6": "-sTCP:LISTEN, then lsof -p <pid> | grep cwd.",
+      "name": "primos-run-alt",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["scripts/dev-server.py", "4178"],
+      "port": 4178
     }
   ]
 }

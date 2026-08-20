@@ -281,6 +281,22 @@ go stale here claimed 520 of 3,069 tokens for a day after full coverage landed.
   than painting cartoons it is about to replace — four faces visibly changing
   identity is a much louder event than four faces arriving.
 
+- **WITH THE GATE ON, THE CREW ROW IS THE WALLET, and the stranger draw must
+  never show through it.** `crewOwned` (from the signed pass, via
+  `readCrewOwned`) replaces the daily draw with the wallet's own tokens; slots
+  beyond what it holds are HIDDEN, and an owned tile with no art yet keeps the
+  neutral silhouette FOREVER rather than falling back to the cartoons — Rosa
+  standing on a connected holder's menu was the shipped bug this exists to
+  prevent. Three ordering traps: the boot draw runs before a first-connect pass
+  exists, so `crewDraw` returns EMPTY behind a blocking gate and `gateEnter()`
+  must call `refreshCrew()`; `crewNums` is seeded synchronously from the pass so
+  a tile never spends the index fetch labelled ROSA; and a remembered
+  `saved.character` can point at a slot the wallet does not fill, so every
+  `selectCrew` restore goes through `slotLive()`. The browser walks OWNED-FIRST
+  (`buildOrder` in `js/primo-browser.js`): the order array always holds all
+  3,069 (moved, never duplicated), and every token→page mapping must go through
+  `pageOf()`, never `n / PAGE_SIZE`.
+
 - **`loadPrimoArt` must fetch each image ONCE.** Its first version baked from the
   gateway with an `<img>` and then re-fetched the same bytes to fill the cache:
   32 requests for a 24-tile page, i.e. a caching layer that doubled first-visit

@@ -77,6 +77,32 @@ const held = new Map();        // slot -> object URL
 let renderGen = 0;
 let inflight = 0;
 
+// The walk order of the grid: the wallet's own Primos first, ascending, then
+// everyone else in numeric order. Page 1 is YOURS — opening the browser leads
+// with what the player can actually wear, and the locked 3,069 stay behind it
+// as the shop window. With the gate off (or no pass) it is simply 0..MAX_TOKEN
+// and the grid behaves as it always has.
+//
+// Rebuilt on every open, for the same reason paintYours() runs on every open:
+// the pass can change between visits. Length is always SUPPLY — owned tokens
+// are moved, never duplicated — so PAGE_COUNT and the pager math never shift.
+let order = [];
+let pos = new Map();           // token number -> index in `order`
+
+function buildOrder() {
+  const mine = gateOn() ? ownedTokens() : [];
+  const owned = [...new Set(mine)].sort((a, b) => a - b);
+  const ownedSet = new Set(owned);
+  order = owned.slice();
+  for (let n = 0; n <= MAX_TOKEN; n++) if (!ownedSet.has(n)) order.push(n);
+  pos = new Map(order.map((n, i) => [n, i]));
+}
+
+// The page a token sits on in the current walk order. The `?? n` fallback only
+// matters before the first open builds the order, and degrades to the plain
+// numeric paging this file used to do.
+const pageOf = (n) => Math.floor((pos.get(n) ?? n) / PAGE_SIZE);
+
 // ---------------------------------------------------------------- loading
 
 function releaseSlot(slot) {
@@ -112,9 +138,9 @@ async function loadPage(gen) {
   const first = page * PAGE_SIZE;
   const jobs = [];
   for (let slot = 0; slot < PAGE_SIZE; slot++) {
-    const n = first + slot;
-    if (n > MAX_TOKEN) break;
-    jobs.push([slot, n]);
+    const at = first + slot;
+    if (at >= order.length) break;
+    jobs.push([slot, order[at]]);
   }
   let next = 0;
   const worker = async () => {
@@ -178,7 +204,7 @@ function build() {
     if (!Number.isInteger(n)) return;
     // Page there first so the grid is showing the tile that is about to light
     // up; pick() then marks it and raises the preview card.
-    goToPage(Math.floor(n / PAGE_SIZE));
+    goToPage(pageOf(n));
     pick(n);
   });
 
@@ -189,16 +215,17 @@ function build() {
 function renderPage() {
   const gen = ++renderGen;
   const first = page * PAGE_SIZE;
-  const last = Math.min(first + PAGE_SIZE - 1, MAX_TOKEN);
+  const last = Math.min(first + PAGE_SIZE, order.length) - 1;
 
   for (let slot = 0; slot < PAGE_SIZE; slot++) {
-    const n = first + slot;
+    const at = first + slot;
     const tile = tiles[slot];
     releaseSlot(slot);
     // The final page is short — 3,069 is not a multiple of 24. Hidden rather
     // than removed, so the grid never reflows to a different column count on
     // the last page.
-    if (n > MAX_TOKEN) { tile.hidden = true; tile.removeAttribute('data-n'); continue; }
+    if (at >= order.length) { tile.hidden = true; tile.removeAttribute('data-n'); continue; }
+    const n = order[at];
     tile.hidden = false;
     tile.dataset.n = String(n);
     tile.querySelector('b').textContent = String(n);
@@ -212,9 +239,13 @@ function renderPage() {
     tile.setAttribute('aria-disabled', locked ? 'true' : 'false');
   }
 
+  // First and last token SHOWN, not a numeric span: with owned-first ordering
+  // the front pages are not contiguous, and on the page where yours end and
+  // the rest begin, %a can be a bigger number than %b. That is the honest
+  // description of what is on screen.
   $('browse-range').textContent = t('browse.range')
-    .replace('%a', String(first))
-    .replace('%b', String(last))
+    .replace('%a', String(order[first]))
+    .replace('%b', String(order[last]))
     .replace('%p', String(page + 1))
     .replace('%t', String(PAGE_COUNT));
   $('btn-browse-prev').disabled = page <= 0;
@@ -311,8 +342,10 @@ function paintYours() {
   if (!row) return;
 
   // Off with the gate off. Every Primo is wearable then, so a row headed
-  // "YOURS" listing all 3,069 would be both enormous and untrue.
-  const mine = gateOn() ? ownedTokens() : [];
+  // "YOURS" listing all 3,069 would be both enormous and untrue. Ascending, so
+  // the pills agree with the owned block that now leads the grid below them —
+  // the pass lists tokens in whatever order the chain answered.
+  const mine = (gateOn() ? ownedTokens() : []).slice().sort((a, b) => a - b);
   if (!mine.length) { row.classList.add('hidden'); return; }
   row.classList.remove('hidden');
 
@@ -365,7 +398,7 @@ export function initPrimoBrowser(pickHandler, translate, close) {
       return;
     }
     $('browse-status').textContent = '';
-    goToPage(Math.floor(n / PAGE_SIZE));
+    goToPage(pageOf(n));
     pick(n);
   };
   $('btn-browse-jump').addEventListener('click', jump);
@@ -386,6 +419,9 @@ export async function openPrimoBrowser(currentNumber) {
   // After build() — the row's container must exist before it can be filled —
   // and on every open rather than once, because the pass can change between
   // visits (it expires, or the player disconnects and connects another wallet).
+  // The walk order is rebuilt for the same reason: it leads with that pass's
+  // Primos.
+  buildOrder();
   paintYours();
 
   // Reset the pick card unless they are coming back to the one they are wearing.
@@ -394,13 +430,14 @@ export async function openPrimoBrowser(currentNumber) {
   $('browse-pick').classList.add('hidden');
 
   // Open on the page holding the Primo they are already wearing, so coming back
-  // lands where they left rather than at #0.
+  // lands where they left rather than at the front. For a holder that page and
+  // the front are usually the same place — their own block leads the order.
   const n = Number.isInteger(currentNumber) && currentNumber >= 0 && currentNumber <= MAX_TOKEN
     ? currentNumber : null;
-  page = n === null ? 0 : Math.floor(n / PAGE_SIZE);
+  page = n === null ? 0 : pageOf(n);
   renderPage();
   if (n !== null) {
-    const slot = n - page * PAGE_SIZE;
+    const slot = (pos.get(n) ?? n) - page * PAGE_SIZE;
     tiles[slot]?.classList.add('on');
   }
 }

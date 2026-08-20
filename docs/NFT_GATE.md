@@ -63,6 +63,16 @@ when the gate is off.
 - Unowned tiles are **locked, not hidden**. All 3,069 stay browsable so the
   collection is still a shop window; you just cannot wear one that is not yours.
   Same reasoning as leaving the leaderboard's read policy open.
+- **With a pass in hand, the menu's crew row IS the wallet.** The daily
+  stranger draw (`crewDraw` in `js/main.js`) is replaced by the pass's own
+  tokens, ascending, capped at the four slots; slots beyond what the wallet
+  holds are hidden, and an owned tile whose art has not landed holds a neutral
+  silhouette rather than ever falling back to a stand-in cartoon — Rosa
+  appearing on a connected wallet's menu is the bug this replaced. The draw
+  refreshes in `gateEnter()`, because on a first connect the boot-time draw ran
+  before any pass existed (and deliberately drew nothing). The browser walks
+  **owned-first** for the same reason: page 1 is YOURS, then the rest of the
+  collection in numeric order.
 - `ownedTokens()` reads the list out of the **signed payload**, never the
   convenience copy beside it in localStorage. A console can overwrite a whole
   pass but cannot edit one — and editing is precisely what someone would do to
